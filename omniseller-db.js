@@ -3,8 +3,8 @@
  * Menghubungkan UI Dashboard langsung ke Database PostgreSQL Supabase Anda
  */
 // Ganti dengan URL dan Anon Key milik proyek Supabase Anda sendiri
-const SUPABASE_URL = "https://xyzxyz.supabase.co"; 
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
+const SUPABASE_URL = "https://lbwmmppaunqikpollvhg.supabase.co"; 
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxid21tcHBhdW5xaWtwb2xsdmhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NTk3NzAsImV4cCI6MjA5ODAzNTc3MH0.O-tEKALTaAwAgVRnC3CKfDxAFuqq8-f43Mlmr7X6F3s";
 
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // 1. Validasi & Inisialisasi Supabase Client
