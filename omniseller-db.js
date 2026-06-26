@@ -2,7 +2,11 @@
  * OmniSeller — Supabase Realtime Database Sync Engine
  * Menghubungkan UI Dashboard langsung ke Database PostgreSQL Supabase Anda
  */
+// Ganti dengan URL dan Anon Key milik proyek Supabase Anda sendiri
+const SUPABASE_URL = "https://xyzxyz.supabase.co"; 
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
 
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // 1. Validasi & Inisialisasi Supabase Client
 if (typeof supabase === 'undefined') {
     console.error("Supabase CDN Library belum dimuat! Pastikan script CDN terpasang di <head>.");
