@@ -197,14 +197,41 @@ async function initApp(){
   (function(){const t=localStorage.getItem('omni_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')})();
 }
 
-// ===== ADMIN AUTH (Supabase Auth) =====
+// ===== ADMIN AUTH (Supabase Auth) + ROLE/PRIVILEGE =====
+let _currentAdminRole=null; // 'owner' | 'staff' | 'viewer' | 'pending' | null
 function showLoginScreen(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-wrap').style.display='none';
+  document.getElementById('pending-screen').style.display='none';
+}
+function showPendingScreen(email){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app-wrap').style.display='none';
+  document.getElementById('pending-screen').style.display='flex';
+  document.getElementById('pending-email').textContent=email||'';
 }
 function showAppScreen(){
   document.getElementById('login-screen').style.display='none';
+  document.getElementById('pending-screen').style.display='none';
   document.getElementById('app-wrap').style.display='';
+}
+// Dipanggil setiap kali ada user berhasil login/signup/sesi ditemukan.
+// Mengecek role di tabel admin_users, lalu memutuskan layar mana yang tampil.
+async function proceedAfterAuth(user){
+  _currentAdminUser=user;
+  try{
+    const{data,error}=await supabaseClient.from('admin_users').select('role,nama,email').eq('id',user.id).maybeSingle();
+    if(error){console.warn('Gagal cek role:',error.message);loginAlert('Gagal memuat data akses akun: '+error.message);return}
+    if(!data||data.role==='pending'){
+      showPendingScreen(user.email);
+      return;
+    }
+    _currentAdminRole=data.role;
+    showAppScreen();
+    await initApp();
+    updateAdminInfo();
+    applyRolePermissions();
+  }catch(e){console.warn('Gagal cek role:',e);loginAlert('Gagal memuat data akses akun: '+e.message)}
 }
 function loginAlert(msg,type){
   const el=document.getElementById('login-alert');
@@ -215,11 +242,13 @@ function toggleAuthForm(mode){
   if(mode==='signup'){
     document.getElementById('form-login').style.display='none';
     document.getElementById('form-signup').style.display='';
-    document.getElementById('login-screen-subtitle').textContent='Daftar Administrator Baru';
+    document.getElementById('form-login-header').style.display='none';
+    document.getElementById('form-signup-header').style.display='';
   }else{
     document.getElementById('form-signup').style.display='none';
     document.getElementById('form-login').style.display='';
-    document.getElementById('login-screen-subtitle').textContent='Login Administrator';
+    document.getElementById('form-signup-header').style.display='none';
+    document.getElementById('form-login-header').style.display='';
   }
 }
 async function adminSignUp(){
@@ -237,11 +266,8 @@ async function adminSignUp(){
     const{data,error}=await supabaseClient.auth.signUp({email,password,options:{data:{nama:nama||email}}});
     if(error){loginAlert('Daftar gagal: '+error.message);btn.disabled=false;btn.textContent='Daftar Sebagai Administrator';return}
     if(data.session){
-      // Auto-confirm aktif di project Supabase -> langsung login
-      _currentAdminUser=data.user;
-      showAppScreen();
-      await initApp();
-      updateAdminInfo();
+      // Auto-confirm aktif -> langsung dicek role (kemungkinan 'pending' jika bukan user pertama)
+      await proceedAfterAuth(data.user);
     }else{
       // Perlu konfirmasi email dulu
       loginAlert('Pendaftaran berhasil! Cek email Anda untuk konfirmasi akun, lalu login.','success');
@@ -261,17 +287,14 @@ async function adminLogin(){
   try{
     const{data,error}=await supabaseClient.auth.signInWithPassword({email,password});
     if(error){loginAlert('Login gagal: '+error.message);btn.disabled=false;btn.textContent='Masuk';return}
-    _currentAdminUser=data.user;
-    showAppScreen();
-    await initApp();
-    updateAdminInfo();
+    await proceedAfterAuth(data.user);
   }catch(e){loginAlert('Login gagal: '+e.message)}
   btn.disabled=false;btn.textContent='Masuk';
 }
 async function adminLogout(){
   if(!confirm('Keluar dari dashboard?'))return;
   try{await supabaseClient.auth.signOut()}catch(e){}
-  _currentAdminUser=null;
+  _currentAdminUser=null;_currentAdminRole=null;
   document.getElementById('login-email').value='';
   document.getElementById('login-password').value='';
   loginAlert('');
@@ -283,6 +306,11 @@ function updateAdminInfo(){
   if(!emailEl)return;
   emailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
   sinceEl.textContent=_currentAdminUser&&_currentAdminUser.last_sign_in_at?new Date(_currentAdminUser.last_sign_in_at).toLocaleString('id-ID'):'–';
+  const roleEl=document.getElementById('info-admin-role');
+  if(roleEl){
+    const label={owner:'👑 Owner (akses penuh)',staff:'🛠 Staff (kelola transaksi & stok)',viewer:'👁 Viewer (hanya lihat)'}[_currentAdminRole]||_currentAdminRole||'–';
+    roleEl.textContent=label;
+  }
 }
 function bukaModalGantiPassword(){
   document.getElementById('pw-baru').value='';document.getElementById('pw-ulang').value='';
@@ -299,9 +327,77 @@ async function simpanPasswordBaru(){
   }catch(e){alert('Gagal mengubah password: '+e.message)}
 }
 
+// ===== HAK AKSES (ROLE PERMISSIONS) =====
+function isOwner(){return _currentAdminRole==='owner'}
+function canWrite(){return _currentAdminRole==='owner'||_currentAdminRole==='staff'} // boleh tambah/edit/hapus data transaksi
+function canManageSettings(){return _currentAdminRole==='owner'} // boleh ubah biaya/pengaturan toko/marketplace/kategori/user
+// Sembunyikan/disable elemen UI sesuai role. Dipanggil setelah login & setiap render ulang halaman besar.
+function applyRolePermissions(){
+  const write=canWrite(), settings=canManageSettings();
+  // Tombol tambah transaksi/stok di topbar & section
+  document.querySelectorAll('[data-need="write"]').forEach(el=>el.style.display=write?'':'none');
+  // Elemen khusus owner: kelola kategori, marketplace, biaya, user, logo
+  document.querySelectorAll('[data-need="settings"]').forEach(el=>el.style.display=settings?'':'none');
+  if(settings)renderUserList();
+}
+// Dipakai di renderJualTable/renderStokTable/dst untuk sembunyikan tombol aksi kalau viewer
+function actionCellRW(html){return canWrite()?html:''}
+
+// ===== MANAJEMEN USER & HAK AKSES (khusus Owner) =====
+async function renderUserList(){
+  const el=document.getElementById('user-list-manage');
+  if(!el||!isOwner())return;
+  el.innerHTML=`<div style="text-align:center;padding:20px;color:var(--text3)">Memuat...</div>`;
+  try{
+    const{data,error}=await supabaseClient.from('admin_users').select('id,email,nama,role,created_at').order('created_at');
+    if(error){el.innerHTML=`<div style="color:var(--danger);font-size:13px">Gagal memuat: ${error.message}</div>`;return}
+    if(!data||!data.length){el.innerHTML=`<div style="color:var(--text3);text-align:center;padding:20px">Belum ada user</div>`;return}
+    const roleBadge={owner:'background:#fef3c7;color:#92400e',staff:'background:#dbeafe;color:#1e40af',viewer:'background:#e5e7eb;color:#374151',pending:'background:#fee2e2;color:#991b1b'};
+    el.innerHTML=data.map(u=>{
+      const isMe=_currentAdminUser&&u.id===_currentAdminUser.id;
+      return `<div class="mp-manage-row">
+        <div class="mp-manage-left">
+          <div>
+            <div style="font-weight:600">${u.nama||u.email}${isMe?' <span style="font-size:11px;color:var(--text3)">(Anda)</span>':''}</div>
+            <div style="font-size:11px;color:var(--text3)">${u.email}</div>
+          </div>
+        </div>
+        <div class="mp-manage-actions" style="gap:8px;align-items:center">
+          <span class="mp-tag" style="${roleBadge[u.role]||''}">${u.role==='pending'?'⏳ Pending':u.role}</span>
+          ${isMe?'':`<select class="form-select" style="font-size:12px;padding:4px 6px" onchange="ubahRoleUser('${u.id}',this.value)">
+            <option value="pending" ${u.role==='pending'?'selected':''}>Pending</option>
+            <option value="viewer" ${u.role==='viewer'?'selected':''}>Viewer</option>
+            <option value="staff" ${u.role==='staff'?'selected':''}>Staff</option>
+            <option value="owner" ${u.role==='owner'?'selected':''}>Owner</option>
+          </select>
+          <button class="btn btn-sm btn-icon btn-danger" onclick="hapusAksesUser('${u.id}','${(u.nama||u.email).replace(/'/g,"")}')">🗑</button>`}
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){el.innerHTML=`<div style="color:var(--danger);font-size:13px">Gagal memuat: ${e.message}</div>`}
+}
+async function ubahRoleUser(userId,role){
+  try{
+    const{error}=await supabaseClient.from('admin_users').update({role}).eq('id',userId);
+    if(error){alert('Gagal mengubah role: '+error.message);renderUserList();return}
+    renderUserList();
+  }catch(e){alert('Gagal mengubah role: '+e.message)}
+}
+async function hapusAksesUser(userId,nama){
+  if(!confirm(`Cabut akses untuk "${nama}"? Mereka tidak akan bisa masuk ke aplikasi lagi (akun login tetap ada, hanya hak aksesnya yang dicabut).`))return;
+  try{
+    const{error}=await supabaseClient.from('admin_users').delete().eq('id',userId);
+    if(error){alert('Gagal mencabut akses: '+error.message);return}
+    renderUserList();
+  }catch(e){alert('Gagal mencabut akses: '+e.message)}
+}
+
+
 // Gerbang utama: cek sesi login saat halaman dibuka
 window.onload=async function(){
   showLoginScreen();
+  // Tampilkan logo custom dari cache lokal (jika ada) sebelum proses login selesai
+  try{const cached=localStorage.getItem('omniseller_v2');if(cached){const d=JSON.parse(cached);if(d&&d.pengaturan){DB.pengaturan=d.pengaturan;applyLogo()}}}catch(e){}
   if(typeof supabaseClient==='undefined'||!supabaseClient){
     loginAlert('Gagal memuat koneksi Supabase. Periksa koneksi internet Anda lalu refresh halaman (Ctrl+Shift+R). Jika masih gagal, kemungkinan CDN Supabase diblokir oleh jaringan/firewall Anda.');
     return;
@@ -309,17 +405,14 @@ window.onload=async function(){
   try{
     const{data}=await supabaseClient.auth.getSession();
     if(data&&data.session){
-      _currentAdminUser=data.session.user;
-      showAppScreen();
-      await initApp();
-      updateAdminInfo();
+      await proceedAfterAuth(data.session.user);
     }
   }catch(e){console.warn('Gagal cek sesi login:',e)}
 };
 // Jika sesi berubah (login/logout dari tab lain, token refresh, dst)
 if(typeof supabaseClient!=='undefined'&&supabaseClient){
   supabaseClient.auth.onAuthStateChange((event,session)=>{
-    if(event==='SIGNED_OUT'){_currentAdminUser=null;showLoginScreen()}
+    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;showLoginScreen()}
   });
 }
 
@@ -452,10 +545,10 @@ function renderJualTable(){
       <td style="text-align:center;font-weight:600">${r.qty}</td>
       <td style="font-weight:600">${fmtRp(r.total)}</td>
       <td><span class="badge ${ST_BADGE[r.status]||'badge-gray'}">${r.status}</span></td>
-      <td><div class="action-cell">
+      <td>${actionCellRW(`<div class="action-cell">
         <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditJual(${ri})">✏️</button>
         <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('jual',${ri})">🗑</button>
-      </div></td>
+      </div>`)}</td>
     </tr>`}).join(''):`<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
   renderPagination('pag-jual',filteredJual.length,pageJual,p=>{pageJual=p;renderJualTable()});
 }
@@ -495,6 +588,7 @@ function autocompleteKat(){
   if(match&&match.kat){const el=document.getElementById('f-kat-jual');if(el)el.value=match.kat;}
 }
 function simpanPesanan(){
+  if(!canWrite()){alert("Anda tidak punya izin untuk menambah/mengubah pesanan.");return}
   const idx=document.getElementById('edit-jual-idx').value;
   const no=document.getElementById('f-no').value.trim();const prod=document.getElementById('f-prod').value.trim();const tgl=document.getElementById('f-tgl').value;
   if(!no||!prod||!tgl){alert('Mohon isi No. Pesanan, Tanggal, dan Nama Produk');return}
@@ -534,11 +628,11 @@ function renderStokTable(){
       <td style="color:var(--text2)">${r.terjual} pcs</td>
       <td style="color:var(--text3)">${hariHabis}</td>
       <td><span class="badge ${badge}">${status}</span></td>
-      <td><div class="action-cell">
+      <td>${actionCellRW(`<div class="action-cell">
         <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditStok(${ri})">✏️</button>
         <button class="btn btn-sm btn-icon btn-success" title="Restock" onclick="bukaRestock(${ri})">+ Stok</button>
         <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('stok',${ri})">🗑</button>
-      </div></td>
+      </div>`)}</td>
     </tr>`}).join(''):`<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data stok</td></tr>`;
   renderPagination('pag-stok',filteredStok.length,pageStok,p=>{pageStok=p;renderStokTable()});
 }
@@ -570,6 +664,7 @@ function bukaModalTambahStok(){
   openModal('modal-tambah-stok');
 }
 function simpanStok(){
+  if(!canWrite()){alert("Anda tidak punya izin untuk menambah/mengubah stok.");return}
   const idx=document.getElementById('edit-stok-idx').value;
   const r={sku:document.getElementById('s-sku').value.trim(),prod:document.getElementById('s-prod').value.trim(),
     varian:document.getElementById('s-var').value.trim(),kat:document.getElementById('s-kat').value,
@@ -586,12 +681,16 @@ function bukaRestock(idx){
   openModal('modal-restock');
 }
 function simpanRestock(){
+  if(!canWrite()){alert("Anda tidak punya izin untuk restock.");return}
   if(_restockIdx<0)return;const tambah=parseInt(document.getElementById('rs-tambah').value)||0;
   DB.stok[_restockIdx].stok+=tambah;saveDB();filteredStok=[...DB.stok];renderStokTable();renderDashboard();closeModal('modal-restock');_restockIdx=-1;
 }
 
 // ===== HAPUS =====
 function konfirmHapus(type,idx){
+  const needSettings=(type==='kat'||type==='mp');
+  if(needSettings&&!canManageSettings()){alert("Hanya Owner yang bisa menghapus kategori/marketplace.");return}
+  if(!needSettings&&!canWrite()){alert("Anda tidak punya izin untuk menghapus data ini.");return}
   const msg=type==='jual'?`Hapus pesanan "${DB.penjualan[idx].no}"?`:type==='stok'?`Hapus produk "${DB.stok[idx].prod} ${DB.stok[idx].varian}"?`:type==='mp'?`Hapus marketplace "${DB.marketplace[idx].nama}"? Pesanan lama dengan marketplace ini tidak akan terhapus.`:`Hapus kategori "${DB.kategori[idx].nama}"?`;
   document.getElementById('konfirm-msg').textContent=msg;
   document.getElementById('btn-konfirm-ya').onclick=function(){hapusData(type,idx);closeModal('modal-konfirm')};
@@ -670,6 +769,7 @@ function renderColorSwatch(){
 }
 function selectKatColor(c){_selectedKatColor=c;renderColorSwatch()}
 function simpanKategori(){
+  if(!canManageSettings()){alert("Hanya Owner yang bisa mengelola kategori.");return}
   const nama=document.getElementById('kat-nama').value.trim();if(!nama){alert('Nama kategori wajib diisi');return}
   const idx=document.getElementById('edit-kat-idx').value;
   if(idx!==''&&idx>=0)DB.kategori[parseInt(idx)]={nama,color:_selectedKatColor};else DB.kategori.push({nama,color:_selectedKatColor});
@@ -708,6 +808,7 @@ function renderMpColorSwatch(){
 }
 function selectMpColor(c){_selectedMpColor=c;renderMpColorSwatch()}
 function simpanMarketplace(){
+  if(!canManageSettings()){alert("Hanya Owner yang bisa mengelola marketplace.");return}
   const nama=document.getElementById('mp-nama').value.trim();if(!nama){alert('Nama marketplace wajib diisi');return}
   const idx=document.getElementById('edit-mp-idx').value;
   const dup=DB.marketplace.some((m,i)=>m.nama.toLowerCase()===nama.toLowerCase()&&i!==parseInt(idx));
@@ -902,6 +1003,7 @@ function renderHppMode(){
   }
 }
 function simpanBiaya(){
+  if(!canManageSettings()){alert("Hanya Owner yang bisa mengubah pengaturan biaya.");return}
   if(!DB.biaya)DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
   const b=DB.biaya;
   MP_LIST.forEach(m=>{const el=document.getElementById('mpfee-'+m.replace(/\s/g,'_'));if(el){const v=parseFloat(el.value);b.mp_fee[m]=isNaN(v)?3:v}});
@@ -916,7 +1018,7 @@ function simpanBiaya(){
   else{const pn=[...new Set(DB.penjualan.map(r=>r.prod))].slice(0,24);pn.forEach(p=>{const el=document.getElementById('hpp-'+p.replace(/[\s/]/g,'_'));if(el&&el.value)b.hpp_per_produk[p]=parseFloat(el.value)})}
   saveDB();alert('✅ Pengaturan biaya disimpan! Laporan laba diperbarui.');renderLabaRingkasan();
 }
-function resetBiaya(){if(confirm('Reset biaya ke default?')){DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));saveDB();renderBiayaInputs();renderHppMode();alert('Biaya direset.')}}
+function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa reset biaya.");return}if(confirm('Reset biaya ke default?')){DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));saveDB();renderBiayaInputs();renderHppMode();alert('Biaya direset.')}}
 
 // ===== LAPORAN =====
 function renderLaporan(){
@@ -994,7 +1096,7 @@ window.onclick=function(e){if(e.target.classList.contains('modal-overlay'))e.tar
 // ===== BACKUP / RESTORE =====
 function backupData(){dlFile(JSON.stringify(DB,null,2),'omniseller_backup_'+today()+'.json','application/json')}
 function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];applyPengaturan();populateKatDropdowns();populateMpDropdowns();renderDashboard();renderJualTable();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid.')}};reader.readAsText(e.target.files[0])}
-function resetData(){if(confirm('Hapus SEMUA data penjualan & stok? Tindakan ini tidak bisa dibatalkan.')){
+function resetData(){if(!canManageSettings()){alert('Hanya Owner yang bisa reset data.');return}if(confirm('Hapus SEMUA data penjualan & stok? Tindakan ini tidak bisa dibatalkan.')){
   DB.penjualan=[];DB.stok=[];DB.kategori=[...DEFAULT_KAT];DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
   refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateKatDropdowns();populateMpDropdowns();applyPengaturan();renderDashboard();renderJualTable();renderStokTable();
   alert('Semua data berhasil dikosongkan. Silakan mulai input data Anda sendiri.');
@@ -1002,6 +1104,7 @@ function resetData(){if(confirm('Hapus SEMUA data penjualan & stok? Tindakan ini
 
 // ===== PENGATURAN =====
 function simpanPengaturan(){
+  if(!canManageSettings()){alert("Hanya Owner yang bisa mengubah pengaturan toko.");return}
   DB.pengaturan.nama=document.getElementById('set-nama').value;DB.pengaturan.pemilik=document.getElementById('set-pemilik').value;
   DB.pengaturan.hp=document.getElementById('set-hp').value;DB.pengaturan.batasStok=parseInt(document.getElementById('set-batas-stok').value)||10;
   saveDB();applyPengaturan();renderDashboard();alert('Pengaturan tersimpan!');
@@ -1032,6 +1135,7 @@ function handleLogoUpload(e){
   reader.readAsDataURL(file);
 }
 function hapusLogo(){
+  if(!canManageSettings()){alert("Hanya Owner yang bisa mengubah logo.");return}
   if(!DB.pengaturan.logo){return}
   if(!confirm('Hapus logo aplikasi?'))return;
   DB.pengaturan.logo='';saveDB();applyLogo();
@@ -1056,7 +1160,7 @@ function applyLogo(){
   const loginFallback=document.getElementById('login-logo-fallback');
   if(loginLogoImg&&loginFallback){
     if(logo){loginLogoImg.src=logo;loginLogoImg.style.display='block';loginFallback.style.display='none'}
-    else{loginLogoImg.style.display='none';loginFallback.style.display='flex'}
+    else{loginLogoImg.style.display='none';loginFallback.style.display='inline'}
   }
 }
 
