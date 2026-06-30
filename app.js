@@ -885,16 +885,17 @@ function renderLabaTable(){
 // ===== BIAYA INPUTS =====
 function renderBiayaInputs(){
   const b=DB.biaya||DEFAULT_BIAYA;
-  document.getElementById('mp-fee-inputs').innerHTML=MP_LIST.map(m=>`<div class="hpp-item"><label>${m} — biaya admin (%)</label><input type="number" step="0.1" id="mpfee-${m.replace(/\s/g,'_')}" value="${b.mp_fee[m]||3}"></div>`).join('');
+  document.getElementById('mp-fee-inputs').innerHTML=MP_LIST.map(m=>`<div class="hpp-item"><label>${m} — biaya admin (%)</label><input type="number" step="0.1" id="mpfee-${m.replace(/\s/g,'_')}" value="${b.mp_fee[m]!=null?b.mp_fee[m]:3}"></div>`).join('');
+  const ex=b.extra||{};
   document.getElementById('extra-fee-inputs').innerHTML=`
-    <div class="hpp-item"><label>Subsidi Ongkir (Rp/transaksi)</label><input type="number" id="fee-ongkir" value="${b.extra.ongkir||3000}"></div>
-    <div class="hpp-item"><label>Biaya Packaging (Rp/transaksi)</label><input type="number" id="fee-packaging" value="${b.extra.packaging||1500}"></div>
-    <div class="hpp-item"><label>Biaya Lain-lain (Rp/transaksi)</label><input type="number" id="fee-lain" value="${b.extra.lain||500}"></div>`;
+    <div class="hpp-item"><label>Subsidi Ongkir (Rp/transaksi)</label><input type="number" id="fee-ongkir" value="${ex.ongkir!=null?ex.ongkir:3000}"></div>
+    <div class="hpp-item"><label>Biaya Packaging (Rp/transaksi)</label><input type="number" id="fee-packaging" value="${ex.packaging!=null?ex.packaging:1500}"></div>
+    <div class="hpp-item"><label>Biaya Lain-lain (Rp/transaksi)</label><input type="number" id="fee-lain" value="${ex.lain!=null?ex.lain:500}"></div>`;
 }
 function renderHppMode(){
   const b=DB.biaya||DEFAULT_BIAYA;const mode=document.getElementById('hpp-mode').value||b.hpp_mode||'pct';
   if(mode==='pct'){
-    document.getElementById('hpp-mode-content').innerHTML=`<div class="form-group"><label>HPP Global (% dari harga jual)</label><input class="form-input" type="number" step="1" id="hpp-pct-val" value="${b.hpp_pct||45}" max="100" min="1"><div style="font-size:11px;color:var(--text3);margin-top:4px">Contoh: nilai 45 berarti HPP = 45% dari harga jual</div></div>`;
+    document.getElementById('hpp-mode-content').innerHTML=`<div class="form-group"><label>HPP Global (% dari harga jual)</label><input class="form-input" type="number" step="1" id="hpp-pct-val" value="${b.hpp_pct!=null?b.hpp_pct:45}" max="100" min="0"><div style="font-size:11px;color:var(--text3);margin-top:4px">Contoh: nilai 45 berarti HPP = 45% dari harga jual</div></div>`;
   } else {
     const prodNames=[...new Set(DB.penjualan.map(r=>r.prod))].slice(0,24);
     document.getElementById('hpp-mode-content').innerHTML=`<div class="hpp-grid">${prodNames.map(p=>`<div class="hpp-item"><label>${p}</label><input type="number" id="hpp-${p.replace(/[\s/]/g,'_')}" placeholder="Rp/unit" value="${b.hpp_per_produk[p]||''}"></div>`).join('')}</div>`;
@@ -903,12 +904,15 @@ function renderHppMode(){
 function simpanBiaya(){
   if(!DB.biaya)DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
   const b=DB.biaya;
-  MP_LIST.forEach(m=>{const el=document.getElementById('mpfee-'+m.replace(/\s/g,'_'));if(el)b.mp_fee[m]=parseFloat(el.value)||3});
-  b.extra.ongkir=parseInt(document.getElementById('fee-ongkir').value)||0;
-  b.extra.packaging=parseInt(document.getElementById('fee-packaging').value)||0;
-  b.extra.lain=parseInt(document.getElementById('fee-lain').value)||0;
+  MP_LIST.forEach(m=>{const el=document.getElementById('mpfee-'+m.replace(/\s/g,'_'));if(el){const v=parseFloat(el.value);b.mp_fee[m]=isNaN(v)?3:v}});
+  const vOngkir=parseInt(document.getElementById('fee-ongkir').value);
+  const vPackaging=parseInt(document.getElementById('fee-packaging').value);
+  const vLain=parseInt(document.getElementById('fee-lain').value);
+  b.extra.ongkir=isNaN(vOngkir)?0:vOngkir;
+  b.extra.packaging=isNaN(vPackaging)?0:vPackaging;
+  b.extra.lain=isNaN(vLain)?0:vLain;
   b.hpp_mode=document.getElementById('hpp-mode').value||'pct';
-  if(b.hpp_mode==='pct'){b.hpp_pct=parseFloat(document.getElementById('hpp-pct-val').value)||45}
+  if(b.hpp_mode==='pct'){const v=parseFloat(document.getElementById('hpp-pct-val').value);b.hpp_pct=isNaN(v)?45:v}
   else{const pn=[...new Set(DB.penjualan.map(r=>r.prod))].slice(0,24);pn.forEach(p=>{const el=document.getElementById('hpp-'+p.replace(/[\s/]/g,'_'));if(el&&el.value)b.hpp_per_produk[p]=parseFloat(el.value)})}
   saveDB();alert('✅ Pengaturan biaya disimpan! Laporan laba diperbarui.');renderLabaRingkasan();
 }
