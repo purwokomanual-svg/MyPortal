@@ -244,7 +244,7 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>No. Pesanan</th><th>Tanggal</th><th>Marketplace</th><th>Produk</th><th>Varian</th><th>Kategori</th><th style="text-align:center">Qty</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>No. Pesanan</th><th>Tanggal</th><th>Marketplace</th><th>Produk</th><th>Varian</th><th>Kategori</th><th style="text-align:center">Qty</th><th>Total</th><th>Biaya Admin</th><th>Biaya Tambahan</th><th>Status</th><th>Aksi</th></tr></thead>
             <tbody id="tbl-jual"></tbody>
           </table>
         </div>
@@ -365,15 +365,18 @@
 
       <!-- Pengaturan biaya -->
       <div class="laba-sub" id="laba-biayaadmin">
-        <div class="info-box">💡 Atur biaya admin marketplace dan HPP di sini. Semua laporan laba dihitung otomatis berdasarkan pengaturan ini. Biaya admin rata-rata: Shopee 3–5%, Tokopedia 2–3%, TikTok Shop 1–2%, Lazada 3–4%.</div>
+        <div class="info-box">💡 Biaya Admin (Rp) dan Biaya Tambahan (Rp) kini diisi langsung per pesanan di menu <strong>Penjualan</strong> (saat tambah/edit pesanan) — lebih akurat karena tiap marketplace & promo bisa beda potongan. Ringkasan rata-rata di bawah ini hanya untuk pemantauan, bukan input.</div>
         <div class="grid-2 mb18">
           <div class="card">
-            <div class="card-title">Biaya Admin per Marketplace (%)</div>
-            <div class="hpp-grid" id="mp-fee-inputs"></div>
+            <div class="card-title">Biaya Admin &amp; Biaya Tambahan (dari data Penjualan)</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.7">Rata-rata biaya admin per marketplace dan rata-rata biaya tambahan per transaksi, dihitung otomatis dari pesanan yang sudah diinput. Untuk mengubahnya, edit langsung di menu Penjualan.</div>
+            <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Rata-rata Biaya Admin per Marketplace</div>
+            <div class="hpp-grid" id="mp-fee-summary"></div>
             <div style="margin-top:16px">
-              <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Biaya Tambahan per Transaksi (Rp)</div>
-              <div class="hpp-grid" id="extra-fee-inputs"></div>
+              <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Rata-rata Biaya Tambahan per Transaksi</div>
+              <div class="hpp-grid" id="extra-fee-summary"></div>
             </div>
+            <button class="btn btn-sm" style="margin-top:14px" onclick="showSection('penjualan')">🧾 Buka Menu Penjualan</button>
           </div>
           <div class="card">
             <div class="card-title">HPP (Harga Pokok Produksi)</div>
@@ -389,7 +392,7 @@
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" data-need="settings" onclick="simpanBiaya()">💾 Simpan Pengaturan Biaya</button>
+          <button class="btn btn-primary" data-need="settings" onclick="simpanBiaya()">💾 Simpan Pengaturan HPP</button>
           <button class="btn btn-sm" data-need="settings" onclick="resetBiaya()">↺ Reset Default</button>
         </div>
       </div>
@@ -422,7 +425,7 @@
           </div>
           <input type="file" id="file-import" accept=".csv" style="display:none" onchange="importFile(event,'jual')">
           <div id="import-result" style="margin-top:12px"></div>
-          <div style="margin-top:12px"><p style="font-size:12px;color:var(--text2);margin-bottom:6px">Format CSV:</p><code style="font-size:11px;background:var(--surface2);padding:8px 10px;border-radius:7px;display:block;color:var(--text2)">no_pesanan, tanggal, marketplace, produk, varian, kategori, qty, total, status</code></div>
+          <div style="margin-top:12px"><p style="font-size:12px;color:var(--text2);margin-bottom:6px">Format CSV:</p><code style="font-size:11px;background:var(--surface2);padding:8px 10px;border-radius:7px;display:block;color:var(--text2)">no_pesanan, tanggal, marketplace, produk, varian, kategori, qty, total, status, biaya_admin, biaya_tambahan</code><p style="font-size:11px;color:var(--text3);margin-top:6px">Kolom <code>biaya_admin</code> dan <code>biaya_tambahan</code> opsional (Rp) — jika kosong, akan dihitung estimasi otomatis dan bisa diisi manual lewat Edit Pesanan.</p></div>
         </div>
         <div class="card">
           <div class="card-title">Import Data Stok</div>
@@ -544,10 +547,28 @@
         <datalist id="dl-varian-stok"></datalist>
       </div>
       <div class="form-group"><label>Qty</label><input class="form-input" type="number" id="f-qty" value="1" min="1" oninput="onProdukPesananInput()"></div>
-      <div class="form-group"><label>Total (Rp)</label><input class="form-input" type="number" id="f-total" placeholder="150000"></div>
+      <div class="form-group"><label>Total (Rp)</label><input class="form-input" type="number" id="f-total" placeholder="150000" oninput="onProdukPesananInput()"></div>
     </div>
     <div id="f-stok-hint" style="font-size:11.5px;margin:-8px 0 12px;padding:7px 10px;border-radius:7px"></div>
     <div class="form-group"><label>Kategori</label><select class="form-input" id="f-kat-jual"></select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label>Biaya Admin (Rp)</label>
+        <div style="display:flex;gap:6px">
+          <input class="form-input" type="number" id="f-biaya-admin" placeholder="0" min="0" style="flex:1">
+          <button type="button" class="btn btn-sm" title="Isi saran otomatis" onclick="saranBiayaAdminPesanan()">↻ Saran</button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Potongan biaya admin marketplace untuk pesanan ini (nominal Rp, bukan %).</div>
+      </div>
+      <div class="form-group">
+        <label>Biaya Tambahan (Rp)</label>
+        <div style="display:flex;gap:6px">
+          <input class="form-input" type="number" id="f-biaya-tambahan" placeholder="0" min="0" style="flex:1">
+          <button type="button" class="btn btn-sm" title="Isi saran otomatis" onclick="saranBiayaTambahanPesanan()">↻ Saran</button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Ongkir subsidi, packaging, dan biaya lain-lain untuk pesanan ini.</div>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-tambah-jual')">Batal</button>
       <button class="btn btn-primary" id="btn-simpan-jual" onclick="simpanPesanan()">Simpan Pesanan</button>
