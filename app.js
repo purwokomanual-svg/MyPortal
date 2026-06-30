@@ -38,30 +38,40 @@ function getKatNames(){return DB.kategori.map(k=>k.nama)}
 function getKatColor(nama){const k=DB.kategori.find(k=>k.nama===nama);return k?k.color:'#888'}
 
 // ===== STORAGE =====
-function saveDB(){
+function saveDB(tables){
   DB.lastUpdate=new Date().toISOString();
   localStorage.setItem('omniseller_v2',JSON.stringify(DB));
-  syncToSupabase();
+  syncToSupabase(tables);
 }
 function loadDB(){const r=localStorage.getItem('omniseller_v2');if(r){DB=JSON.parse(r);return true}return false}
 
-// ===== SUPABASE SYNC (skema relasional - 7 tabel) =====
+// ===== SUPABASE SYNC (skema relasional - 7 tabel, SELEKTIF) =====
+// `tables`: array nama tabel logis yang berubah, mis. ['penjualan','stok'].
+// Jika tidak diisi (undefined), semua tabel disinkronkan (dipakai untuk
+// operasi besar seperti restore backup / reset data).
+const SYNC_FN={
+  kategori:syncKategori_, marketplace:syncMarketplace_, stok:syncStok_,
+  penjualan:syncPenjualan_, biaya:syncBiayaPengaturan_, hpp_produk:syncHppProduk_,
+  pengaturan:syncPengaturanToko_
+};
 let _syncTimeout=null;
-function syncToSupabase(){
+let _pendingTables=new Set();
+function syncToSupabase(tables){
+  if(!tables){Object.keys(SYNC_FN).forEach(t=>_pendingTables.add(t))}
+  else{tables.forEach(t=>_pendingTables.add(t))}
   clearTimeout(_syncTimeout);
   _syncTimeout=setTimeout(async()=>{
+    const todo=[..._pendingTables];_pendingTables.clear();
     try{
-      await Promise.all([
-        syncKategori(), syncMarketplace(), syncStok(), syncPenjualan(),
-        syncBiayaPengaturan(), syncHppProduk(), syncPengaturanToko()
-      ]);
+      await Promise.all(todo.map(t=>SYNC_FN[t]&&SYNC_FN[t]()));
       updateSyncBadge(true);
     }catch(e){console.warn('Supabase sync error:',e);updateSyncBadge(false,e.message)}
   },700);
 }
 
 // Strategi: full-replace per tabel (hapus semua baris lalu insert ulang).
-// Sederhana & aman untuk skala UMKM (ratusan-ribuan baris), tidak perlu diff manual.
+// Sederhana & aman, dan sekarang HANYA dijalankan untuk tabel yang benar-benar
+// berubah (bukan semua tabel setiap kali save) -> jauh lebih ringan & responsif.
 async function fullReplace(table,rows){
   if(!rows.length){ // tetap hapus semua kalau memang kosong
     const{error}=await supabaseClient.from(table).delete().gte('id',0);
@@ -72,31 +82,31 @@ async function fullReplace(table,rows){
   const{error:insErr}=await supabaseClient.from(table).insert(rows);
   if(insErr)throw insErr;
 }
-async function syncKategori(){
+async function syncKategori_(){
   await fullReplace(TBL_KATEGORI, DB.kategori.map(k=>({nama:k.nama,color:k.color})));
 }
-async function syncMarketplace(){
+async function syncMarketplace_(){
   await fullReplace(TBL_MARKETPLACE, DB.marketplace.map(m=>({nama:m.nama,color:m.color,fee_persen:(DB.biaya.mp_fee&&DB.biaya.mp_fee[m.nama])||3})));
 }
-async function syncStok(){
+async function syncStok_(){
   await fullReplace(TBL_STOK, DB.stok.map(s=>({sku:s.sku,produk:s.prod,varian:s.varian||'',kategori:s.kat||'Lainnya',stok:s.stok||0,terjual:s.terjual||0,hpp:(DB.biaya.hpp_per_produk&&DB.biaya.hpp_per_produk[s.prod])||0})));
 }
-async function syncPenjualan(){
+async function syncPenjualan_(){
   await fullReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty||1,total:r.total||0,status:r.status||'Selesai'})));
 }
-async function syncBiayaPengaturan(){
+async function syncBiayaPengaturan_(){
   const b=DB.biaya||{};const ex=b.extra||{};
   const{error}=await supabaseClient.from(TBL_BIAYA).upsert({id:1,ongkir:ex.ongkir||0,packaging:ex.packaging||0,lain:ex.lain||0,hpp_mode:b.hpp_mode||'pct',hpp_pct:b.hpp_pct||45,updated_at:new Date().toISOString()});
   if(error)throw error;
 }
-async function syncHppProduk(){
+async function syncHppProduk_(){
   const hpp=DB.biaya&&DB.biaya.hpp_per_produk||{};
   const rows=Object.keys(hpp).map(p=>({produk:p,hpp:hpp[p]}));
   const{error:delErr}=await supabaseClient.from(TBL_HPP_PRODUK).delete().neq('produk','__never__');
   if(delErr)throw delErr;
   if(rows.length){const{error:insErr}=await supabaseClient.from(TBL_HPP_PRODUK).insert(rows);if(insErr)throw insErr}
 }
-async function syncPengaturanToko(){
+async function syncPengaturanToko_(){
   const p=DB.pengaturan||{};
   const{error}=await supabaseClient.from(TBL_PENGATURAN).upsert({id:1,nama_toko:p.nama||'Toko Saya',pemilik:p.pemilik||'',hp:p.hp||'',batas_stok:p.batasStok||10,logo:p.logo||'',updated_at:new Date().toISOString()});
   if(error)throw error;
@@ -159,7 +169,7 @@ function seedData(){
     const prod=PRODUK[i%10];const varian=VARIAN[i%15];const stok=rnd(0,100);const terjual=rnd(3,60);const kat=katMap[prod]||'Lainnya';
     DB.stok.push({sku:'SKU-'+String(i+1).padStart(4,'0'),prod,varian,kat,stok,terjual});
   }
-  saveDB();
+  saveDB(['penjualan','stok']);
 }
 
 // ===== INIT (dipanggil setelah login admin berhasil) =====
@@ -601,7 +611,7 @@ function simpanPesanan(){
     const si=DB.stok.find(s=>s.prod===prod&&s.varian===r.varian);
     if(si&&si.stok>=r.qty){si.stok-=r.qty;si.terjual+=r.qty}
   }
-  saveDB();filteredJual=[...DB.penjualan];renderJualTable();renderDashboard();closeModal('modal-tambah-jual');
+  saveDB(['penjualan','stok']);filteredJual=[...DB.penjualan];renderJualTable();renderDashboard();closeModal('modal-tambah-jual');
 }
 
 // ===== STOK TABLE =====
@@ -671,7 +681,7 @@ function simpanStok(){
     stok:parseInt(document.getElementById('s-stok').value)||0,terjual:parseInt(document.getElementById('s-terjual').value)||0};
   if(!r.prod){alert('Nama produk wajib diisi');return}
   if(idx!==''&&idx>=0)DB.stok[parseInt(idx)]=r;else DB.stok.unshift(r);
-  saveDB();filteredStok=[...DB.stok];renderStokTable();renderDashboard();closeModal('modal-tambah-stok');
+  saveDB(['stok']);filteredStok=[...DB.stok];renderStokTable();renderDashboard();closeModal('modal-tambah-stok');
 }
 function bukaRestock(idx){
   _restockIdx=idx;const r=DB.stok[idx];
@@ -683,7 +693,7 @@ function bukaRestock(idx){
 function simpanRestock(){
   if(!canWrite()){alert("Anda tidak punya izin untuk restock.");return}
   if(_restockIdx<0)return;const tambah=parseInt(document.getElementById('rs-tambah').value)||0;
-  DB.stok[_restockIdx].stok+=tambah;saveDB();filteredStok=[...DB.stok];renderStokTable();renderDashboard();closeModal('modal-restock');_restockIdx=-1;
+  DB.stok[_restockIdx].stok+=tambah;saveDB(['stok']);filteredStok=[...DB.stok];renderStokTable();renderDashboard();closeModal('modal-restock');_restockIdx=-1;
 }
 
 // ===== HAPUS =====
@@ -697,14 +707,15 @@ function konfirmHapus(type,idx){
   openModal('modal-konfirm');
 }
 function hapusData(type,idx){
-  if(type==='jual'){DB.penjualan.splice(idx,1);filteredJual=[...DB.penjualan];renderJualTable()}
-  else if(type==='stok'){DB.stok.splice(idx,1);filteredStok=[...DB.stok];renderStokTable()}
-  else if(type==='kat'){DB.kategori.splice(idx,1);renderKatList();populateKatDropdowns()}
+  let affected=[];
+  if(type==='jual'){DB.penjualan.splice(idx,1);filteredJual=[...DB.penjualan];renderJualTable();affected=['penjualan']}
+  else if(type==='stok'){DB.stok.splice(idx,1);filteredStok=[...DB.stok];renderStokTable();affected=['stok']}
+  else if(type==='kat'){DB.kategori.splice(idx,1);renderKatList();populateKatDropdowns();affected=['kategori']}
   else if(type==='mp'){
     if(DB.marketplace.length<=1){alert('Minimal harus ada 1 marketplace.');return}
-    DB.marketplace.splice(idx,1);refreshMpGlobals();populateMpDropdowns();renderMpList();
+    DB.marketplace.splice(idx,1);refreshMpGlobals();populateMpDropdowns();renderMpList();affected=['marketplace'];
   }
-  saveDB();renderDashboard();
+  saveDB(affected);renderDashboard();
 }
 
 // ===== KATEGORI =====
@@ -773,7 +784,7 @@ function simpanKategori(){
   const nama=document.getElementById('kat-nama').value.trim();if(!nama){alert('Nama kategori wajib diisi');return}
   const idx=document.getElementById('edit-kat-idx').value;
   if(idx!==''&&idx>=0)DB.kategori[parseInt(idx)]={nama,color:_selectedKatColor};else DB.kategori.push({nama,color:_selectedKatColor});
-  saveDB();populateKatDropdowns();renderKatList();renderKatPerf();closeModal('modal-tambah-kat');
+  saveDB(['kategori']);populateKatDropdowns();renderKatList();renderKatPerf();closeModal('modal-tambah-kat');
 }
 
 // ===== MARKETPLACE (CRUD) =====
@@ -825,7 +836,7 @@ function simpanMarketplace(){
     DB.marketplace.push({nama,color:_selectedMpColor});
     if(DB.biaya&&DB.biaya.mp_fee&&DB.biaya.mp_fee[nama]===undefined)DB.biaya.mp_fee[nama]=3;
   }
-  refreshMpGlobals();saveDB();populateMpDropdowns();renderMpList();renderDashboard();closeModal('modal-tambah-mp');
+  refreshMpGlobals();saveDB(['marketplace','biaya']);populateMpDropdowns();renderMpList();renderDashboard();closeModal('modal-tambah-mp');
 }
 function populateMpDropdowns(){
   const ids=['f-mp','f-mp-jual','f-mp-laba'];
@@ -1016,9 +1027,9 @@ function simpanBiaya(){
   b.hpp_mode=document.getElementById('hpp-mode').value||'pct';
   if(b.hpp_mode==='pct'){const v=parseFloat(document.getElementById('hpp-pct-val').value);b.hpp_pct=isNaN(v)?45:v}
   else{const pn=[...new Set(DB.penjualan.map(r=>r.prod))].slice(0,24);pn.forEach(p=>{const el=document.getElementById('hpp-'+p.replace(/[\s/]/g,'_'));if(el&&el.value)b.hpp_per_produk[p]=parseFloat(el.value)})}
-  saveDB();alert('✅ Pengaturan biaya disimpan! Laporan laba diperbarui.');renderLabaRingkasan();
+  saveDB(['biaya','marketplace','hpp_produk','stok']);alert('✅ Pengaturan biaya disimpan! Laporan laba diperbarui.');renderLabaRingkasan();
 }
-function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa reset biaya.");return}if(confirm('Reset biaya ke default?')){DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));saveDB();renderBiayaInputs();renderHppMode();alert('Biaya direset.')}}
+function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa reset biaya.");return}if(confirm('Reset biaya ke default?')){DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));saveDB(['biaya','marketplace','hpp_produk','stok']);renderBiayaInputs();renderHppMode();alert('Biaya direset.')}}
 
 // ===== LAPORAN =====
 function renderLaporan(){
@@ -1074,7 +1085,7 @@ function processCSV(file,type){
         else{DB.stok.push({sku:row.sku||'SKU-IMP-'+i,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',stok:parseInt(row.stok||0),terjual:parseInt(row.terjual_30h||row.terjual||0)});imported++}
       }catch(err){errors++}
     }
-    saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateMpDropdowns();renderJualTable();renderStokTable();renderDashboard();
+    saveDB(['penjualan','stok','marketplace']);filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateMpDropdowns();renderJualTable();renderStokTable();renderDashboard();
     const res=document.getElementById(type==='jual'?'import-result':'import-stok-result');
     res.innerHTML=`<div class="alert alert-success">✅ Berhasil import <strong>${imported} baris</strong>${errors?` (${errors} baris gagal)`:''}</div>`;
   };
@@ -1107,7 +1118,7 @@ function simpanPengaturan(){
   if(!canManageSettings()){alert("Hanya Owner yang bisa mengubah pengaturan toko.");return}
   DB.pengaturan.nama=document.getElementById('set-nama').value;DB.pengaturan.pemilik=document.getElementById('set-pemilik').value;
   DB.pengaturan.hp=document.getElementById('set-hp').value;DB.pengaturan.batasStok=parseInt(document.getElementById('set-batas-stok').value)||10;
-  saveDB();applyPengaturan();renderDashboard();alert('Pengaturan tersimpan!');
+  saveDB(['pengaturan']);applyPengaturan();renderDashboard();alert('Pengaturan tersimpan!');
 }
 function applyPengaturan(){
   document.getElementById('set-nama').value=DB.pengaturan.nama||'';document.getElementById('set-pemilik').value=DB.pengaturan.pemilik||'';
@@ -1130,7 +1141,7 @@ function handleLogoUpload(e){
   const reader=new FileReader();
   reader.onload=function(ev){
     DB.pengaturan.logo=ev.target.result;
-    saveDB();applyLogo();
+    saveDB(['pengaturan']);applyLogo();
   };
   reader.readAsDataURL(file);
 }
@@ -1138,7 +1149,7 @@ function hapusLogo(){
   if(!canManageSettings()){alert("Hanya Owner yang bisa mengubah logo.");return}
   if(!DB.pengaturan.logo){return}
   if(!confirm('Hapus logo aplikasi?'))return;
-  DB.pengaturan.logo='';saveDB();applyLogo();
+  DB.pengaturan.logo='';saveDB(['pengaturan']);applyLogo();
 }
 function applyLogo(){
   const logo=DB.pengaturan.logo||'';
