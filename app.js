@@ -176,7 +176,10 @@ async function initApp(){
   }
 
   if(!hasData)seedData();
-  if(hasData&&DB.penjualan.length===0&&DB.stok.length===0)seedData(); // database baru & masih kosong -> isi data contoh
+  // Auto-seed data dummy saat tabel kosong DIMATIKAN.
+  // Jika Anda ingin tabel kosong tetap kosong (siap diisi data asli),
+  // baris di bawah ini sengaja tidak dipakai lagi.
+  // if(hasData&&DB.penjualan.length===0&&DB.stok.length===0)seedData();
   if(!DB.kategori||DB.kategori.length===0)DB.kategori=[...DEFAULT_KAT];
   if(!DB.marketplace||DB.marketplace.length===0)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));
   if(!DB.biaya)DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
@@ -987,7 +990,11 @@ window.onclick=function(e){if(e.target.classList.contains('modal-overlay'))e.tar
 // ===== BACKUP / RESTORE =====
 function backupData(){dlFile(JSON.stringify(DB,null,2),'omniseller_backup_'+today()+'.json','application/json')}
 function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];applyPengaturan();populateKatDropdowns();populateMpDropdowns();renderDashboard();renderJualTable();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid.')}};reader.readAsText(e.target.files[0])}
-function resetData(){if(confirm('Hapus SEMUA data? Tidak bisa dibatalkan.')){localStorage.removeItem('omniseller_v2');seedData();loadDB();refreshMpGlobals();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateKatDropdowns();populateMpDropdowns();applyPengaturan();renderDashboard();renderJualTable();renderStokTable();alert('Data direset ke contoh.')}}
+function resetData(){if(confirm('Hapus SEMUA data penjualan & stok? Tindakan ini tidak bisa dibatalkan.')){
+  DB.penjualan=[];DB.stok=[];DB.kategori=[...DEFAULT_KAT];DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
+  refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateKatDropdowns();populateMpDropdowns();applyPengaturan();renderDashboard();renderJualTable();renderStokTable();
+  alert('Semua data berhasil dikosongkan. Silakan mulai input data Anda sendiri.');
+}}
 
 // ===== PENGATURAN =====
 function simpanPengaturan(){
