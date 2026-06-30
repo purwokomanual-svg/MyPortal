@@ -597,6 +597,24 @@ function autocompleteKat(){
   const match=DB.penjualan.find(r=>r.prod===prod);
   if(match&&match.kat){const el=document.getElementById('f-kat-jual');if(el)el.value=match.kat;}
 }
+// ===== SINKRONISASI STOK <-> PENJUALAN (otomatis & real-time) =====
+// Pesanan berstatus 'Dibatalkan' dianggap tidak pernah mengurangi stok asli.
+function isStatusAktif(status){return status!=='Dibatalkan'}
+function cariStok(prod,varian){return DB.stok.find(s=>s.prod===prod&&s.varian===varian)}
+// arah -1 = kurangi stok (pesanan baru/aktif), arah +1 = kembalikan stok (batal/hapus/edit)
+function terapkanEfekStok(order,arah){
+  if(!order||!isStatusAktif(order.status))return;
+  const si=cariStok(order.prod,order.varian);
+  if(!si)return;
+  if(arah<0){
+    si.stok=Math.max(0,(si.stok||0)-order.qty);
+    si.terjual=(si.terjual||0)+order.qty;
+  }else{
+    si.stok=(si.stok||0)+order.qty;
+    si.terjual=Math.max(0,(si.terjual||0)-order.qty);
+  }
+}
+
 function simpanPesanan(){
   if(!canWrite()){alert("Anda tidak punya izin untuk menambah/mengubah pesanan.");return}
   const idx=document.getElementById('edit-jual-idx').value;
@@ -606,12 +624,16 @@ function simpanPesanan(){
     prod,varian:document.getElementById('f-var').value,kat:document.getElementById('f-kat-jual').value,
     qty:parseInt(document.getElementById('f-qty').value)||1,total:parseInt(document.getElementById('f-total').value)||0,
     status:document.getElementById('f-status').value};
-  if(idx!==''&&idx>=0){DB.penjualan[parseInt(idx)]=r}else{
+  if(idx!==''&&idx>=0){
+    const old=DB.penjualan[parseInt(idx)];
+    terapkanEfekStok(old,+1);   // kembalikan dulu efek stok dari data lama (qty/produk/status lama)
+    DB.penjualan[parseInt(idx)]=r;
+    terapkanEfekStok(r,-1);     // terapkan efek stok dari data baru
+  }else{
     DB.penjualan.unshift(r);
-    const si=DB.stok.find(s=>s.prod===prod&&s.varian===r.varian);
-    if(si&&si.stok>=r.qty){si.stok-=r.qty;si.terjual+=r.qty}
+    terapkanEfekStok(r,-1);
   }
-  saveDB(['penjualan','stok']);filteredJual=[...DB.penjualan];renderJualTable();renderDashboard();closeModal('modal-tambah-jual');
+  saveDB(['penjualan','stok']);filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];renderJualTable();renderStokTable();renderDashboard();closeModal('modal-tambah-jual');
 }
 
 // ===== STOK TABLE =====
@@ -708,7 +730,11 @@ function konfirmHapus(type,idx){
 }
 function hapusData(type,idx){
   let affected=[];
-  if(type==='jual'){DB.penjualan.splice(idx,1);filteredJual=[...DB.penjualan];renderJualTable();affected=['penjualan']}
+  if(type==='jual'){
+    const order=DB.penjualan[idx];
+    terapkanEfekStok(order,+1); // kembalikan stok yang sebelumnya terpakai pesanan ini
+    DB.penjualan.splice(idx,1);filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];renderJualTable();renderStokTable();affected=['penjualan','stok'];
+  }
   else if(type==='stok'){DB.stok.splice(idx,1);filteredStok=[...DB.stok];renderStokTable();affected=['stok']}
   else if(type==='kat'){DB.kategori.splice(idx,1);renderKatList();populateKatDropdowns();affected=['kategori']}
   else if(type==='mp'){
