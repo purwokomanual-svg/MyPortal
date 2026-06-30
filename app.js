@@ -97,7 +97,7 @@ async function syncStok_(){
   }));
 }
 async function syncPenjualan_(){
-  await fullReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty!=null?r.qty:1,total:r.total!=null?r.total:0,status:r.status||'Selesai'})));
+  await fullReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty!=null?r.qty:1,total:r.total!=null?r.total:0,status:r.status||'Selesai',biaya_admin:r.biayaAdmin!=null?r.biayaAdmin:null,biaya_tambahan:r.biayaTambahan!=null?r.biayaTambahan:null})));
 }
 async function syncBiayaPengaturan_(){
   const b=DB.biaya||{};const ex=b.extra||{};
@@ -151,7 +151,7 @@ async function loadFromSupabase(){
     const kategori=(katRes.data||[]).map(k=>({nama:k.nama,color:k.color}));
     const marketplace=(mpRes.data||[]).map(m=>({nama:m.nama,color:m.color}));
     const stok=(stokRes.data||[]).map(s=>({sku:s.sku,prod:s.produk,varian:s.varian,kat:s.kategori,stok:s.stok,terjual:s.terjual,hpp:Number(s.hpp)||0}));
-    const penjualan=(jualRes.data||[]).map(r=>({no:r.no_pesanan,tanggal:r.tanggal,_date:r.tgl_iso,mp:r.marketplace,prod:r.produk,varian:r.varian,kat:r.kategori,qty:r.qty,total:Number(r.total),status:r.status}));
+    const penjualan=(jualRes.data||[]).map(r=>({no:r.no_pesanan,tanggal:r.tanggal,_date:r.tgl_iso,mp:r.marketplace,prod:r.produk,varian:r.varian,kat:r.kategori,qty:r.qty,total:Number(r.total),status:r.status,biayaAdmin:r.biaya_admin!=null?Number(r.biaya_admin):null,biayaTambahan:r.biaya_tambahan!=null?Number(r.biaya_tambahan):null}));
 
     const mp_fee={};(mpRes.data||[]).forEach(m=>mp_fee[m.nama]=Number(m.fee_persen));
     const hpp_per_produk={};(hppRes.data||[]).forEach(h=>hpp_per_produk[h.produk]=Number(h.hpp));
@@ -622,6 +622,7 @@ function renderJualTable(){
   const start=(pageJual-1)*PER_PAGE,slice=filteredJual.slice(start,start+PER_PAGE);
   document.getElementById('tbl-jual').innerHTML=slice.length?slice.map((r,i)=>{
     const ri=DB.penjualan.indexOf(r);
+    const h=hitungLaba(r);
     return `<tr>
       <td class="mono">${r.no}</td>
       <td style="color:var(--text2)">${r.tanggal}</td>
@@ -631,12 +632,14 @@ function renderJualTable(){
       <td><span class="badge badge-gray" style="background:${getKatColor(r.kat)}22;color:${getKatColor(r.kat)}">${r.kat||'–'}</span></td>
       <td style="text-align:center;font-weight:600">${r.qty}</td>
       <td style="font-weight:600">${fmtRp(r.total)}</td>
+      <td style="color:var(--warning)">${fmtRp(h.mpFee)}</td>
+      <td style="color:var(--text2)">${fmtRp(h.extra)}</td>
       <td><span class="badge ${ST_BADGE[r.status]||'badge-gray'}">${r.status}</span></td>
       <td>${actionCellRW(`<div class="action-cell">
         <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditJual(${ri})">✏️</button>
         <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('jual',${ri})">🗑</button>
       </div>`)}</td>
-    </tr>`}).join(''):`<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
+    </tr>`}).join(''):`<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
   renderPagination('pag-jual',filteredJual.length,pageJual,p=>{pageJual=p;renderJualTable()});
 }
 
@@ -654,6 +657,8 @@ function bukaEditJual(idx){
   document.getElementById('f-var').value=r.varian||'';
   document.getElementById('f-qty').value=r.qty;
   document.getElementById('f-total').value=r.total;
+  document.getElementById('f-biaya-admin').value=r.biayaAdmin!=null?r.biayaAdmin:Math.round(getSaranBiayaAdmin(r.mp,r.total));
+  document.getElementById('f-biaya-tambahan').value=r.biayaTambahan!=null?r.biayaTambahan:Math.round(getSaranBiayaTambahan());
   populateKatDropdowns();
   document.getElementById('f-kat-jual').value=r.kat||'';
   populateProdukDatalist();onProdukPesananInput();
@@ -667,9 +672,37 @@ function bukaModalTambahJual(){
   document.getElementById('f-no').value='';document.getElementById('f-prod').value='';
   document.getElementById('f-var').value='';document.getElementById('f-qty').value=1;
   document.getElementById('f-total').value='';document.getElementById('f-tgl').value=today();
+  document.getElementById('f-biaya-admin').value='';document.getElementById('f-biaya-tambahan').value=Math.round(getSaranBiayaTambahan());
   populateKatDropdowns();
   populateProdukDatalist();onProdukPesananInput();
   openModal('modal-tambah-jual');
+}
+// ===== SARAN BIAYA ADMIN & BIAYA TAMBAHAN (berdasarkan riwayat pesanan) =====
+// Mengganti pengaturan global lama (Biaya Admin per Marketplace % & Biaya
+// Tambahan per Transaksi di menu Laba & Biaya) -> sekarang sarannya dihitung
+// dari rata-rata pesanan yang sudah pernah diinput per marketplace (atau
+// dari nilai default bawaan jika belum ada data sama sekali).
+function getSaranBiayaAdmin(mp,total){
+  const data=DB.penjualan.filter(r=>r.mp===mp&&r.biayaAdmin!=null&&r.total>0);
+  if(data.length){
+    const avgPct=data.reduce((a,r)=>a+(r.biayaAdmin/r.total),0)/data.length;
+    return avgPct*(total||0);
+  }
+  const b=DB.biaya||DEFAULT_BIAYA;const pct=(b.mp_fee&&b.mp_fee[mp]!=null)?b.mp_fee[mp]:3;
+  return pct/100*(total||0);
+}
+function getSaranBiayaTambahan(){
+  const data=DB.penjualan.filter(r=>r.biayaTambahan!=null);
+  if(data.length)return data.reduce((a,r)=>a+r.biayaTambahan,0)/data.length;
+  const b=DB.biaya||DEFAULT_BIAYA;const ex=b.extra||{};
+  return (ex.ongkir||0)+(ex.packaging||0)+(ex.lain||0);
+}
+function saranBiayaAdminPesanan(){
+  const mp=document.getElementById('f-mp').value;const total=parseFloat(document.getElementById('f-total').value)||0;
+  document.getElementById('f-biaya-admin').value=Math.round(getSaranBiayaAdmin(mp,total));
+}
+function saranBiayaTambahanPesanan(){
+  document.getElementById('f-biaya-tambahan').value=Math.round(getSaranBiayaTambahan());
 }
 function populateProdukDatalist(){
   const dl=document.getElementById('dl-produk-stok');if(!dl)return;
@@ -741,7 +774,9 @@ function simpanPesanan(){
   const r={no,tanggal:fmtTgl(new Date(tgl)),_date:new Date(tgl).toISOString(),mp:document.getElementById('f-mp').value,
     prod,varian:document.getElementById('f-var').value,kat:document.getElementById('f-kat-jual').value,
     qty:parseInt(document.getElementById('f-qty').value)||1,total:parseInt(document.getElementById('f-total').value)||0,
-    status:document.getElementById('f-status').value};
+    status:document.getElementById('f-status').value,
+    biayaAdmin:parseFloat(document.getElementById('f-biaya-admin').value)||0,
+    biayaTambahan:parseFloat(document.getElementById('f-biaya-tambahan').value)||0};
   if(idx!==''&&idx>=0){
     const old=DB.penjualan[parseInt(idx)];
     terapkanEfekStok(old,+1);   // kembalikan dulu efek stok dari data lama (qty/produk/status lama)
@@ -1016,9 +1051,12 @@ function getHppDariStok(prod,varian){
 // ===== LABA PER PRODUK =====
 function hitungLaba(r){
   const biaya=DB.biaya||DEFAULT_BIAYA;const omzet=r.total||0;
-  const feeMp=biaya.mp_fee[r.mp];
-  const mpFee=(feeMp!=null?feeMp:3)/100*omzet;
-  const extra=(biaya.extra.ongkir||0)+(biaya.extra.packaging||0)+(biaya.extra.lain||0);
+  let mpFee;
+  if(r.biayaAdmin!=null){mpFee=r.biayaAdmin}
+  else{const feeMp=biaya.mp_fee[r.mp];mpFee=(feeMp!=null?feeMp:3)/100*omzet}
+  let extra;
+  if(r.biayaTambahan!=null){extra=r.biayaTambahan}
+  else{extra=(biaya.extra.ongkir||0)+(biaya.extra.packaging||0)+(biaya.extra.lain||0)}
   let hpp=0;
   const hppPct=biaya.hpp_pct!=null?biaya.hpp_pct:45;
   if(biaya.hpp_mode==='pct')hpp=hppPct/100*omzet;
@@ -1155,15 +1193,24 @@ function renderLabaTable(){
   renderPagination('pag-laba',_labaFiltered.length,pageLaba,p=>{pageLaba=p;renderLabaTable()});
 }
 
-// ===== BIAYA INPUTS =====
+// ===== RINGKASAN BIAYA ADMIN & BIAYA TAMBAHAN (read-only) =====
+// Sumber data sekarang dari Penjualan (per pesanan), bukan input global lagi.
 function renderBiayaInputs(){
-  const b=DB.biaya||DEFAULT_BIAYA;
-  document.getElementById('mp-fee-inputs').innerHTML=MP_LIST.map(m=>`<div class="hpp-item"><label>${m} — biaya admin (%)</label><input type="number" step="0.1" id="mpfee-${m.replace(/\s/g,'_')}" value="${b.mp_fee[m]!=null?b.mp_fee[m]:3}"></div>`).join('');
-  const ex=b.extra||{};
-  document.getElementById('extra-fee-inputs').innerHTML=`
-    <div class="hpp-item"><label>Subsidi Ongkir (Rp/transaksi)</label><input type="number" id="fee-ongkir" value="${ex.ongkir!=null?ex.ongkir:3000}"></div>
-    <div class="hpp-item"><label>Biaya Packaging (Rp/transaksi)</label><input type="number" id="fee-packaging" value="${ex.packaging!=null?ex.packaging:1500}"></div>
-    <div class="hpp-item"><label>Biaya Lain-lain (Rp/transaksi)</label><input type="number" id="fee-lain" value="${ex.lain!=null?ex.lain:500}"></div>`;
+  const aktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
+  document.getElementById('mp-fee-summary').innerHTML=MP_LIST.map(m=>{
+    const data=aktif.filter(r=>r.mp===m&&r.biayaAdmin!=null&&r.total>0);
+    if(!data.length)return `<div class="hpp-item"><label>${m}</label><div style="font-size:13px;color:var(--text3)">Belum ada data</div></div>`;
+    const totalOmzet=data.reduce((a,r)=>a+r.total,0);const totalFee=data.reduce((a,r)=>a+r.biayaAdmin,0);
+    const pct=totalOmzet>0?totalFee/totalOmzet*100:0;
+    return `<div class="hpp-item"><label>${m}</label><div style="font-weight:600;font-size:14px">${fmtRp(totalFee/data.length)} <span style="font-weight:400;font-size:11px;color:var(--text3)">/transaksi (~${pct.toFixed(1)}%)</span></div></div>`;
+  }).join('');
+  const dataExtra=aktif.filter(r=>r.biayaTambahan!=null);
+  if(!dataExtra.length){
+    document.getElementById('extra-fee-summary').innerHTML=`<div class="hpp-item" style="grid-column:1/-1"><div style="font-size:13px;color:var(--text3)">Belum ada data biaya tambahan dari pesanan.</div></div>`;
+  }else{
+    const avgExtra=dataExtra.reduce((a,r)=>a+r.biayaTambahan,0)/dataExtra.length;
+    document.getElementById('extra-fee-summary').innerHTML=`<div class="hpp-item" style="grid-column:1/-1"><label>Rata-rata semua marketplace</label><div style="font-weight:600;font-size:14px">${fmtRp(avgExtra)} /transaksi</div></div>`;
+  }
 }
 function renderHppMode(){
   const b=DB.biaya||DEFAULT_BIAYA;const mode=document.getElementById('hpp-mode').value||b.hpp_mode||'pct';
@@ -1192,18 +1239,11 @@ function simpanBiaya(){
   if(!canManageSettings()){alert("Hanya Owner yang bisa mengubah pengaturan biaya.");return}
   if(!DB.biaya)DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
   const b=DB.biaya;
-  MP_LIST.forEach(m=>{const el=document.getElementById('mpfee-'+m.replace(/\s/g,'_'));if(el){const v=parseFloat(el.value);b.mp_fee[m]=isNaN(v)?3:v}});
-  const vOngkir=parseInt(document.getElementById('fee-ongkir').value);
-  const vPackaging=parseInt(document.getElementById('fee-packaging').value);
-  const vLain=parseInt(document.getElementById('fee-lain').value);
-  b.extra.ongkir=isNaN(vOngkir)?0:vOngkir;
-  b.extra.packaging=isNaN(vPackaging)?0:vPackaging;
-  b.extra.lain=isNaN(vLain)?0:vLain;
   b.hpp_mode=document.getElementById('hpp-mode').value||'pct';
   if(b.hpp_mode==='pct'){const v=parseFloat(document.getElementById('hpp-pct-val').value);b.hpp_pct=isNaN(v)?45:v}
-  saveDB(['biaya','marketplace','stok']);alert('✅ Pengaturan biaya disimpan! Laporan laba diperbarui.');renderLabaRingkasan();
+  saveDB(['biaya','marketplace','stok']);alert('✅ Pengaturan HPP disimpan! Laporan laba diperbarui.');renderLabaRingkasan();
 }
-function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa reset biaya.");return}if(confirm('Reset biaya ke default?')){DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));saveDB(['biaya','marketplace','stok']);renderBiayaInputs();renderHppMode();alert('Biaya direset.')}}
+function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa reset biaya.");return}if(confirm('Reset pengaturan HPP ke default?')){DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));saveDB(['biaya','marketplace','stok']);renderBiayaInputs();renderHppMode();alert('Pengaturan HPP direset.')}}
 
 // ===== LAPORAN =====
 function renderLaporan(){
@@ -1255,7 +1295,7 @@ function processCSV(file,type){
     for(let i=1;i<lines.length;i++){
       const cols=lines[i].split(',');const row={};headers.forEach((h,j)=>row[h]=(cols[j]||'').trim());
       try{
-        if(type==='jual'){const d=row.tanggal||fmtTgl(new Date());const mpNama=row.marketplace||'Shopee';if(!DB.marketplace.some(m=>m.nama.toLowerCase()===mpNama.toLowerCase())){DB.marketplace.push({nama:mpNama,color:MP_COLOR_CHOICES[DB.marketplace.length%MP_COLOR_CHOICES.length]});refreshMpGlobals()}DB.penjualan.push({no:row.no_pesanan||row.no||'IMP-'+i,tanggal:d,_date:new Date(d.split('/').reverse().join('-')||d).toISOString(),mp:mpNama,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',qty:parseInt(row.qty||1),total:parseInt((row.total||'0').replace(/[^0-9]/g,'')),status:row.status||'Selesai'});imported++}
+        if(type==='jual'){const d=row.tanggal||fmtTgl(new Date());const mpNama=row.marketplace||'Shopee';if(!DB.marketplace.some(m=>m.nama.toLowerCase()===mpNama.toLowerCase())){DB.marketplace.push({nama:mpNama,color:MP_COLOR_CHOICES[DB.marketplace.length%MP_COLOR_CHOICES.length]});refreshMpGlobals()}DB.penjualan.push({no:row.no_pesanan||row.no||'IMP-'+i,tanggal:d,_date:new Date(d.split('/').reverse().join('-')||d).toISOString(),mp:mpNama,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',qty:parseInt(row.qty||1),total:parseInt((row.total||'0').replace(/[^0-9]/g,'')),status:row.status||'Selesai',biayaAdmin:row.biaya_admin!==undefined&&row.biaya_admin!==''?parseFloat(row.biaya_admin.replace(/[^0-9.]/g,'')):null,biayaTambahan:row.biaya_tambahan!==undefined&&row.biaya_tambahan!==''?parseFloat(row.biaya_tambahan.replace(/[^0-9.]/g,'')):null});imported++}
         else{DB.stok.push({sku:row.sku||'SKU-IMP-'+i,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',stok:parseInt(row.stok||0),terjual:parseInt(row.terjual_30h||row.terjual||0),hpp:parseFloat((row.hpp||'0').replace(/[^0-9.]/g,''))||0});imported++}
       }catch(err){errors++}
     }
@@ -1267,7 +1307,7 @@ function processCSV(file,type){
 }
 
 // ===== EXPORT =====
-function exportCSV(){const h='No. Pesanan,Tanggal,Marketplace,Produk,Varian,Kategori,Qty,Total,Status\n';dlFile(h+DB.penjualan.map(r=>[r.no,r.tanggal,r.mp,r.prod,r.varian||'',r.kat||'',r.qty,r.total,r.status].join(',')).join('\n'),'penjualan_'+today()+'.csv','text/csv')}
+function exportCSV(){const h='No. Pesanan,Tanggal,Marketplace,Produk,Varian,Kategori,Qty,Total,Status,Biaya Admin,Biaya Tambahan\n';dlFile(h+DB.penjualan.map(r=>[r.no,r.tanggal,r.mp,r.prod,r.varian||'',r.kat||'',r.qty,r.total,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):''].join(',')).join('\n'),'penjualan_'+today()+'.csv','text/csv')}
 function exportStokCSV(){const h='SKU,Produk,Varian,Kategori,Stok,HPP,Terjual 30h\n';dlFile(h+DB.stok.map(r=>[r.sku,r.prod,r.varian,r.kat||'',r.stok,r.hpp||0,r.terjual].join(',')).join('\n'),'stok_'+today()+'.csv','text/csv')}
 function exportLabaCSV(){const data=_labaFiltered.length?_labaFiltered:getLabaPerProduk();const h='Produk,Kategori,Marketplace,Qty,Omzet,HPP,Biaya Admin MP (%),Biaya Lain,Laba Bersih,Margin (%)\n';dlFile(h+data.map(r=>[r.prod,r.kat,r.mp,r.qty,r.omzet,Math.round(r.hpp),Math.round(r.mpFee),Math.round(r.extra),Math.round(r.laba),r.margin.toFixed(1)].join(',')).join('\n'),'laba_per_produk_'+today()+'.csv','text/csv')}
 function exportLabaCSV2(){exportLabaCSV()}
