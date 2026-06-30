@@ -10,6 +10,17 @@ untuk skema lengkap, cara migrasi data lama, dan contoh query siap pakai.
 Jika ini instalasi baru (belum pernah pakai tabel lama), cukup jalankan
 `SETUP-DATABASE.sql` — tidak perlu migrasi apa pun.
 
+## ⚠️ Update: Biaya Admin & Biaya Tambahan kini per pesanan
+"Biaya Admin per Marketplace (%)" dan "Biaya Tambahan per Transaksi (Rp)"
+yang dulu diatur secara global di menu **Laba & Biaya → Pengaturan Biaya**,
+sekarang diisi **langsung per pesanan** di menu **Penjualan** (saat tambah/edit
+pesanan) — lebih akurat karena tiap pesanan/promo bisa beda potongan.
+
+Jika project Anda **sudah pernah** menjalankan `SETUP-DATABASE.sql` versi
+lama, jalankan tambahan `TAMBAH-KOLOM-BIAYA-PESANAN.sql` sekali di SQL Editor
+Supabase agar tabel `penjualan` punya kolom baru tersebut. Instalasi baru
+tidak perlu — sudah otomatis termasuk di `SETUP-DATABASE.sql`.
+
 ## Isi folder
 - `index.html` — markup halaman (sidebar, login screen, tabel, modal, dll)
 - `style.css` — seluruh tampilan/desain
