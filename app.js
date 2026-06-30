@@ -579,6 +579,7 @@ function bukaEditJual(idx){
   document.getElementById('f-total').value=r.total;
   populateKatDropdowns();
   document.getElementById('f-kat-jual').value=r.kat||'';
+  populateProdukDatalist();onProdukPesananInput();
   openModal('modal-tambah-jual');
 }
 function bukaModalTambahJual(){
@@ -590,12 +591,47 @@ function bukaModalTambahJual(){
   document.getElementById('f-var').value='';document.getElementById('f-qty').value=1;
   document.getElementById('f-total').value='';document.getElementById('f-tgl').value=today();
   populateKatDropdowns();
+  populateProdukDatalist();onProdukPesananInput();
   openModal('modal-tambah-jual');
 }
-function autocompleteKat(){
+function populateProdukDatalist(){
+  const dl=document.getElementById('dl-produk-stok');if(!dl)return;
+  const uniq=[...new Set(DB.stok.map(s=>s.prod))].sort();
+  dl.innerHTML=uniq.map(p=>`<option value="${p}">`).join('');
+}
+function populateVarianDatalist(prod){
+  const dl=document.getElementById('dl-varian-stok');if(!dl)return;
+  const opts=[...new Set(DB.stok.filter(s=>s.prod===prod).map(s=>s.varian).filter(Boolean))];
+  dl.innerHTML=opts.map(v=>`<option value="${v}">`).join('');
+}
+// Dipanggil setiap kali field Produk/Varian/Qty di form pesanan diketik.
+// Menunjukkan SECARA REAL-TIME apakah produk yang diketik cocok dengan data
+// di Stok Gudang (akan ikut otomatis berkurang) atau tidak (perlu dikoreksi).
+function onProdukPesananInput(){
   const prod=document.getElementById('f-prod').value.trim();
-  const match=DB.penjualan.find(r=>r.prod===prod);
-  if(match&&match.kat){const el=document.getElementById('f-kat-jual');if(el)el.value=match.kat;}
+  const varian=document.getElementById('f-var').value.trim();
+  const qty=parseInt(document.getElementById('f-qty').value)||1;
+  populateVarianDatalist(prod);
+  const hint=document.getElementById('f-stok-hint');
+  if(!hint)return;
+  if(!prod){hint.style.display='none';hint.innerHTML='';return}
+  hint.style.display='block';
+  const siMatch=cariStok(prod,varian);
+  if(siMatch){
+    if(siMatch.kat){const el=document.getElementById('f-kat-jual');if(el)el.value=siMatch.kat}
+    const sisa=siMatch.stok-qty;
+    const kurang=sisa<0;
+    hint.style.background=kurang?'var(--danger-bg)':'var(--success-bg)';
+    hint.style.color=kurang?'var(--danger)':'var(--success)';
+    hint.innerHTML=kurang
+      ?`⚠️ Stok tidak cukup! Stok saat ini <strong>${siMatch.stok} pcs</strong>, pesanan ini butuh ${qty} pcs.`
+      :`✅ Cocok dengan Stok Gudang — stok saat ini <strong>${siMatch.stok} pcs</strong>, sisa setelah pesanan ini <strong>${sisa} pcs</strong>.`;
+  }else{
+    const match=DB.penjualan.find(r=>r.prod===prod);
+    if(match&&match.kat){const el=document.getElementById('f-kat-jual');if(el)el.value=match.kat}
+    hint.style.background='var(--warning-bg)';hint.style.color='var(--warning)';
+    hint.innerHTML=`⚠️ Produk/varian ini <strong>tidak ditemukan persis sama</strong> di Stok Gudang — stok TIDAK akan otomatis berkurang. Cek lagi ejaan nama produk &amp; varian, atau pilih dari saran yang muncul saat mengetik.`;
+  }
 }
 // ===== SINKRONISASI STOK <-> PENJUALAN (otomatis & real-time) =====
 // Pesanan berstatus 'Dibatalkan' dianggap tidak pernah mengurangi stok asli.
@@ -620,6 +656,11 @@ function simpanPesanan(){
   const idx=document.getElementById('edit-jual-idx').value;
   const no=document.getElementById('f-no').value.trim();const prod=document.getElementById('f-prod').value.trim();const tgl=document.getElementById('f-tgl').value;
   if(!no||!prod||!tgl){alert('Mohon isi No. Pesanan, Tanggal, dan Nama Produk');return}
+  const varianCek=document.getElementById('f-var').value.trim();
+  if(!cariStok(prod,varianCek)){
+    const lanjut=confirm('⚠️ Produk/varian "'+prod+(varianCek?' - '+varianCek:'')+'" tidak ditemukan persis sama di Stok Gudang.\n\nStok TIDAK akan otomatis berkurang untuk pesanan ini.\n\nLanjutkan simpan tanpa update stok? (Klik Batal untuk perbaiki nama produk/varian dulu)');
+    if(!lanjut)return;
+  }
   const r={no,tanggal:fmtTgl(new Date(tgl)),_date:new Date(tgl).toISOString(),mp:document.getElementById('f-mp').value,
     prod,varian:document.getElementById('f-var').value,kat:document.getElementById('f-kat-jual').value,
     qty:parseInt(document.getElementById('f-qty').value)||1,total:parseInt(document.getElementById('f-total').value)||0,
