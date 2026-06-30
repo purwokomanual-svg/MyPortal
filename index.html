@@ -527,12 +527,21 @@
       <div class="form-group"><label>Marketplace</label><select class="form-input" id="f-mp"></select></div>
       <div class="form-group"><label>Status</label><select class="form-input" id="f-status"><option>Selesai</option><option>Diproses</option><option>Dikirim</option><option>Dibatalkan</option></select></div>
     </div>
-    <div class="form-group"><label>Nama Produk</label><input class="form-input" id="f-prod" placeholder="Kaos Polos Hitam" oninput="autocompleteKat()"></div>
+    <div class="form-group">
+      <label>Nama Produk</label>
+      <input class="form-input" id="f-prod" list="dl-produk-stok" placeholder="Pilih/ketik produk dari Stok Gudang" oninput="onProdukPesananInput()" autocomplete="off">
+      <datalist id="dl-produk-stok"></datalist>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-      <div class="form-group"><label>Varian</label><input class="form-input" id="f-var" placeholder="M / Hitam"></div>
-      <div class="form-group"><label>Qty</label><input class="form-input" type="number" id="f-qty" value="1" min="1"></div>
+      <div class="form-group">
+        <label>Varian</label>
+        <input class="form-input" id="f-var" list="dl-varian-stok" placeholder="M / Hitam" oninput="onProdukPesananInput()" autocomplete="off">
+        <datalist id="dl-varian-stok"></datalist>
+      </div>
+      <div class="form-group"><label>Qty</label><input class="form-input" type="number" id="f-qty" value="1" min="1" oninput="onProdukPesananInput()"></div>
       <div class="form-group"><label>Total (Rp)</label><input class="form-input" type="number" id="f-total" placeholder="150000"></div>
     </div>
+    <div id="f-stok-hint" style="font-size:11.5px;margin:-8px 0 12px;padding:7px 10px;border-radius:7px"></div>
     <div class="form-group"><label>Kategori</label><select class="form-input" id="f-kat-jual"></select></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-tambah-jual')">Batal</button>
