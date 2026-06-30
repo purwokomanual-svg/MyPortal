@@ -219,7 +219,12 @@
       </div>
       <div class="grid-2 mb18">
         <div class="card"><div class="card-title">Top 5 Produk Terlaris</div><div id="top5-bars"></div></div>
-        <div class="card"><div class="card-title">Status Stok</div><div class="chart-box" style="height:170px"><canvas id="chartStokPie"></canvas></div><div id="pie-legend" style="display:flex;gap:14px;justify-content:center;margin-top:10px;font-size:12px;color:var(--text2);flex-wrap:wrap"></div></div>
+        <div class="card"><div class="card-title">Status Stok</div><div class="chart-box" style="height:170px"><canvas id="chartStokPie"></canvas></div><div id="pie-legend" style="display:flex;gap:14px;justify-content:center;margin-top:10px;font-size:12px;color:var(--text2);flex-wrap:wrap"></div>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:12px;color:var(--text3)">💰 Total Nilai Aset Stok Gudang</span>
+            <strong id="stok-asset-total" style="font-size:15px;color:var(--text)">Rp 0</strong>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -259,7 +264,7 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>SKU</th><th>Produk</th><th>Varian</th><th>Kategori</th><th>Stok</th><th>Terjual (30h)</th><th>Est. Habis</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>SKU</th><th>Produk</th><th>Varian</th><th>Kategori</th><th>Stok</th><th>HPP/pcs</th><th>Terjual (30h)</th><th>Est. Habis</th><th>Status</th><th>Aksi</th></tr></thead>
             <tbody id="tbl-stok"></tbody>
           </table>
         </div>
@@ -372,12 +377,12 @@
           </div>
           <div class="card">
             <div class="card-title">HPP (Harga Pokok Produksi)</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.7">Pilih mode perhitungan HPP. Mode % cocok untuk estimasi cepat. Mode per produk lebih akurat jika Anda tahu HPP tiap produk.</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.7">Pilih mode perhitungan HPP. Mode % cocok untuk estimasi cepat. Mode per produk kini mengambil HPP otomatis dari data <strong>Stok & Gudang</strong> (diisi saat tambah/edit produk) — lebih akurat & tidak perlu input ulang di sini.</div>
             <div class="form-group">
               <label>Mode HPP</label>
               <select class="form-input" id="hpp-mode" onchange="renderHppMode()">
                 <option value="pct">% Global dari omzet (estimasi)</option>
-                <option value="produk">Nominal Rp per produk (akurat)</option>
+                <option value="produk">Nominal Rp per produk (dari Stok Gudang)</option>
               </select>
             </div>
             <div id="hpp-mode-content"></div>
@@ -424,7 +429,7 @@
           <div class="drop-zone" onclick="document.getElementById('file-stok').click()" ondragover="event.preventDefault()" ondrop="handleDrop(event,'stok')">
             <div style="font-size:32px;margin-bottom:8px">📦</div>
             <p style="font-weight:600;margin-bottom:4px">Import data stok gudang</p>
-            <p style="font-size:12px;color:var(--text3)">CSV: sku, produk, varian, kategori, stok, terjual_30h</p>
+            <p style="font-size:12px;color:var(--text3)">CSV: sku, produk, varian, kategori, stok, hpp, terjual_30h</p>
           </div>
           <input type="file" id="file-stok" accept=".csv" style="display:none" onchange="importFile(event,'stok')">
           <div id="import-stok-result" style="margin-top:12px"></div>
@@ -564,6 +569,11 @@
       <div class="form-group"><label>Varian</label><input class="form-input" id="s-var" placeholder="Hitam M"></div>
       <div class="form-group"><label>Stok (pcs)</label><input class="form-input" type="number" id="s-stok" value="0" min="0"></div>
       <div class="form-group"><label>Terjual 30h</label><input class="form-input" type="number" id="s-terjual" value="0" min="0"></div>
+    </div>
+    <div class="form-group">
+      <label>HPP (Harga Pokok Produksi) — Rp/pcs</label>
+      <input class="form-input" type="number" id="s-hpp" placeholder="cth: 45000" value="0" min="0">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Biaya pokok produksi/modal per pcs untuk produk-varian ini. Dipakai otomatis di laporan Laba & Biaya (mode "Nominal Rp per produk").</div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-tambah-stok')">Batal</button>
