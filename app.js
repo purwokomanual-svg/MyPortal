@@ -263,17 +263,39 @@ async function proceedAfterAuth(user){
   _currentAdminUser=user;
   try{
     const{data,error}=await supabaseClient.from('admin_users').select('role,nama,email').eq('id',user.id).maybeSingle();
-    if(error){console.warn('Gagal cek role:',error.message);loginAlert('Gagal memuat data akses akun: '+error.message);return}
-    if(!data||data.role==='pending'){
+
+    // Kasus 1: tabel admin_users belum ada (SETUP-ROLES.sql belum dijalankan)
+    if(error&&(error.code==='42P01'||error.message.includes('does not exist'))){
+      console.warn('Tabel admin_users belum ada — jalankan SETUP-ROLES.sql terlebih dahulu');
+      loginAlert('⚠️ Tabel sistem belum disiapkan. Buka Supabase Dashboard → SQL Editor, jalankan file SETUP-ROLES.sql, lalu coba login lagi.','danger');
+      return;
+    }
+    // Kasus 2: error lain dari Supabase
+    if(error){
+      console.warn('Gagal cek role:',error.message);
+      loginAlert('Gagal memuat data akses akun: '+error.message);
+      return;
+    }
+    // Kasus 3: akun belum ada di admin_users (SETUP-ROLES.sql sudah jalan tapi trigger belum insert user ini)
+    if(!data){
+      loginAlert('⚠️ Akun Anda belum terdaftar di sistem role. Hubungi Owner untuk menambahkan akses, atau jalankan query SQL manual di PANDUAN-ROLE-AKSES.md.','danger');
+      return;
+    }
+    // Kasus 4: akun ada tapi belum di-approve
+    if(data.role==='pending'){
       showPendingScreen(user.email);
       return;
     }
+    // Kasus 5: normal — masuk app
     _currentAdminRole=data.role;
     showAppScreen();
-    await initApp();
+    await initApp();             // render semua section
+    applyRolePermissions();      // terapkan permission SETELAH render selesai
     updateAdminInfo();
-    applyRolePermissions();
-  }catch(e){console.warn('Gagal cek role:',e);loginAlert('Gagal memuat data akses akun: '+e.message)}
+  }catch(e){
+    console.warn('Gagal cek role:',e);
+    loginAlert('Gagal memuat data akses akun: '+e.message);
+  }
 }
 function loginAlert(msg,type){
   const el=document.getElementById('login-alert');
@@ -375,12 +397,23 @@ function canWrite(){return _currentAdminRole==='owner'||_currentAdminRole==='sta
 function canManageSettings(){return _currentAdminRole==='owner'} // boleh ubah biaya/pengaturan toko/marketplace/kategori/user
 // Sembunyikan/disable elemen UI sesuai role. Dipanggil setelah login & setiap render ulang halaman besar.
 function applyRolePermissions(){
+  if(!_currentAdminRole)return;
   const write=canWrite(), settings=canManageSettings();
-  // Tombol tambah transaksi/stok di topbar & section
-  document.querySelectorAll('[data-need="write"]').forEach(el=>el.style.display=write?'':'none');
-  // Elemen khusus owner: kelola kategori, marketplace, biaya, user, logo
-  document.querySelectorAll('[data-need="settings"]').forEach(el=>el.style.display=settings?'':'none');
-  if(settings)renderUserList();
+  // Sembunyikan/tampilkan tombol sesuai role
+  document.querySelectorAll('[data-need="write"]').forEach(el=>{
+    el.style.display=write?'':'none';
+  });
+  document.querySelectorAll('[data-need="settings"]').forEach(el=>{
+    el.style.display=settings?'':'none';
+  });
+  // Kartu Manajemen User hanya untuk owner
+  const secUser=document.getElementById('sec-manajemen-user');
+  if(secUser)secUser.style.display=settings?'':'none';
+  // Isi daftar user kalau owner sedang di section pengaturan
+  if(settings){
+    const secPengaturan=document.getElementById('sec-pengaturan');
+    if(secPengaturan&&secPengaturan.classList.contains('active'))renderUserList();
+  }
 }
 // Dipakai di renderJualTable/renderStokTable/dst untuk sembunyikan tombol aksi kalau viewer
 function actionCellRW(html){return canWrite()?html:''}
@@ -420,16 +453,24 @@ async function renderUserList(){
 }
 async function ubahRoleUser(userId,role){
   try{
-    const{error}=await supabaseClient.from('admin_users').update({role}).eq('id',userId);
+    const{data,error}=await supabaseClient.from('admin_users').update({role}).eq('id',userId).select();
     if(error){alert('Gagal mengubah role: '+error.message);renderUserList();return}
+    if(!data||!data.length){
+      alert('⚠️ Perubahan TIDAK tersimpan ke database (kemungkinan ditolak oleh keamanan database/RLS).\n\nKemungkinan penyebab:\n- Akun Anda belum berstatus Owner di tabel admin_users\n- SETUP-ROLES.sql belum sepenuhnya dijalankan / ada langkah yang gagal\n\nCoba jalankan ulang FIX-MANAJEMEN-USER.sql, lalu logout & login kembali.');
+      renderUserList();return;
+    }
     renderUserList();
   }catch(e){alert('Gagal mengubah role: '+e.message)}
 }
 async function hapusAksesUser(userId,nama){
   if(!confirm(`Cabut akses untuk "${nama}"? Mereka tidak akan bisa masuk ke aplikasi lagi (akun login tetap ada, hanya hak aksesnya yang dicabut).`))return;
   try{
-    const{error}=await supabaseClient.from('admin_users').delete().eq('id',userId);
+    const{data,error}=await supabaseClient.from('admin_users').delete().eq('id',userId).select();
     if(error){alert('Gagal mencabut akses: '+error.message);return}
+    if(!data||!data.length){
+      alert('⚠️ Penghapusan TIDAK tersimpan ke database (kemungkinan ditolak oleh keamanan database/RLS).\n\nCoba jalankan ulang FIX-MANAJEMEN-USER.sql, lalu logout & login kembali.');
+      renderUserList();return;
+    }
     renderUserList();
   }catch(e){alert('Gagal mencabut akses: '+e.message)}
 }
@@ -469,7 +510,8 @@ function showSection(id,el){
   if(id==='laporan')renderLaporan();
   if(id==='produk')renderProduk();
   if(id==='laba'){renderLabaSection();renderBiayaInputs();renderHppMode();}
-  if(id==='pengaturan')updateInfoPengaturan();
+  if(id==='pengaturan'){updateInfoPengaturan();if(canManageSettings())renderUserList();}
+  applyRolePermissions(); // selalu re-apply setiap ganti section
 }
 
 // ===== KATEGORI DROPDOWN POPULATE =====
