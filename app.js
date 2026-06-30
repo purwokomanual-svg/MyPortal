@@ -86,17 +86,31 @@ async function syncKategori_(){
   await fullReplace(TBL_KATEGORI, DB.kategori.map(k=>({nama:k.nama,color:k.color})));
 }
 async function syncMarketplace_(){
-  await fullReplace(TBL_MARKETPLACE, DB.marketplace.map(m=>({nama:m.nama,color:m.color,fee_persen:(DB.biaya.mp_fee&&DB.biaya.mp_fee[m.nama])||3})));
+  await fullReplace(TBL_MARKETPLACE, DB.marketplace.map(m=>{
+    const fee=DB.biaya&&DB.biaya.mp_fee?DB.biaya.mp_fee[m.nama]:null;
+    return{nama:m.nama,color:m.color,fee_persen:fee!=null?fee:3};
+  }));
 }
 async function syncStok_(){
-  await fullReplace(TBL_STOK, DB.stok.map(s=>({sku:s.sku,produk:s.prod,varian:s.varian||'',kategori:s.kat||'Lainnya',stok:s.stok||0,terjual:s.terjual||0,hpp:(DB.biaya.hpp_per_produk&&DB.biaya.hpp_per_produk[s.prod])||0})));
+  await fullReplace(TBL_STOK, DB.stok.map(s=>{
+    const hpp=DB.biaya&&DB.biaya.hpp_per_produk?DB.biaya.hpp_per_produk[s.prod]:null;
+    return{sku:s.sku,produk:s.prod,varian:s.varian||'',kategori:s.kat||'Lainnya',stok:s.stok!=null?s.stok:0,terjual:s.terjual!=null?s.terjual:0,hpp:hpp!=null?hpp:0};
+  }));
 }
 async function syncPenjualan_(){
-  await fullReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty||1,total:r.total||0,status:r.status||'Selesai'})));
+  await fullReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty!=null?r.qty:1,total:r.total!=null?r.total:0,status:r.status||'Selesai'})));
 }
 async function syncBiayaPengaturan_(){
   const b=DB.biaya||{};const ex=b.extra||{};
-  const{error}=await supabaseClient.from(TBL_BIAYA).upsert({id:1,ongkir:ex.ongkir||0,packaging:ex.packaging||0,lain:ex.lain||0,hpp_mode:b.hpp_mode||'pct',hpp_pct:b.hpp_pct||45,updated_at:new Date().toISOString()});
+  const{error}=await supabaseClient.from(TBL_BIAYA).upsert({
+    id:1,
+    ongkir:ex.ongkir!=null?ex.ongkir:0,
+    packaging:ex.packaging!=null?ex.packaging:0,
+    lain:ex.lain!=null?ex.lain:0,
+    hpp_mode:b.hpp_mode||'pct',
+    hpp_pct:b.hpp_pct!=null?b.hpp_pct:45,
+    updated_at:new Date().toISOString()
+  });
   if(error)throw error;
 }
 async function syncHppProduk_(){
@@ -108,7 +122,15 @@ async function syncHppProduk_(){
 }
 async function syncPengaturanToko_(){
   const p=DB.pengaturan||{};
-  const{error}=await supabaseClient.from(TBL_PENGATURAN).upsert({id:1,nama_toko:p.nama||'Toko Saya',pemilik:p.pemilik||'',hp:p.hp||'',batas_stok:p.batasStok||10,logo:p.logo||'',updated_at:new Date().toISOString()});
+  const{error}=await supabaseClient.from(TBL_PENGATURAN).upsert({
+    id:1,
+    nama_toko:p.nama||'Toko Saya',
+    pemilik:p.pemilik||'',
+    hp:p.hp||'',
+    batas_stok:p.batasStok!=null?p.batasStok:10,
+    logo:p.logo||'',
+    updated_at:new Date().toISOString()
+  });
   if(error)throw error;
 }
 
@@ -135,10 +157,20 @@ async function loadFromSupabase(){
     const mp_fee={};(mpRes.data||[]).forEach(m=>mp_fee[m.nama]=Number(m.fee_persen));
     const hpp_per_produk={};(hppRes.data||[]).forEach(h=>hpp_per_produk[h.produk]=Number(h.hpp));
     const b=biayaRes.data||{};
-    const biaya={mp_fee,extra:{ongkir:Number(b.ongkir||3000),packaging:Number(b.packaging||1500),lain:Number(b.lain||500)},hpp_mode:b.hpp_mode||'pct',hpp_pct:Number(b.hpp_pct||45),hpp_per_produk};
+    const biaya={
+      mp_fee,
+      extra:{
+        ongkir:Number(b.ongkir!=null?b.ongkir:3000),
+        packaging:Number(b.packaging!=null?b.packaging:1500),
+        lain:Number(b.lain!=null?b.lain:500)
+      },
+      hpp_mode:b.hpp_mode||'pct',
+      hpp_pct:Number(b.hpp_pct!=null?b.hpp_pct:45),
+      hpp_per_produk
+    };
 
     const s=setRes.data||{};
-    const pengaturan={nama:s.nama_toko||'Toko Saya',pemilik:s.pemilik||'',hp:s.hp||'',batasStok:s.batas_stok||10,logo:s.logo||''};
+    const pengaturan={nama:s.nama_toko||'Toko Saya',pemilik:s.pemilik||'',hp:s.hp||'',batasStok:s.batas_stok!=null?s.batas_stok:10,logo:s.logo||''};
 
     updateSyncBadge(true);
     return{kategori,marketplace,stok,penjualan,biaya,pengaturan,lastUpdate:new Date().toISOString()};
@@ -459,7 +491,7 @@ function renderDashboard(){
   const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&new Date(r._date||r.tanggal.split('/').reverse().join('-'))>=cutoff);
   const totalRev=recent.reduce((a,r)=>a+r.total,0);
   const totalOrd=recent.length;
-  const batas=DB.pengaturan.batasStok||10;
+  const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   const kritis=DB.stok.filter(s=>s.stok<=batas).length;
 
   // Laba estimasi
@@ -526,7 +558,7 @@ function renderTrendChart(recent,days){
 }
 
 function renderStokPieChart(){
-  const batas=DB.pengaturan.batasStok||10;
+  const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   const habis=DB.stok.filter(s=>s.stok===0).length,rendah=DB.stok.filter(s=>s.stok>0&&s.stok<=batas).length,aman=DB.stok.length-habis-rendah;
   if(charts.stokPie)charts.stokPie.destroy();
   charts.stokPie=new Chart(document.getElementById('chartStokPie'),{type:'doughnut',data:{labels:['Aman','Rendah','Habis'],datasets:[{data:[aman,rendah,habis],backgroundColor:['#00aa5b','#f59e0b','#ef4444'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'65%'}});
@@ -679,13 +711,13 @@ function simpanPesanan(){
 
 // ===== STOK TABLE =====
 function filterStok(){
-  pageStok=1;const q=(document.getElementById('q-stok').value||'').toLowerCase();const st=document.getElementById('f-status-stok').value;const kat=document.getElementById('f-kat-stok').value;const batas=DB.pengaturan.batasStok||10;
+  pageStok=1;const q=(document.getElementById('q-stok').value||'').toLowerCase();const st=document.getElementById('f-status-stok').value;const kat=document.getElementById('f-kat-stok').value;const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   filteredStok=DB.stok.filter(r=>{const status=r.stok===0?'Habis':r.stok<=batas?'Rendah':'Aman';return(!q||r.prod.toLowerCase().includes(q)||r.sku.toLowerCase().includes(q))&&(!st||status===st)&&(!kat||r.kat===kat)});
   renderStokTable();
 }
-function filterStokKritis(){document.getElementById('f-status-stok').value='';document.getElementById('q-stok').value='';document.getElementById('f-kat-stok').value='';const batas=DB.pengaturan.batasStok||10;filteredStok=DB.stok.filter(s=>s.stok<=batas);pageStok=1;renderStokTable()}
+function filterStokKritis(){document.getElementById('f-status-stok').value='';document.getElementById('q-stok').value='';document.getElementById('f-kat-stok').value='';const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);filteredStok=DB.stok.filter(s=>s.stok<=batas);pageStok=1;renderStokTable()}
 function renderStokTable(){
-  const batas=DB.pengaturan.batasStok||10;const start=(pageStok-1)*PER_PAGE;const slice=filteredStok.slice(start,start+PER_PAGE);
+  const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);const start=(pageStok-1)*PER_PAGE;const slice=filteredStok.slice(start,start+PER_PAGE);
   document.getElementById('tbl-stok').innerHTML=slice.length?slice.map(r=>{
     const status=r.stok===0?'Habis':r.stok<=batas?'Rendah':'Aman';
     const badge=status==='Aman'?'badge-green':status==='Rendah'?'badge-yellow':'badge-red';
@@ -787,7 +819,7 @@ function hapusData(type,idx){
 
 // ===== KATEGORI =====
 function renderProduk(){
-  const batas=DB.pengaturan.batasStok||10;
+  const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   document.getElementById('p-total-produk').textContent=[...new Set(DB.stok.map(s=>s.prod))].length;
   document.getElementById('p-total-varian').textContent=DB.stok.length.toLocaleString('id-ID');
   document.getElementById('p-total-kat').textContent=DB.kategori.length;
@@ -924,11 +956,13 @@ document.addEventListener('DOMContentLoaded',function(){
 // ===== LABA PER PRODUK =====
 function hitungLaba(r){
   const biaya=DB.biaya||DEFAULT_BIAYA;const omzet=r.total||0;
-  const mpFee=(biaya.mp_fee[r.mp]||3)/100*omzet;
+  const feeMp=biaya.mp_fee[r.mp];
+  const mpFee=(feeMp!=null?feeMp:3)/100*omzet;
   const extra=(biaya.extra.ongkir||0)+(biaya.extra.packaging||0)+(biaya.extra.lain||0);
   let hpp=0;
-  if(biaya.hpp_mode==='pct')hpp=(biaya.hpp_pct||45)/100*omzet;
-  else{const ph=biaya.hpp_per_produk[r.prod];hpp=ph?ph*(r.qty||1):(biaya.hpp_pct||45)/100*omzet}
+  const hppPct=biaya.hpp_pct!=null?biaya.hpp_pct:45;
+  if(biaya.hpp_mode==='pct')hpp=hppPct/100*omzet;
+  else{const ph=biaya.hpp_per_produk[r.prod];hpp=(ph!=null)?ph*(r.qty||1):hppPct/100*omzet}
   const laba=omzet-mpFee-extra-hpp;
   return{omzet,hpp,mpFee,extra,laba,margin:omzet>0?laba/omzet*100:0};
 }
@@ -1000,7 +1034,7 @@ function renderLabaRingkasan(){
     </tr></thead>
     <tbody>${MP_LIST.map(m=>{const d=mpDetail[m];const mg=d.omzet>0?d.laba/d.omzet*100:0;const mc=mg>=30?'#1a7f47':mg>=15?'#8a5c00':'#b91c1c';return`<tr>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span class="mp-tag" style="${mpTagStyle(m)}">${m}</span></td>
-      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--warning);font-weight:700">${b.mp_fee[m]||3}%</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--warning);font-weight:700">${b.mp_fee[m]!=null?b.mp_fee[m]:3}%</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);font-weight:600">${fmtRp(d.omzet)}</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--warning);font-weight:600">${fmtRp(d.fee)} <span style="font-size:10px;color:var(--text3)">(${d.omzet>0?(d.fee/d.omzet*100).toFixed(1):0}%)</span></td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);font-weight:700;color:${d.laba>=0?'var(--success)':'var(--danger)'}">${fmtRp(d.laba)}</td>
@@ -1077,7 +1111,7 @@ function renderHppMode(){
     document.getElementById('hpp-mode-content').innerHTML=`<div class="form-group"><label>HPP Global (% dari harga jual)</label><input class="form-input" type="number" step="1" id="hpp-pct-val" value="${b.hpp_pct!=null?b.hpp_pct:45}" max="100" min="0"><div style="font-size:11px;color:var(--text3);margin-top:4px">Contoh: nilai 45 berarti HPP = 45% dari harga jual</div></div>`;
   } else {
     const prodNames=[...new Set(DB.penjualan.map(r=>r.prod))].slice(0,24);
-    document.getElementById('hpp-mode-content').innerHTML=`<div class="hpp-grid">${prodNames.map(p=>`<div class="hpp-item"><label>${p}</label><input type="number" id="hpp-${p.replace(/[\s/]/g,'_')}" placeholder="Rp/unit" value="${b.hpp_per_produk[p]||''}"></div>`).join('')}</div>`;
+    document.getElementById('hpp-mode-content').innerHTML=`<div class="hpp-grid">${prodNames.map(p=>`<div class="hpp-item"><label>${p}</label><input type="number" id="hpp-${p.replace(/[\s/]/g,'_')}" placeholder="Rp/unit" value="${b.hpp_per_produk[p]!=null?b.hpp_per_produk[p]:''}"></div>`).join('')}</div>`;
   }
 }
 function simpanBiaya(){
@@ -1106,7 +1140,7 @@ function renderLaporan(){
     {l:'Total Omzet (30 hari)',v:fmtRp(to),c:''},
     {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
     {l:'Ongkos Kirim (subsidi)',v:'− Rp 3.240.000',c:'red'},
-    {l:'HPP Estimasi',v:'− '+fmtRp(to*(DB.biaya?.hpp_pct||45)/100),c:'red'},
+    {l:'HPP Estimasi',v:'− '+fmtRp(to*((DB.biaya&&DB.biaya.hpp_pct!=null)?DB.biaya.hpp_pct:45)/100),c:'red'},
     {l:'Estimasi Laba Bersih',v:fmtRp(tl),c:'green'},
     {l:'Margin Bersih',v:(to>0?tl/to*100:0).toFixed(1)+'%',c:'green'},
   ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
@@ -1184,12 +1218,12 @@ function resetData(){if(!canManageSettings()){alert('Hanya Owner yang bisa reset
 function simpanPengaturan(){
   if(!canManageSettings()){alert("Hanya Owner yang bisa mengubah pengaturan toko.");return}
   DB.pengaturan.nama=document.getElementById('set-nama').value;DB.pengaturan.pemilik=document.getElementById('set-pemilik').value;
-  DB.pengaturan.hp=document.getElementById('set-hp').value;DB.pengaturan.batasStok=parseInt(document.getElementById('set-batas-stok').value)||10;
+  DB.pengaturan.hp=document.getElementById('set-hp').value;const vBatas=parseInt(document.getElementById('set-batas-stok').value);DB.pengaturan.batasStok=isNaN(vBatas)?10:vBatas;
   saveDB(['pengaturan']);applyPengaturan();renderDashboard();alert('Pengaturan tersimpan!');
 }
 function applyPengaturan(){
   document.getElementById('set-nama').value=DB.pengaturan.nama||'';document.getElementById('set-pemilik').value=DB.pengaturan.pemilik||'';
-  document.getElementById('set-hp').value=DB.pengaturan.hp||'';document.getElementById('set-batas-stok').value=DB.pengaturan.batasStok||10;
+  document.getElementById('set-hp').value=DB.pengaturan.hp||'';document.getElementById('set-batas-stok').value=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   document.title=(DB.pengaturan.nama||'OmniSeller')+' — Dashboard';
   applyLogo();
 }
