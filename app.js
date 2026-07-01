@@ -882,12 +882,43 @@ function updateBarisItem(i,field,val){
   else if(field==='harga')it.harga=Math.max(0,parseFloat(val)||0);
   else it[field]=val;
   if(field==='prod'||field==='varian'){
-    const si=cariStok((it.prod||'').trim(),(it.varian||'').trim());
+    // Sinkron kategori otomatis: coba cocok PERSIS (produk+varian) dulu;
+    // kalau varian belum diisi/tidak cocok, tetap coba cocokkan dari nama
+    // produk saja (kategori varian pertama yang ditemukan) supaya kategori
+    // langsung tersinkron begitu nama produk valid diketik, tanpa harus
+    // menunggu varian juga persis sama.
+    let si=cariStok((it.prod||'').trim(),(it.varian||'').trim());
+    if(!si)si=DB.stok.find(s=>s.prod===(it.prod||'').trim());
     if(si)it.kat=si.kat;
   }
-  renderFormItems();
+  // PENTING: jangan panggil renderFormItems() (rebuild total DOM) di sini —
+  // itu penyebab bug "1 klik = 1 huruf/angka": setiap event oninput akan
+  // menghancurkan & membuat ulang elemen <input>, sehingga fokus & posisi
+  // kursor hilang dan user harus klik lagi untuk tiap karakter.
+  // Cukup perbarui bagian yang perlu berubah (subtotal, datalist varian,
+  // total, hint stok) tanpa mengganti elemen input yang sedang diketik.
+  updateRowDisplay(i,field);
 }
 function formTotalPesanan(){return _formItems.reduce((a,it)=>a+((it.qty||0)*(it.harga||0)),0)}
+// Perbarui tampilan 1 baris item TANPA membangun ulang elemen <input>
+// (dipakai saat user sedang mengetik, supaya fokus tidak hilang).
+function updateRowDisplay(i,field){
+  const it=_formItems[i];if(!it)return;
+  const wrap=document.getElementById('f-items-list');if(!wrap)return;
+  const rowEl=wrap.children[i];
+  if(rowEl){
+    const subtotalEl=rowEl.querySelector('.item-subtotal');
+    if(subtotalEl)subtotalEl.textContent=fmtRp((it.qty||0)*(it.harga||0));
+    if(field==='prod'){
+      const dl=rowEl.querySelector('datalist');
+      if(dl){const opts=[...new Set(DB.stok.filter(s=>s.prod===it.prod).map(s=>s.varian).filter(Boolean))];dl.innerHTML=opts.map(v=>`<option value="${escAttr(v)}">`).join('')}
+    }
+  }
+  const totalEl=document.getElementById('f-total-display');if(totalEl)totalEl.textContent=fmtRp(formTotalPesanan());
+  renderFormStokHint();
+}
+// Rebuild PENUH — hanya dipakai saat baris ditambah/dihapus/modal dibuka
+// (BUKAN saat mengetik), supaya jumlah elemen <input> sesuai jumlah baris.
 function renderFormItems(){
   const wrap=document.getElementById('f-items-list');if(!wrap)return;
   wrap.innerHTML=_formItems.map((it,i)=>`
@@ -902,7 +933,7 @@ function renderFormItems(){
       <div class="form-group" style="margin:0"><label style="font-size:11px">Harga Satuan (Rp)</label>
         <input class="form-input" type="number" min="0" value="${it.harga}" oninput="updateBarisItem(${i},'harga',this.value)"></div>
       <div class="form-group" style="margin:0"><label style="font-size:11px">Subtotal</label>
-        <div style="padding:8px 0;font-weight:700">${fmtRp((it.qty||0)*(it.harga||0))}</div></div>
+        <div class="item-subtotal" style="padding:8px 0;font-weight:700">${fmtRp((it.qty||0)*(it.harga||0))}</div></div>
       <button type="button" class="btn btn-sm btn-icon btn-danger" title="Hapus barang ini" onclick="hapusBarisItem(${i})">🗑</button>
     </div>`).join('');
   _formItems.forEach((it,i)=>{
