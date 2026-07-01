@@ -316,7 +316,6 @@ async function initApp(){
   filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];
   applyPengaturan();
   applyLogo();
-  populatePeriodeYearSelect();
   renderDashboard();
   renderJualTable();
   renderStokTable();
@@ -328,7 +327,6 @@ async function initApp(){
 
 // ===== ADMIN AUTH (Supabase Auth) + ROLE/PRIVILEGE =====
 let _currentAdminRole=null; // 'owner' | 'staff' | 'viewer' | 'pending' | null
-let _currentAdminNama=null; // nama admin dari admin_users.nama (fallback ke email)
 function showLoginScreen(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-wrap').style.display='none';
@@ -376,7 +374,6 @@ async function proceedAfterAuth(user){
     }
     // Kasus 5: normal — masuk app
     _currentAdminRole=data.role;
-    _currentAdminNama=(data.nama&&data.nama.trim())?data.nama.trim():user.email;
     showAppScreen();
     await initApp();             // render semua section
     applyRolePermissions();      // terapkan permission SETELAH render selesai
@@ -447,66 +444,24 @@ async function adminLogin(){
 async function adminLogout(){
   if(!confirm('Keluar dari dashboard?'))return;
   try{await supabaseClient.auth.signOut()}catch(e){}
-  _currentAdminUser=null;_currentAdminRole=null;_currentAdminNama=null;
+  _currentAdminUser=null;_currentAdminRole=null;
   document.getElementById('login-email').value='';
   document.getElementById('login-password').value='';
   loginAlert('');
   showLoginScreen();
 }
-function initialsFromNama(nama){
-  if(!nama)return '?';
-  const parts=nama.trim().split(/\s+/).filter(Boolean);
-  if(parts.length===1)return parts[0].substring(0,2).toUpperCase();
-  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
-}
-const ROLE_META={
-  owner:{label:'Owner',full:'👑 Owner (akses penuh)',cls:'role-owner',emoji:'👑'},
-  staff:{label:'Staff',full:'🛠 Staff (kelola transaksi & stok)',cls:'role-staff',emoji:'🛠'},
-  viewer:{label:'Viewer',full:'👁 Viewer (hanya lihat)',cls:'role-viewer',emoji:'👁'}
-};
 function updateAdminInfo(){
   const emailEl=document.getElementById('info-admin-email');
   const sinceEl=document.getElementById('info-admin-since');
-  if(emailEl){
-    emailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
-    sinceEl.textContent=_currentAdminUser&&_currentAdminUser.last_sign_in_at?new Date(_currentAdminUser.last_sign_in_at).toLocaleString('id-ID'):'–';
-  }
+  if(!emailEl)return;
+  emailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
+  sinceEl.textContent=_currentAdminUser&&_currentAdminUser.last_sign_in_at?new Date(_currentAdminUser.last_sign_in_at).toLocaleString('id-ID'):'–';
   const roleEl=document.getElementById('info-admin-role');
-  const meta=ROLE_META[_currentAdminRole]||{label:_currentAdminRole||'–',full:_currentAdminRole||'–',cls:'role-viewer'};
-  if(roleEl)roleEl.textContent=meta.full;
-
-  // ===== Widget "User Menu" pojok kiri atas =====
-  const nama=_currentAdminNama||(_currentAdminUser?_currentAdminUser.email:'');
-  const inisial=initialsFromNama(nama);
-  ['user-avatar','user-avatar-lg'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=inisial});
-  const nameEl=document.getElementById('user-menu-name');if(nameEl)nameEl.textContent=nama||'–';
-  const ddNameEl=document.getElementById('user-menu-dropdown-name');if(ddNameEl)ddNameEl.textContent=nama||'–';
-  const ddEmailEl=document.getElementById('user-menu-dropdown-email');if(ddEmailEl)ddEmailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
-  ['user-menu-role-pill','user-menu-dropdown-role-pill'].forEach(id=>{
-    const el=document.getElementById(id);if(!el)return;
-    el.className='user-menu-role-pill '+meta.cls;
-    el.textContent=(meta.emoji?meta.emoji+' ':'')+meta.label;
-  });
+  if(roleEl){
+    const label={owner:'👑 Owner (akses penuh)',staff:'🛠 Staff (kelola transaksi & stok)',viewer:'👁 Viewer (hanya lihat)'}[_currentAdminRole]||_currentAdminRole||'–';
+    roleEl.textContent=label;
+  }
 }
-// Buka/tutup dropdown user menu di pojok kiri atas
-function toggleUserMenu(){
-  const dd=document.getElementById('user-menu-dropdown');
-  const trg=document.getElementById('user-menu-trigger');
-  if(!dd||!trg)return;
-  const willOpen=!dd.classList.contains('open');
-  dd.classList.toggle('open',willOpen);
-  trg.classList.toggle('open',willOpen);
-}
-function closeUserMenu(){
-  const dd=document.getElementById('user-menu-dropdown');
-  const trg=document.getElementById('user-menu-trigger');
-  if(dd)dd.classList.remove('open');
-  if(trg)trg.classList.remove('open');
-}
-document.addEventListener('click',function(e){
-  const wrap=document.getElementById('user-menu-wrap');
-  if(wrap&&!wrap.contains(e.target))closeUserMenu();
-});
 function bukaModalGantiPassword(){
   document.getElementById('pw-baru').value='';document.getElementById('pw-ulang').value='';
   openModal('modal-ganti-password');
@@ -626,7 +581,7 @@ window.onload=async function(){
 // Jika sesi berubah (login/logout dari tab lain, token refresh, dst)
 if(typeof supabaseClient!=='undefined'&&supabaseClient){
   supabaseClient.auth.onAuthStateChange((event,session)=>{
-    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;_currentAdminNama=null;showLoginScreen()}
+    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;showLoginScreen()}
   });
 }
 
@@ -656,114 +611,12 @@ function populateKatDropdowns(){
   });
 }
 
-// ===== SISTEM PERIODE DATA (Hari Ini, Kemarin, Per Hari/Minggu/Bulan/Tahun) =====
-function pad2(n){return String(n).padStart(2,'0')}
-function orderDateObj(r){return new Date(r._date||r.tanggal.split('/').reverse().join('-'))}
-function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
-function endOfDay(d){const x=new Date(d);x.setHours(23,59,59,999);return x}
-// Senin dari minggu ISO tertentu (dipakai untuk input type="week", format YYYY-Www)
-function mondayOfISOWeek(year,week){
-  const simple=new Date(year,0,1+(week-1)*7);
-  const dow=simple.getDay();
-  const monday=new Date(simple);
-  if(dow<=4)monday.setDate(simple.getDate()-dow+1);
-  else monday.setDate(simple.getDate()+8-dow);
-  monday.setHours(0,0,0,0);
-  return monday;
-}
-function currentISOWeekValue(){
-  const d=new Date();
-  const target=new Date(d.valueOf());
-  const dayNr=(d.getDay()+6)%7;
-  target.setDate(target.getDate()-dayNr+3);
-  const firstThursday=target.valueOf();
-  target.setMonth(0,1);
-  if(target.getDay()!==4)target.setMonth(0,1+((4-target.getDay()+7)%7));
-  const week=1+Math.ceil((firstThursday-target)/(7*24*3600*1000));
-  return `${d.getFullYear()}-W${pad2(week)}`;
-}
-const BULAN_NAMA=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-
-// Tampilkan/sembunyikan input tanggal sesuai mode periode yang dipilih,
-// isi nilai default (hari/minggu/bulan/tahun berjalan), lalu muat ulang data.
-function onPeriodeModeChange(){
-  const mode=document.getElementById('periodeMode').value;
-  const elDate=document.getElementById('periodeDate');
-  const elWeek=document.getElementById('periodeWeek');
-  const elMonth=document.getElementById('periodeMonth');
-  const elYear=document.getElementById('periodeYear');
-  elDate.style.display=mode==='daily'?'':'none';
-  elWeek.style.display=mode==='weekly'?'':'none';
-  elMonth.style.display=mode==='monthly'?'':'none';
-  elYear.style.display=mode==='yearly'?'':'none';
-  if(mode==='daily'&&!elDate.value)elDate.value=today();
-  if(mode==='weekly'&&!elWeek.value)elWeek.value=currentISOWeekValue();
-  if(mode==='monthly'&&!elMonth.value)elMonth.value=today().slice(0,7);
-  if(mode==='yearly'&&!elYear.value){populatePeriodeYearSelect();elYear.value=String(new Date().getFullYear())}
-  reloadData();
-}
-// Isi pilihan tahun di dropdown "Berdasarkan Tahun" dari tahun-tahun yang
-// benar-benar ada di data pesanan (+ tahun berjalan), bukan daftar statis.
-function populatePeriodeYearSelect(){
-  const elYear=document.getElementById('periodeYear');if(!elYear)return;
-  const tahunSet=new Set([new Date().getFullYear()]);
-  (DB.penjualan||[]).forEach(r=>{try{tahunSet.add(orderDateObj(r).getFullYear())}catch(e){}});
-  const tahunArr=[...tahunSet].sort((a,b)=>b-a);
-  const cur=elYear.value;
-  elYear.innerHTML=tahunArr.map(y=>`<option value="${y}">Tahun ${y}</option>`).join('');
-  if(cur&&tahunArr.includes(parseInt(cur)))elYear.value=cur;
-}
-// Menghitung rentang tanggal (start-end) & label sesuai mode periode yang aktif.
-function getPeriodeRange(){
-  const mode=document.getElementById('periodeMode').value;
-  if(mode==='today'){
-    return{start:startOfDay(new Date()),end:endOfDay(new Date()),label:'Hari Ini'};
-  }
-  if(mode==='yesterday'){
-    const y=new Date();y.setDate(y.getDate()-1);
-    return{start:startOfDay(y),end:endOfDay(y),label:'Kemarin'};
-  }
-  if(mode==='daily'){
-    const v=document.getElementById('periodeDate').value||today();
-    const d=new Date(v+'T00:00:00');
-    return{start:startOfDay(d),end:endOfDay(d),label:fmtTgl(d)};
-  }
-  if(mode==='weekly'){
-    const v=document.getElementById('periodeWeek').value||currentISOWeekValue();
-    const[yy,ww]=v.split('-W').map(Number);
-    const mon=mondayOfISOWeek(yy,ww);
-    const sun=new Date(mon);sun.setDate(mon.getDate()+6);
-    return{start:startOfDay(mon),end:endOfDay(sun),label:`Minggu ${ww} (${fmtTgl(mon)} – ${fmtTgl(sun)})`};
-  }
-  if(mode==='monthly'){
-    const v=document.getElementById('periodeMonth').value||today().slice(0,7);
-    const[yy,mm]=v.split('-').map(Number);
-    const start=new Date(yy,mm-1,1);const end=new Date(yy,mm,0,23,59,59,999);
-    return{start,end,label:`${BULAN_NAMA[mm-1]} ${yy}`};
-  }
-  if(mode==='yearly'){
-    const yy=parseInt(document.getElementById('periodeYear').value)||new Date().getFullYear();
-    const start=new Date(yy,0,1);const end=new Date(yy,11,31,23,59,59,999);
-    return{start,end,label:`Tahun ${yy}`};
-  }
-  // fallback: mode rolling "N hari terakhir" (7/30/90)
-  const p=parseInt(mode)||30;
-  const end=endOfDay(new Date());
-  const start=startOfDay(new Date());start.setDate(start.getDate()-p);
-  return{start,end,label:`${p} Hari Terakhir`};
-}
-function dalamPeriode(r,range){const d=orderDateObj(r);return d>=range.start&&d<=range.end}
-
 // ===== DASHBOARD =====
-function reloadData(){
-  renderDashboard();
-  const activeSection=document.querySelector('.section.active');
-  const id=activeSection?activeSection.id.replace('sec-',''):'';
-  if(id==='laporan')renderLaporan();
-}
+function reloadData(){renderDashboard()}
 function renderDashboard(){
-  const range=getPeriodeRange();
-  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&dalamPeriode(r,range));
+  const p=parseInt(document.getElementById('periodeSelect').value);
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-p);
+  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&new Date(r._date||r.tanggal.split('/').reverse().join('-'))>=cutoff);
   const totalRev=recent.reduce((a,r)=>a+orderTotal(r),0);
   const totalOrd=recent.length;
   const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
@@ -774,9 +627,9 @@ function renderDashboard(){
   const margin=totalRev>0?totalLaba/totalRev*100:0;
 
   document.getElementById('m-rev').textContent=fmtRp(totalRev);
-  const revSub=document.getElementById('m-rev-sub');revSub.textContent=range.label;revSub.classList.remove('green','red');revSub.style.color='var(--text3)';
+  document.getElementById('m-rev-sub').textContent='▲ 18.4% vs periode lalu';
   document.getElementById('m-ord').textContent=totalOrd.toLocaleString('id-ID');
-  const ordSub=document.getElementById('m-ord-sub');ordSub.textContent=range.label;ordSub.classList.remove('green','red');ordSub.style.color='var(--text3)';
+  document.getElementById('m-ord-sub').textContent='▲ 12.1% vs periode lalu';
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
   document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih';
   document.getElementById('m-kritis').textContent=kritis;
@@ -921,14 +774,23 @@ function hapusBarisBarang(i){
   if(_formItems.length<=1){alert('Pesanan harus punya minimal 1 barang.');return}
   _formItems.splice(i,1);renderFormItems();
 }
-// Render ulang seluruh baris form barang (dipakai saat baris ditambah/dihapus/
-// modal dibuka). TIDAK dipanggil lagi setiap kali user mengetik, supaya
-// elemen <input> yang sedang difokus tidak dihancurkan & dibuat ulang
-// (itulah penyebab bug "1 klik hanya bisa menulis 1 huruf").
+// Render ulang seluruh baris form barang + total & hint stok per baris.
 function renderFormItems(){
   const wrap=document.getElementById('f-items-wrap');if(!wrap)return;
   wrap.innerHTML=_formItems.map((it,i)=>{
-    return `<div class="f-item-row" id="f-item-row-${i}" style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
+    const si=cariStok(it.prod,it.varian);
+    const qty=it.qty||0;
+    let hint='';
+    if(it.prod){
+      if(si){
+        const sisa=si.stok-qty;const kurang=sisa<0;
+        hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:${kurang?'var(--danger-bg)':'var(--success-bg)'};color:${kurang?'var(--danger)':'var(--success)'}">${kurang?`⚠️ Stok kurang (tersisa ${si.stok} pcs)`:`✅ Stok cukup, sisa ${sisa} pcs`}</div>`;
+      }else{
+        hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:var(--warning-bg);color:var(--warning)">⚠️ Tidak ditemukan di Stok Gudang — stok tidak otomatis berkurang</div>`;
+      }
+    }
+    const subtotal=(it.qty||0)*(it.harga||0);
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
       <div style="display:grid;grid-template-columns:2fr 1.3fr;gap:8px">
         <div class="form-group" style="margin-bottom:6px"><label style="font-size:11px">Nama Produk</label>
           <input class="form-input" list="dl-produk-stok" value="${it.prod||''}" placeholder="Pilih/ketik produk" oninput="updateBarisBarang(${i},'prod',this.value)" autocomplete="off"></div>
@@ -938,7 +800,7 @@ function renderFormItems(){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Kategori</label>
-          <select class="form-input" id="f-item-kat-${i}" onchange="updateBarisBarang(${i},'kat',this.value)">${getKatNames().map(k=>`<option value="${k}" ${it.kat===k?'selected':''}>${k}</option>`).join('')}</select></div>
+          <select class="form-input" onchange="updateBarisBarang(${i},'kat',this.value)">${getKatNames().map(k=>`<option value="${k}" ${it.kat===k?'selected':''}>${k}</option>`).join('')}</select></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Qty</label>
           <input class="form-input" type="number" min="1" value="${it.qty!=null?it.qty:1}" oninput="updateBarisBarang(${i},'qty',this.value)"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Harga Satuan (Rp)</label>
@@ -946,62 +808,26 @@ function renderFormItems(){
         <button type="button" class="btn btn-sm btn-icon btn-danger" title="Hapus barang ini" onclick="hapusBarisBarang(${i})" style="margin-bottom:2px">🗑</button>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-        <span style="font-size:11px;color:var(--text3)">Subtotal: <strong style="color:var(--text1)" id="f-item-subtotal-${i}">${fmtRp((it.qty||0)*(it.harga||0))}</strong></span>
+        <span style="font-size:11px;color:var(--text3)">Subtotal: <strong style="color:var(--text1)">${fmtRp(subtotal)}</strong></span>
       </div>
-      <div id="f-item-hint-${i}"></div>
+      ${hint}
     </div>`;
   }).join('');
-  // Isi hint stok awal untuk setiap baris (tanpa perlu re-render penuh nantinya)
-  _formItems.forEach((it,i)=>refreshBarisBarangTampilan(i));
-  updateTotalPesanan();
+  const totalPesanan=_formItems.reduce((a,it)=>a+(it.qty||0)*(it.harga||0),0);
+  const totalEl=document.getElementById('f-total-pesanan');
+  if(totalEl)totalEl.textContent=fmtRp(totalPesanan);
 }
-// Update data 1 baris barang saat user mengetik/memilih, TANPA merender ulang
-// seluruh form (supaya fokus/cursor di input tidak hilang tiap ketikan).
 function updateBarisBarang(i,field,val){
   if(!_formItems[i])return;
   if(field==='qty')_formItems[i].qty=parseInt(val)||1;
   else if(field==='harga')_formItems[i].harga=parseFloat(val)||0;
   else _formItems[i][field]=val;
-  if(field==='prod'||field==='varian'){
-    // Sinkronisasi otomatis kategori dari Stok Gudang saat nama produk/varian cocok
-    const si=cariStok(_formItems[i].prod,_formItems[i].varian);
-    if(si){
-      _formItems[i].kat=si.kat;
-      const katSel=document.getElementById(`f-item-kat-${i}`);
-      if(katSel)katSel.value=si.kat;
-    }
-    if(field==='prod'){
-      // Perbarui daftar pilihan varian sesuai produk yang baru diketik/dipilih
-      const dl=document.getElementById(`dl-varian-stok-${i}`);
-      if(dl)dl.innerHTML=[...new Set(DB.stok.filter(s=>s.prod===val).map(s=>s.varian).filter(Boolean))].map(v=>`<option value="${v}">`).join('');
-    }
+  if(field==='prod'){
+    // Auto-isi kategori dari Stok Gudang saat nama produk cocok
+    const si=cariStok(val,_formItems[i].varian);
+    if(si)_formItems[i].kat=si.kat;
   }
-  refreshBarisBarangTampilan(i);
-  updateTotalPesanan();
-}
-// Perbarui hanya subtotal & hint stok 1 baris (tidak menyentuh elemen <input>)
-function refreshBarisBarangTampilan(i){
-  const it=_formItems[i];if(!it)return;
-  const si=cariStok(it.prod,it.varian);
-  const qty=it.qty||0;
-  let hint='';
-  if(it.prod){
-    if(si){
-      const sisa=si.stok-qty;const kurang=sisa<0;
-      hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:${kurang?'var(--danger-bg)':'var(--success-bg)'};color:${kurang?'var(--danger)':'var(--success)'}">${kurang?`⚠️ Stok kurang (tersisa ${si.stok} pcs)`:`✅ Stok cukup, sisa ${sisa} pcs`}</div>`;
-    }else{
-      hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:var(--warning-bg);color:var(--warning)">⚠️ Tidak ditemukan di Stok Gudang — stok tidak otomatis berkurang</div>`;
-    }
-  }
-  const hintEl=document.getElementById(`f-item-hint-${i}`);
-  if(hintEl)hintEl.innerHTML=hint;
-  const subEl=document.getElementById(`f-item-subtotal-${i}`);
-  if(subEl)subEl.textContent=fmtRp((it.qty||0)*(it.harga||0));
-}
-function updateTotalPesanan(){
-  const totalPesanan=_formItems.reduce((a,it)=>a+(it.qty||0)*(it.harga||0),0);
-  const totalEl=document.getElementById('f-total-pesanan');
-  if(totalEl)totalEl.textContent=fmtRp(totalPesanan);
+  renderFormItems();
 }
 // ===== SARAN BIAYA ADMIN & BIAYA TAMBAHAN (berdasarkan riwayat pesanan) =====
 // Mengganti pengaturan global lama (Biaya Admin per Marketplace % & Biaya
@@ -1574,18 +1400,13 @@ function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa rese
 
 // ===== LAPORAN =====
 function renderLaporan(){
-  const range=getPeriodeRange();
-  const all=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&dalamPeriode(r,range));
-  // th = total HPP, te = total Ongkir & biaya lain (dari biayaTambahan tiap
-  // pesanan, atau default pengaturan biaya jika pesanan tidak diisi manual).
-  // Semua diambil dari hitungLaba() per pesanan (data asli), BUKAN angka
-  // tetap/dummy, supaya totalnya konsisten dengan Estimasi Laba Bersih.
-  let to=0,tl=0,tf=0,th=0,te=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee;th+=h.hpp;te+=h.extra});
+  const all=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
+  let to=0,tl=0,tf=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee});
   document.getElementById('keuangan-rows').innerHTML=[
-    {l:`Total Omzet (${range.label})`,v:fmtRp(to),c:''},
+    {l:'Total Omzet (30 hari)',v:fmtRp(to),c:''},
     {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
-    {l:'Ongkir & Biaya Lain (subsidi)',v:'− '+fmtRp(te),c:'red'},
-    {l:'HPP Estimasi',v:'− '+fmtRp(th),c:'red'},
+    {l:'Ongkos Kirim (subsidi)',v:'− Rp 3.240.000',c:'red'},
+    {l:'HPP Estimasi',v:'− '+fmtRp(to*((DB.biaya&&DB.biaya.hpp_pct!=null)?DB.biaya.hpp_pct:45)/100),c:'red'},
     {l:'Estimasi Laba Bersih',v:fmtRp(tl),c:'green'},
     {l:'Margin Bersih',v:(to>0?tl/to*100:0).toFixed(1)+'%',c:'green'},
   ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
