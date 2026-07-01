@@ -10,7 +10,11 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TBL_KATEGORI='kategori';
 const TBL_MARKETPLACE='marketplace';
 const TBL_STOK='stok';
-const TBL_PENJUALAN='penjualan';
 const TBL_BIAYA='biaya_pengaturan';
 const TBL_HPP_PRODUK='hpp_per_produk';
 const TBL_PENGATURAN='pengaturan_toko';
+
+// Skema pesanan multi-barang (lihat MULTI-ITEM-PESANAN.sql):
+// 1 pesanan (header) bisa punya banyak baris pesanan_item (barang).
+const TBL_PESANAN='pesanan';
+const TBL_PESANAN_ITEM='pesanan_item';
