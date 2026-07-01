@@ -676,9 +676,9 @@ function populateKatDropdowns(){
 // ===== DASHBOARD =====
 function reloadData(){renderDashboard()}
 function renderDashboard(){
-  const p=parseInt(document.getElementById('periodeSelect').value);
-  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-p);
-  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&new Date(r._date||r.tanggal.split('/').reverse().join('-'))>=cutoff);
+  const modePeriode=document.getElementById('periodeSelect').value;
+  const{start,end,groupBy}=getRentangLaporan(modePeriode);
+  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date&&new Date(r._date)>=start&&new Date(r._date)<=end);
   const totalRev=recent.reduce((a,r)=>a+r.total,0);
   const totalOrd=recent.length;
   const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
@@ -689,10 +689,22 @@ function renderDashboard(){
   let totalLaba=0;flattenPenjualan(recent).forEach(f=>{totalLaba+=hitungLaba(f).laba});
   const margin=totalRev>0?totalLaba/totalRev*100:0;
 
+  // Perbandingan vs periode SEBELUMNYA (durasi yang sama, persis sebelum
+  // rentang saat ini) — dihitung real dari data, bukan angka tetap lagi.
+  const durMs=end.getTime()-start.getTime();
+  const prevEnd=new Date(start.getTime()-1);
+  const prevStart=new Date(prevEnd.getTime()-durMs);
+  const prev=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date&&new Date(r._date)>=prevStart&&new Date(r._date)<=prevEnd);
+  const prevRev=prev.reduce((a,r)=>a+r.total,0);
+  const prevOrd=prev.length;
+  const pctRev=prevRev>0?((totalRev-prevRev)/prevRev*100):(totalRev>0?100:0);
+  const pctOrd=prevOrd>0?((totalOrd-prevOrd)/prevOrd*100):(totalOrd>0?100:0);
+  const panahSub=(pct)=>(pct>=0?'▲ ':'▼ ')+Math.abs(pct).toFixed(1)+'% vs periode lalu';
+
   document.getElementById('m-rev').textContent=fmtRp(totalRev);
-  document.getElementById('m-rev-sub').textContent='▲ 18.4% vs periode lalu';
+  document.getElementById('m-rev-sub').textContent=panahSub(pctRev);
   document.getElementById('m-ord').textContent=totalOrd.toLocaleString('id-ID');
-  document.getElementById('m-ord-sub').textContent='▲ 12.1% vs periode lalu';
+  document.getElementById('m-ord-sub').textContent=panahSub(pctOrd);
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
   document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih';
   document.getElementById('m-kritis').textContent=kritis;
@@ -724,28 +736,27 @@ function renderDashboard(){
     <div class="prog-track"><div class="prog-fill" style="width:${Math.round(q/maxQ*100)}%"></div></div>
     <div class="prog-val">${q} pcs</div></div>`).join('');
 
-  renderTrendChart(recent,p);
+  renderTrendChart(start,end,groupBy);
   renderStokPieChart();
 }
 
-function renderTrendChart(recent,days){
-  const labels=[],d1=[],d2=[],d3=[];
-  for(let i=days-1;i>=0;i--){
-    const d=new Date();d.setDate(d.getDate()-i);
-    labels.push(`${d.getDate()}/${d.getMonth()+1}`);
-    const ds=fmtTgl(d);const dr=recent.filter(r=>r.tanggal===ds);
-    d1.push(dr.filter(r=>r.mp==='Shopee').reduce((a,r)=>a+r.total,0));
-    d2.push(dr.filter(r=>r.mp==='Tokopedia').reduce((a,r)=>a+r.total,0));
-    d3.push(dr.filter(r=>r.mp==='TikTok Shop').reduce((a,r)=>a+r.total,0));
-  }
+function renderTrendChart(start,end,groupBy){
+  // Untuk rentang tetap yang pendek (Hari Ini/Kemarin/7 Hari/30 Hari) belum
+  // punya groupBy -> tampilkan per hari (satuan wajar untuk rentang <=30 hari).
+  const unit=groupBy||'day';
+  const buckets=buatBucketLaporan(start,end,unit);
+  const aktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date);
+  const labels=buckets.map(b=>b.label);
+  const datasets=MP_LIST.map(m=>({
+    label:m,
+    data:buckets.map(b=>aktif.filter(r=>r.mp===m&&new Date(r._date)>=b.start&&new Date(r._date)<=b.end).reduce((a,r)=>a+(r.total||0),0)),
+    borderColor:getMpColor(m),tension:.4,pointRadius:0,borderWidth:1.5,fill:false
+  }));
   if(charts.trend)charts.trend.destroy();
-  charts.trend=new Chart(document.getElementById('chartTrend'),{type:'line',data:{labels,datasets:[
-    {label:'Shopee',data:d1,borderColor:'#ee4d2d',tension:.4,pointRadius:0,borderWidth:1.5,fill:false},
-    {label:'Tokopedia',data:d2,borderColor:'#00aa5b',tension:.4,pointRadius:0,borderWidth:1.5,fill:false},
-    {label:'TikTok',data:d3,borderColor:'#888',tension:.4,pointRadius:0,borderWidth:1.5,fill:false}]},
+  charts.trend=new Chart(document.getElementById('chartTrend'),{type:'line',data:{labels,datasets},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{ticks:{color:'#888',font:{size:10},maxTicksLimit:8,autoSkip:true},grid:{color:'rgba(128,128,128,.1)'}},
-        y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+(v/1e6).toFixed(1)+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
+        y:{ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
 }
 
 function renderStokPieChart(){
