@@ -1500,12 +1500,43 @@ function renderLaporan(){
   charts.mpBar=new Chart(document.getElementById('chartMpBar'),{type:'bar',data:{labels:MP_LIST,datasets:[{label:'Revenue',data:MP_LIST.map(m=>Math.round(mpRev[m]/1e6*10)/10),backgroundColor:MP_LIST.map(m=>getMpColor(m)),borderWidth:0,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+v+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
 
   if(charts.bulanan)charts.bulanan.destroy();
-  charts.bulanan=new Chart(document.getElementById('chartBulanan'),{type:'bar',data:{labels:['Jan','Feb','Mar','Apr','Mei','Jun'],datasets:[
-    {label:'Shopee',data:[38,42,39,45,48,52].map(v=>v*1e6),backgroundColor:'#ee4d2d',borderRadius:3},
-    {label:'Tokopedia',data:[28,31,29,33,35,38].map(v=>v*1e6),backgroundColor:'#00aa5b',borderRadius:3},
-    {label:'TikTok Shop',data:[12,15,18,19,22,25].map(v=>v*1e6),backgroundColor:'#888',borderRadius:3},
-    {label:'Lazada',data:[9,10,9,10,10,11].map(v=>v*1e6),backgroundColor:'#1a0dab',borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{stacked:true,ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+(v/1e6).toFixed(0)+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
+  const selPeriode=document.getElementById('f-periode-bulanan');
+  const bulanCount=selPeriode?parseInt(selPeriode.value)||6:6;
+  const titleEl=document.getElementById('bulanan-title');
+  if(titleEl)titleEl.textContent='Tren Bulanan ('+bulanCount+' Bulan Terakhir)';
+  const tren=hitungTrenBulanan(bulanCount);
+  charts.bulanan=new Chart(document.getElementById('chartBulanan'),{type:'bar',data:{labels:tren.labels,datasets:MP_LIST.map(m=>({label:m,data:tren.data[m]||tren.labels.map(()=>0),backgroundColor:getMpColor(m),borderRadius:3}))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{stacked:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
+}
+// Hitung total revenue per bulan & per marketplace, N bulan terakhir sampai
+// bulan berjalan (dipakai grafik Tren Bulanan di Laporan Keuangan). Data
+// diambil dari DB.penjualan asli (bukan dummy), dikelompokkan berdasarkan
+// tahun-bulan dari r._date, hanya pesanan yang berstatus aktif.
+function hitungTrenBulanan(bulanCount){
+  const now=new Date();
+  const bulanKe=[];
+  for(let i=bulanCount-1;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    bulanKe.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})});
+  }
+  const data={};MP_LIST.forEach(m=>data[m]=bulanKe.map(()=>0));
+  DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).forEach(r=>{
+    const d=new Date(r._date);if(isNaN(d))return;
+    const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    const idx=bulanKe.findIndex(b=>b.key===key);
+    if(idx===-1)return;
+    if(!data[r.mp])data[r.mp]=bulanKe.map(()=>0);
+    data[r.mp][idx]+=r.total||0;
+  });
+  return{labels:bulanKe.map(b=>b.label),data};
+}
+// Format angka Rupiah ringkas untuk sumbu grafik (rb/jt), menyesuaikan skala
+// omzet toko kecil maupun besar (dulu selalu dibulatkan ke "jt" saja).
+function fmtRingkas(v){
+  if(v>=1e9)return 'Rp'+(v/1e9).toFixed(1)+'M';
+  if(v>=1e6)return 'Rp'+(v/1e6).toFixed(1)+'jt';
+  if(v>=1e3)return 'Rp'+(v/1e3).toFixed(0)+'rb';
+  return 'Rp'+v;
 }
 
 // ===== PAGINATION =====
