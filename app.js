@@ -1481,12 +1481,16 @@ function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa rese
 // ===== LAPORAN =====
 function renderLaporan(){
   const all=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
-  let to=0,tl=0,tf=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee});
+  // Semua komponen (tf/te/th) dihitung PER PESANAN lewat hitungLaba() supaya
+  // konsisten dengan Estimasi Laba Bersih (tl) — tidak ada lagi angka
+  // hardcode/dummy yang tidak berhubungan dengan data transaksi asli.
+  let to=0,tl=0,tf=0,te=0,th=0;
+  all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee;te+=h.extra;th+=h.hpp});
   document.getElementById('keuangan-rows').innerHTML=[
     {l:'Total Omzet (30 hari)',v:fmtRp(to),c:''},
     {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
-    {l:'Ongkos Kirim (subsidi)',v:'− Rp 3.240.000',c:'red'},
-    {l:'HPP Estimasi',v:'− '+fmtRp(to*((DB.biaya&&DB.biaya.hpp_pct!=null)?DB.biaya.hpp_pct:45)/100),c:'red'},
+    {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),c:'red'},
+    {l:'HPP Estimasi',v:'− '+fmtRp(th),c:'red'},
     {l:'Estimasi Laba Bersih',v:fmtRp(tl),c:'green'},
     {l:'Margin Bersih',v:(to>0?tl/to*100:0).toFixed(1)+'%',c:'green'},
   ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
