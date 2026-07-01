@@ -65,39 +65,61 @@ function syncToSupabase(tables){
     try{
       await Promise.all(todo.map(t=>SYNC_FN[t]&&SYNC_FN[t]()));
       updateSyncBadge(true);
-    }catch(e){console.warn('Supabase sync error:',e);updateSyncBadge(false,e.message)}
+    }catch(e){
+      console.warn('Supabase sync error:',e);
+      updateSyncBadge(false,e.message);
+      // Data lokal (localStorage) tetap aman (lihat catatan di safeReplace()),
+      // tapi user perlu tahu perubahan terakhir BELUM tersimpan ke server,
+      // supaya tidak menutup browser dalam keadaan itu.
+      alert('⚠️ Gagal menyimpan perubahan ke server (Supabase).\n\nData Anda masih aman tersimpan di browser ini, tapi BELUM tersinkron ke cloud. Penyebab umum: ada No. Pesanan / SKU yang sama dipakai dua kali.\n\nDetail: '+e.message+'\n\nPerbaiki data yang bentrok lalu coba simpan lagi.');
+    }
   },700);
 }
 
-// Strategi: full-replace per tabel (hapus semua baris lalu insert ulang).
-// Sederhana & aman, dan sekarang HANYA dijalankan untuk tabel yang benar-benar
-// berubah (bukan semua tabel setiap kali save) -> jauh lebih ringan & responsif.
-async function fullReplace(table,rows){
-  if(!rows.length){ // tetap hapus semua kalau memang kosong
+// Strategi (DIPERBAIKI): dulu "hapus semua baris lalu insert ulang" (fullReplace).
+// Bahaya: jika insert gagal (mis. ada 2 baris lokal dengan nilai kolom unik yang
+// SAMA -> melanggar constraint UNIQUE di database), baris yang sudah kadung
+// dihapus di langkah pertama TIDAK bisa kembali -> tabel di Supabase jadi KOSONG
+// walau data lokal masih lengkap. Saat aplikasi dibuka lagi / login di device lain,
+// data kosong dari Supabase ini menimpa localStorage -> data hilang permanen.
+//
+// Strategi baru "safeReplace": UPSERT dulu (insert baris baru / update baris yang
+// sudah ada, berdasarkan kolom unik), baru SETELAH itu berhasil, hapus baris di
+// server yang sudah tidak ada lagi di data lokal (mis. karena dihapus user).
+// Dengan urutan ini, kalau ada error di langkah upsert (misal duplikat), proses
+// berhenti SEBELUM ada apa pun yang terhapus -> data di server tetap aman.
+async function safeReplace(table,rows,uniqueCol){
+  if(!rows.length){ // memang sengaja dikosongkan semua oleh user
     const{error}=await supabaseClient.from(table).delete().gte('id',0);
     if(error)throw error; return;
   }
-  const{error:delErr}=await supabaseClient.from(table).delete().gte('id',0);
-  if(delErr)throw delErr;
-  const{error:insErr}=await supabaseClient.from(table).insert(rows);
-  if(insErr)throw insErr;
+  const{error:upErr}=await supabaseClient.from(table).upsert(rows,{onConflict:uniqueCol});
+  if(upErr)throw upErr;
+  const{data:existing,error:selErr}=await supabaseClient.from(table).select(uniqueCol);
+  if(selErr)throw selErr;
+  const localSet=new Set(rows.map(r=>r[uniqueCol]));
+  const toDelete=(existing||[]).map(r=>r[uniqueCol]).filter(v=>!localSet.has(v));
+  if(toDelete.length){
+    const{error:delErr}=await supabaseClient.from(table).delete().in(uniqueCol,toDelete);
+    if(delErr)throw delErr;
+  }
 }
 async function syncKategori_(){
-  await fullReplace(TBL_KATEGORI, DB.kategori.map(k=>({nama:k.nama,color:k.color})));
+  await safeReplace(TBL_KATEGORI, DB.kategori.map(k=>({nama:k.nama,color:k.color})), 'nama');
 }
 async function syncMarketplace_(){
-  await fullReplace(TBL_MARKETPLACE, DB.marketplace.map(m=>{
+  await safeReplace(TBL_MARKETPLACE, DB.marketplace.map(m=>{
     const fee=DB.biaya&&DB.biaya.mp_fee?DB.biaya.mp_fee[m.nama]:null;
     return{nama:m.nama,color:m.color,fee_persen:fee!=null?fee:3};
-  }));
+  }), 'nama');
 }
 async function syncStok_(){
-  await fullReplace(TBL_STOK, DB.stok.map(s=>{
+  await safeReplace(TBL_STOK, DB.stok.map(s=>{
     return{sku:s.sku,produk:s.prod,varian:s.varian||'',kategori:s.kat||'Lainnya',stok:s.stok!=null?s.stok:0,terjual:s.terjual!=null?s.terjual:0,hpp:s.hpp!=null?s.hpp:0};
-  }));
+  }), 'sku');
 }
 async function syncPenjualan_(){
-  await fullReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty!=null?r.qty:1,total:r.total!=null?r.total:0,status:r.status||'Selesai',biaya_admin:r.biayaAdmin!=null?r.biayaAdmin:null,biaya_tambahan:r.biayaTambahan!=null?r.biayaTambahan:null})));
+  await safeReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty!=null?r.qty:1,total:r.total!=null?r.total:0,status:r.status||'Selesai',biaya_admin:r.biayaAdmin!=null?r.biayaAdmin:null,biaya_tambahan:r.biayaTambahan!=null?r.biayaTambahan:null})), 'no_pesanan');
 }
 async function syncBiayaPengaturan_(){
   const b=DB.biaya||{};const ex=b.extra||{};
@@ -766,6 +788,9 @@ function simpanPesanan(){
   const idx=document.getElementById('edit-jual-idx').value;
   const no=document.getElementById('f-no').value.trim();const prod=document.getElementById('f-prod').value.trim();const tgl=document.getElementById('f-tgl').value;
   if(!no||!prod||!tgl){alert('Mohon isi No. Pesanan, Tanggal, dan Nama Produk');return}
+  const idxSaatIni=idx!==''&&idx>=0?parseInt(idx):-1;
+  const duplikat=DB.penjualan.findIndex((r,i)=>i!==idxSaatIni&&r.no.trim().toLowerCase()===no.toLowerCase());
+  if(duplikat!==-1){alert('⚠️ No. Pesanan "'+no+'" sudah dipakai oleh pesanan lain.\n\nSetiap No. Pesanan harus unik. Ganti nomornya atau edit pesanan yang sudah ada.');return}
   const varianCek=document.getElementById('f-var').value.trim();
   if(!cariStok(prod,varianCek)){
     const lanjut=confirm('⚠️ Produk/varian "'+prod+(varianCek?' - '+varianCek:'')+'" tidak ditemukan persis sama di Stok Gudang.\n\nStok TIDAK akan otomatis berkurang untuk pesanan ini.\n\nLanjutkan simpan tanpa update stok? (Klik Batal untuk perbaiki nama produk/varian dulu)');
@@ -1295,7 +1320,15 @@ function processCSV(file,type){
     for(let i=1;i<lines.length;i++){
       const cols=lines[i].split(',');const row={};headers.forEach((h,j)=>row[h]=(cols[j]||'').trim());
       try{
-        if(type==='jual'){const d=row.tanggal||fmtTgl(new Date());const mpNama=row.marketplace||'Shopee';if(!DB.marketplace.some(m=>m.nama.toLowerCase()===mpNama.toLowerCase())){DB.marketplace.push({nama:mpNama,color:MP_COLOR_CHOICES[DB.marketplace.length%MP_COLOR_CHOICES.length]});refreshMpGlobals()}DB.penjualan.push({no:row.no_pesanan||row.no||'IMP-'+i,tanggal:d,_date:new Date(d.split('/').reverse().join('-')||d).toISOString(),mp:mpNama,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',qty:parseInt(row.qty||1),total:parseInt((row.total||'0').replace(/[^0-9]/g,'')),status:row.status||'Selesai',biayaAdmin:row.biaya_admin!==undefined&&row.biaya_admin!==''?parseFloat(row.biaya_admin.replace(/[^0-9.]/g,'')):null,biayaTambahan:row.biaya_tambahan!==undefined&&row.biaya_tambahan!==''?parseFloat(row.biaya_tambahan.replace(/[^0-9.]/g,'')):null});imported++}
+        if(type==='jual'){const d=row.tanggal||fmtTgl(new Date());const mpNama=row.marketplace||'Shopee';if(!DB.marketplace.some(m=>m.nama.toLowerCase()===mpNama.toLowerCase())){DB.marketplace.push({nama:mpNama,color:MP_COLOR_CHOICES[DB.marketplace.length%MP_COLOR_CHOICES.length]});refreshMpGlobals()}
+          const noImp=row.no_pesanan||row.no||'IMP-'+i;
+          const orderBaru={no:noImp,tanggal:d,_date:new Date(d.split('/').reverse().join('-')||d).toISOString(),mp:mpNama,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',qty:parseInt(row.qty||1),total:parseInt((row.total||'0').replace(/[^0-9]/g,'')),status:row.status||'Selesai',biayaAdmin:row.biaya_admin!==undefined&&row.biaya_admin!==''?parseFloat(row.biaya_admin.replace(/[^0-9.]/g,'')):null,biayaTambahan:row.biaya_tambahan!==undefined&&row.biaya_tambahan!==''?parseFloat(row.biaya_tambahan.replace(/[^0-9.]/g,'')):null};
+          // Cegah No. Pesanan duplikat (yang menyebabkan gagal sinkron ke Supabase):
+          // jika nomor ini sudah ada (di data lama ATAU sudah diimport di baris CSV sebelumnya),
+          // TIMPA (update) baris yang sudah ada, jangan tambah baris baru.
+          const idxAda=DB.penjualan.findIndex(r=>r.no.trim().toLowerCase()===noImp.trim().toLowerCase());
+          if(idxAda!==-1)DB.penjualan[idxAda]=orderBaru;else DB.penjualan.push(orderBaru);
+          imported++}
         else{DB.stok.push({sku:row.sku||'SKU-IMP-'+i,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',stok:parseInt(row.stok||0),terjual:parseInt(row.terjual_30h||row.terjual||0),hpp:parseFloat((row.hpp||'0').replace(/[^0-9.]/g,''))||0});imported++}
       }catch(err){errors++}
     }
