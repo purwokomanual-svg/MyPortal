@@ -118,8 +118,55 @@ async function syncStok_(){
     return{sku:s.sku,produk:s.prod,varian:s.varian||'',kategori:s.kat||'Lainnya',stok:s.stok!=null?s.stok:0,terjual:s.terjual!=null?s.terjual:0,hpp:s.hpp!=null?s.hpp:0};
   }), 'sku');
 }
+// ===== HELPER PESANAN MULTI-BARANG =====
+// Setiap pesanan (DB.penjualan[i]) sekarang punya `items`: array barang
+// [{sku,prod,varian,kat,qty,harga}]. Total pesanan SELALU dihitung dari
+// penjumlahan item, tidak lagi disimpan manual.
+function orderTotal(r){return(r.items||[]).reduce((a,it)=>a+(it.qty||0)*(it.harga||0),0)}
+function orderQty(r){return(r.items||[]).reduce((a,it)=>a+(it.qty||0),0)}
+function ringkasItem(r){
+  const items=r.items||[];
+  if(!items.length)return '–';
+  const first=items[0].prod+(items[0].varian?' ('+items[0].varian+')':'');
+  return items.length>1?`${first} +${items.length-1} barang lain`:first;
+}
+
 async function syncPenjualan_(){
-  await safeReplace(TBL_PENJUALAN, DB.penjualan.map(r=>({no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),marketplace:r.mp,produk:r.prod,varian:r.varian||'',kategori:r.kat||'Lainnya',qty:r.qty!=null?r.qty:1,total:r.total!=null?r.total:0,status:r.status||'Selesai',biaya_admin:r.biayaAdmin!=null?r.biayaAdmin:null,biaya_tambahan:r.biayaTambahan!=null?r.biayaTambahan:null})), 'no_pesanan');
+  // 1. Upsert header pesanan
+  const headers=DB.penjualan.map(r=>({
+    no_pesanan:r.no,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),
+    marketplace:r.mp,status:r.status||'Selesai',
+    biaya_admin:r.biayaAdmin!=null?r.biayaAdmin:null,
+    biaya_tambahan:r.biayaTambahan!=null?r.biayaTambahan:null,
+    catatan:r.catatan||''
+  }));
+  await safeReplace(TBL_PESANAN, headers, 'no_pesanan');
+  if(!headers.length)return; // semua pesanan dihapus, tidak perlu proses item
+
+  // 2. Ambil id pesanan (auto-increment) untuk memetakan item ke pesanan_id
+  const{data:idRows,error:idErr}=await supabaseClient.from(TBL_PESANAN).select('id,no_pesanan');
+  if(idErr)throw idErr;
+  const idMap={};(idRows||[]).forEach(x=>idMap[x.no_pesanan]=x.id);
+
+  // 3. Susun ulang seluruh baris item milik pesanan yang ada di data lokal
+  const itemRows=[];
+  DB.penjualan.forEach(r=>{
+    const pid=idMap[r.no];if(pid==null)return;
+    (r.items||[]).forEach(it=>{
+      itemRows.push({pesanan_id:pid,sku:it.sku||null,produk:it.prod,varian:it.varian||'',kategori:it.kat||'Lainnya',qty:it.qty!=null?it.qty:1,harga_satuan:it.harga!=null?it.harga:0});
+    });
+  });
+  const pids=Object.values(idMap);
+  // 4. Ganti SEMUA baris item milik pesanan-pesanan tsb dengan versi lokal terbaru
+  //    (aman: pesanan_item tidak direferensikan tabel lain, jadi delete+insert per-pesanan aman)
+  if(pids.length){
+    const{error:delErr}=await supabaseClient.from(TBL_PESANAN_ITEM).delete().in('pesanan_id',pids);
+    if(delErr)throw delErr;
+  }
+  if(itemRows.length){
+    const{error:insErr}=await supabaseClient.from(TBL_PESANAN_ITEM).insert(itemRows);
+    if(insErr)throw insErr;
+  }
 }
 async function syncBiayaPengaturan_(){
   const b=DB.biaya||{};const ex=b.extra||{};
@@ -162,18 +209,31 @@ async function loadFromSupabase(){
       supabaseClient.from(TBL_KATEGORI).select('*').order('id'),
       supabaseClient.from(TBL_MARKETPLACE).select('*').order('id'),
       supabaseClient.from(TBL_STOK).select('*').order('id'),
-      supabaseClient.from(TBL_PENJUALAN).select('*').order('id'),
+      supabaseClient.from(TBL_PESANAN).select('*, pesanan_item(*)').order('id'),
       supabaseClient.from(TBL_BIAYA).select('*').eq('id',1).maybeSingle(),
       supabaseClient.from(TBL_HPP_PRODUK).select('*'),
       supabaseClient.from(TBL_PENGATURAN).select('*').eq('id',1).maybeSingle(),
     ]);
     const errs=[katRes,mpRes,stokRes,jualRes,biayaRes,hppRes,setRes].map(r=>r.error).filter(Boolean);
-    if(errs.length){console.warn('Gagal memuat dari Supabase:',errs[0].message);updateSyncBadge(false,errs[0].message);return null}
+    if(errs.length){
+      console.warn('Gagal memuat dari Supabase:',errs[0].message);
+      updateSyncBadge(false,errs[0].message);
+      if(/relation .*pesanan.* does not exist/i.test(errs[0].message||'')){
+        alert('⚠️ Tabel "pesanan" & "pesanan_item" belum ada. Jalankan file MULTI-ITEM-PESANAN.sql di Supabase Dashboard > SQL Editor terlebih dahulu.');
+      }
+      return null;
+    }
 
     const kategori=(katRes.data||[]).map(k=>({nama:k.nama,color:k.color}));
     const marketplace=(mpRes.data||[]).map(m=>({nama:m.nama,color:m.color}));
     const stok=(stokRes.data||[]).map(s=>({sku:s.sku,prod:s.produk,varian:s.varian,kat:s.kategori,stok:s.stok,terjual:s.terjual,hpp:Number(s.hpp)||0}));
-    const penjualan=(jualRes.data||[]).map(r=>({no:r.no_pesanan,tanggal:r.tanggal,_date:r.tgl_iso,mp:r.marketplace,prod:r.produk,varian:r.varian,kat:r.kategori,qty:r.qty,total:Number(r.total),status:r.status,biayaAdmin:r.biaya_admin!=null?Number(r.biaya_admin):null,biayaTambahan:r.biaya_tambahan!=null?Number(r.biaya_tambahan):null}));
+    const penjualan=(jualRes.data||[]).map(r=>({
+      no:r.no_pesanan,tanggal:r.tanggal,_date:r.tgl_iso,mp:r.marketplace,status:r.status,
+      biayaAdmin:r.biaya_admin!=null?Number(r.biaya_admin):null,
+      biayaTambahan:r.biaya_tambahan!=null?Number(r.biaya_tambahan):null,
+      catatan:r.catatan||'',
+      items:(r.pesanan_item||[]).map(it=>({sku:it.sku||'',prod:it.produk,varian:it.varian||'',kat:it.kategori||'Lainnya',qty:it.qty,harga:Number(it.harga_satuan)}))
+    }));
 
     const mp_fee={};(mpRes.data||[]).forEach(m=>mp_fee[m.nama]=Number(m.fee_persen));
     const hpp_per_produk={};(hppRes.data||[]).forEach(h=>hpp_per_produk[h.produk]=Number(h.hpp));
@@ -213,9 +273,14 @@ function seedData(){
   DB.penjualan=[];
   const katMap={'Kaos Polos':'Atasan','Celana Cargo':'Bawahan','Hoodie':'Outer','Kemeja Flannel':'Atasan','Jaket Denim':'Outer','Topi Baseball':'Aksesoris','Kaos Oversize':'Atasan','Celana Chino':'Bawahan','Dress Casual':'Atasan','Rok Mini':'Bawahan'};
   for(let i=0;i<200;i++){
-    const mp=MP_LIST[rnd(0,3)];const prod=PRODUK[rnd(0,9)];const varian=VARIAN[rnd(0,14)];const qty=rnd(1,5);const harga=rnd(35000,450000);
-    const d=new Date(2025,rnd(0,5),rnd(1,28));
-    DB.penjualan.push({no:mp.substring(0,3).toUpperCase()+'-'+(1000+i),tanggal:fmtTgl(d),_date:d.toISOString(),mp,prod,varian,kat:katMap[prod]||'Lainnya',qty,total:qty*harga,status:STATUS_ARR[rnd(0,6)]});
+    const mp=MP_LIST[rnd(0,3)];const d=new Date(2025,rnd(0,5),rnd(1,28));
+    const jmlItem=Math.random()<0.35?rnd(2,3):1; // ~35% pesanan berisi >1 barang, mirip kondisi nyata
+    const items=[];
+    for(let j=0;j<jmlItem;j++){
+      const prod=PRODUK[rnd(0,9)];const varian=VARIAN[rnd(0,14)];const qty=rnd(1,3);const harga=rnd(35000,450000);
+      items.push({sku:'',prod,varian,kat:katMap[prod]||'Lainnya',qty,harga});
+    }
+    DB.penjualan.push({no:mp.substring(0,3).toUpperCase()+'-'+(1000+i),tanggal:fmtTgl(d),_date:d.toISOString(),mp,status:STATUS_ARR[rnd(0,6)],biayaAdmin:null,biayaTambahan:null,items});
   }
   DB.stok=[];
   for(let i=0;i<120;i++){
@@ -538,7 +603,7 @@ function showSection(id,el){
 // ===== KATEGORI DROPDOWN POPULATE =====
 function populateKatDropdowns(){
   const names=getKatNames();
-  const ids=['f-kat-jual','s-kat','f-kat-stok','f-kat-laba'];
+  const ids=['s-kat','f-kat-stok','f-kat-laba'];
   ids.forEach(id=>{
     const el=document.getElementById(id);if(!el)return;
     const isFilter=id.startsWith('f-kat');
@@ -552,7 +617,7 @@ function renderDashboard(){
   const p=parseInt(document.getElementById('periodeSelect').value);
   const cutoff=new Date();cutoff.setDate(cutoff.getDate()-p);
   const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&new Date(r._date||r.tanggal.split('/').reverse().join('-'))>=cutoff);
-  const totalRev=recent.reduce((a,r)=>a+r.total,0);
+  const totalRev=recent.reduce((a,r)=>a+orderTotal(r),0);
   const totalOrd=recent.length;
   const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   const kritis=DB.stok.filter(s=>s.stok<=batas).length;
@@ -579,7 +644,7 @@ function renderDashboard(){
 
   // MP breakdown
   const mpRev={};const mpOrd={};MP_LIST.forEach(m=>{mpRev[m]=0;mpOrd[m]=0});
-  recent.forEach(r=>{mpRev[r.mp]=(mpRev[r.mp]||0)+r.total;mpOrd[r.mp]=(mpOrd[r.mp]||0)+1});
+  recent.forEach(r=>{mpRev[r.mp]=(mpRev[r.mp]||0)+orderTotal(r);mpOrd[r.mp]=(mpOrd[r.mp]||0)+1});
   const maxRev=Math.max(...Object.values(mpRev))||1;
   document.getElementById('mp-list-dash').innerHTML=MP_LIST.map(m=>`
     <div class="mp-row"><div class="mp-color-dot" style="background:${MP_COLORS[m]}"></div>
@@ -587,8 +652,8 @@ function renderDashboard(){
     <div class="mp-bar-col"><div class="mp-bar-track"><div class="mp-bar-fill" style="width:${Math.round(mpRev[m]/maxRev*100)}%;background:${MP_COLORS[m]}"></div></div></div>
     <div class="mp-rev-col"><div class="mp-rev">${fmtRp(mpRev[m])}</div><div class="mp-orders-txt">${mpOrd[m]} pesanan</div></div></div>`).join('');
 
-  // Top 5
-  const pm={};recent.forEach(r=>{pm[r.prod]=(pm[r.prod]||0)+r.qty});
+  // Top 5 (dihitung per barang di dalam pesanan, bukan per pesanan)
+  const pm={};recent.forEach(r=>(r.items||[]).forEach(it=>{pm[it.prod]=(pm[it.prod]||0)+(it.qty||0)}));
   const top5=Object.entries(pm).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxQ=top5.length?top5[0][1]:1;
   document.getElementById('top5-bars').innerHTML=top5.map(([n,q])=>`
@@ -606,9 +671,9 @@ function renderTrendChart(recent,days){
     const d=new Date();d.setDate(d.getDate()-i);
     labels.push(`${d.getDate()}/${d.getMonth()+1}`);
     const ds=fmtTgl(d);const dr=recent.filter(r=>r.tanggal===ds);
-    d1.push(dr.filter(r=>r.mp==='Shopee').reduce((a,r)=>a+r.total,0));
-    d2.push(dr.filter(r=>r.mp==='Tokopedia').reduce((a,r)=>a+r.total,0));
-    d3.push(dr.filter(r=>r.mp==='TikTok Shop').reduce((a,r)=>a+r.total,0));
+    d1.push(dr.filter(r=>r.mp==='Shopee').reduce((a,r)=>a+orderTotal(r),0));
+    d2.push(dr.filter(r=>r.mp==='Tokopedia').reduce((a,r)=>a+orderTotal(r),0));
+    d3.push(dr.filter(r=>r.mp==='TikTok Shop').reduce((a,r)=>a+orderTotal(r),0));
   }
   if(charts.trend)charts.trend.destroy();
   charts.trend=new Chart(document.getElementById('chartTrend'),{type:'line',data:{labels,datasets:[
@@ -635,7 +700,7 @@ function renderStokPieChart(){
 // ===== PENJUALAN TABLE =====
 function filterJual(){
   pageJual=1;const q=(document.getElementById('q-jual').value||'').toLowerCase();const mp=document.getElementById('f-mp-jual').value;const st=document.getElementById('f-status-jual').value;
-  filteredJual=DB.penjualan.filter(r=>(!q||r.prod.toLowerCase().includes(q)||r.no.toLowerCase().includes(q))&&(!mp||r.mp===mp)&&(!st||r.status===st));
+  filteredJual=DB.penjualan.filter(r=>(!q||r.no.toLowerCase().includes(q)||(r.items||[]).some(it=>it.prod.toLowerCase().includes(q)))&&(!mp||r.mp===mp)&&(!st||r.status===st));
   renderJualTable();
 }
 
@@ -645,15 +710,15 @@ function renderJualTable(){
   document.getElementById('tbl-jual').innerHTML=slice.length?slice.map((r,i)=>{
     const ri=DB.penjualan.indexOf(r);
     const h=hitungLaba(r);
+    const items=r.items||[];
+    const barangHTML=items.length?`<div style="font-weight:600">${items[0].prod}${items[0].varian?' <span style="color:var(--text3);font-weight:400">('+items[0].varian+')</span>':''}</div>${items.length>1?`<div style="font-size:11px;color:var(--text3)">+${items.length-1} barang lain, ${orderQty(r)} pcs total</div>`:''}`:'<span style="color:var(--text3)">–</span>';
     return `<tr>
       <td class="mono">${r.no}</td>
       <td style="color:var(--text2)">${r.tanggal}</td>
       <td><span class="mp-tag" style="${mpTagStyle(r.mp)}">${r.mp}</span></td>
-      <td style="font-weight:600">${r.prod}</td>
-      <td style="color:var(--text2)">${r.varian||'–'}</td>
-      <td><span class="badge badge-gray" style="background:${getKatColor(r.kat)}22;color:${getKatColor(r.kat)}">${r.kat||'–'}</span></td>
-      <td style="text-align:center;font-weight:600">${r.qty}</td>
-      <td style="font-weight:600">${fmtRp(r.total)}</td>
+      <td>${barangHTML}</td>
+      <td style="text-align:center;font-weight:600">${orderQty(r)}</td>
+      <td style="font-weight:600">${fmtRp(h.omzet)}</td>
       <td style="color:var(--warning)">${fmtRp(h.mpFee)}</td>
       <td style="color:var(--text2)">${fmtRp(h.extra)}</td>
       <td><span class="badge ${ST_BADGE[r.status]||'badge-gray'}">${r.status}</span></td>
@@ -661,11 +726,14 @@ function renderJualTable(){
         <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditJual(${ri})">✏️</button>
         <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('jual',${ri})">🗑</button>
       </div>`)}</td>
-    </tr>`}).join(''):`<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
+    </tr>`}).join(''):`<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
   renderPagination('pag-jual',filteredJual.length,pageJual,p=>{pageJual=p;renderJualTable()});
 }
 
-// ===== MODAL PESANAN =====
+// ===== MODAL PESANAN (multi-barang) =====
+// _formItems: daftar barang yang sedang diedit di form modal (di luar DB.penjualan
+// sampai tombol "Simpan Pesanan" ditekan).
+let _formItems=[];
 function bukaEditJual(idx){
   const r=DB.penjualan[idx];_editJualIdx=idx;
   document.getElementById('modal-jual-title').textContent='✏️ Edit Pesanan';
@@ -675,15 +743,12 @@ function bukaEditJual(idx){
   document.getElementById('f-tgl').value=r._date?r._date.split('T')[0]:today();
   document.getElementById('f-mp').value=r.mp;
   document.getElementById('f-status').value=r.status;
-  document.getElementById('f-prod').value=r.prod;
-  document.getElementById('f-var').value=r.varian||'';
-  document.getElementById('f-qty').value=r.qty;
-  document.getElementById('f-total').value=r.total;
-  document.getElementById('f-biaya-admin').value=r.biayaAdmin!=null?r.biayaAdmin:Math.round(getSaranBiayaAdmin(r.mp,r.total));
+  document.getElementById('f-biaya-admin').value=r.biayaAdmin!=null?r.biayaAdmin:Math.round(getSaranBiayaAdmin(r.mp,orderTotal(r)));
   document.getElementById('f-biaya-tambahan').value=r.biayaTambahan!=null?r.biayaTambahan:Math.round(getSaranBiayaTambahan());
   populateKatDropdowns();
-  document.getElementById('f-kat-jual').value=r.kat||'';
-  populateProdukDatalist();onProdukPesananInput();
+  populateProdukDatalist();
+  _formItems=(r.items&&r.items.length?r.items:[{sku:'',prod:'',varian:'',kat:'',qty:1,harga:0}]).map(it=>({...it}));
+  renderFormItems();
   openModal('modal-tambah-jual');
 }
 function bukaModalTambahJual(){
@@ -691,13 +756,78 @@ function bukaModalTambahJual(){
   document.getElementById('modal-jual-title').textContent='➕ Tambah Pesanan';
   document.getElementById('btn-simpan-jual').textContent='Simpan Pesanan';
   document.getElementById('edit-jual-idx').value='';
-  document.getElementById('f-no').value='';document.getElementById('f-prod').value='';
-  document.getElementById('f-var').value='';document.getElementById('f-qty').value=1;
-  document.getElementById('f-total').value='';document.getElementById('f-tgl').value=today();
+  document.getElementById('f-no').value='';document.getElementById('f-tgl').value=today();
+  document.getElementById('f-status').value='Selesai';
   document.getElementById('f-biaya-admin').value='';document.getElementById('f-biaya-tambahan').value=Math.round(getSaranBiayaTambahan());
   populateKatDropdowns();
-  populateProdukDatalist();onProdukPesananInput();
+  populateProdukDatalist();
+  _formItems=[{sku:'',prod:'',varian:'',kat:'',qty:1,harga:0}];
+  renderFormItems();
   openModal('modal-tambah-jual');
+}
+// Tambah 1 baris barang kosong ke form pesanan yang sedang dibuka.
+function tambahBarisBarang(){
+  _formItems.push({sku:'',prod:'',varian:'',kat:'',qty:1,harga:0});
+  renderFormItems();
+}
+function hapusBarisBarang(i){
+  if(_formItems.length<=1){alert('Pesanan harus punya minimal 1 barang.');return}
+  _formItems.splice(i,1);renderFormItems();
+}
+// Render ulang seluruh baris form barang + total & hint stok per baris.
+function renderFormItems(){
+  const wrap=document.getElementById('f-items-wrap');if(!wrap)return;
+  wrap.innerHTML=_formItems.map((it,i)=>{
+    const si=cariStok(it.prod,it.varian);
+    const qty=it.qty||0;
+    let hint='';
+    if(it.prod){
+      if(si){
+        const sisa=si.stok-qty;const kurang=sisa<0;
+        hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:${kurang?'var(--danger-bg)':'var(--success-bg)'};color:${kurang?'var(--danger)':'var(--success)'}">${kurang?`⚠️ Stok kurang (tersisa ${si.stok} pcs)`:`✅ Stok cukup, sisa ${sisa} pcs`}</div>`;
+      }else{
+        hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:var(--warning-bg);color:var(--warning)">⚠️ Tidak ditemukan di Stok Gudang — stok tidak otomatis berkurang</div>`;
+      }
+    }
+    const subtotal=(it.qty||0)*(it.harga||0);
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:2fr 1.3fr;gap:8px">
+        <div class="form-group" style="margin-bottom:6px"><label style="font-size:11px">Nama Produk</label>
+          <input class="form-input" list="dl-produk-stok" value="${it.prod||''}" placeholder="Pilih/ketik produk" oninput="updateBarisBarang(${i},'prod',this.value)" autocomplete="off"></div>
+        <div class="form-group" style="margin-bottom:6px"><label style="font-size:11px">Varian</label>
+          <input class="form-input" list="dl-varian-stok-${i}" value="${it.varian||''}" placeholder="M / Hitam" oninput="updateBarisBarang(${i},'varian',this.value)" autocomplete="off">
+          <datalist id="dl-varian-stok-${i}">${[...new Set(DB.stok.filter(s=>s.prod===it.prod).map(s=>s.varian).filter(Boolean))].map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Kategori</label>
+          <select class="form-input" onchange="updateBarisBarang(${i},'kat',this.value)">${getKatNames().map(k=>`<option value="${k}" ${it.kat===k?'selected':''}>${k}</option>`).join('')}</select></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Qty</label>
+          <input class="form-input" type="number" min="1" value="${it.qty!=null?it.qty:1}" oninput="updateBarisBarang(${i},'qty',this.value)"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Harga Satuan (Rp)</label>
+          <input class="form-input" type="number" min="0" value="${it.harga||0}" oninput="updateBarisBarang(${i},'harga',this.value)"></div>
+        <button type="button" class="btn btn-sm btn-icon btn-danger" title="Hapus barang ini" onclick="hapusBarisBarang(${i})" style="margin-bottom:2px">🗑</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+        <span style="font-size:11px;color:var(--text3)">Subtotal: <strong style="color:var(--text1)">${fmtRp(subtotal)}</strong></span>
+      </div>
+      ${hint}
+    </div>`;
+  }).join('');
+  const totalPesanan=_formItems.reduce((a,it)=>a+(it.qty||0)*(it.harga||0),0);
+  const totalEl=document.getElementById('f-total-pesanan');
+  if(totalEl)totalEl.textContent=fmtRp(totalPesanan);
+}
+function updateBarisBarang(i,field,val){
+  if(!_formItems[i])return;
+  if(field==='qty')_formItems[i].qty=parseInt(val)||1;
+  else if(field==='harga')_formItems[i].harga=parseFloat(val)||0;
+  else _formItems[i][field]=val;
+  if(field==='prod'){
+    // Auto-isi kategori dari Stok Gudang saat nama produk cocok
+    const si=cariStok(val,_formItems[i].varian);
+    if(si)_formItems[i].kat=si.kat;
+  }
+  renderFormItems();
 }
 // ===== SARAN BIAYA ADMIN & BIAYA TAMBAHAN (berdasarkan riwayat pesanan) =====
 // Mengganti pengaturan global lama (Biaya Admin per Marketplace % & Biaya
@@ -705,9 +835,9 @@ function bukaModalTambahJual(){
 // dari rata-rata pesanan yang sudah pernah diinput per marketplace (atau
 // dari nilai default bawaan jika belum ada data sama sekali).
 function getSaranBiayaAdmin(mp,total){
-  const data=DB.penjualan.filter(r=>r.mp===mp&&r.biayaAdmin!=null&&r.total>0);
+  const data=DB.penjualan.filter(r=>r.mp===mp&&r.biayaAdmin!=null&&orderTotal(r)>0);
   if(data.length){
-    const avgPct=data.reduce((a,r)=>a+(r.biayaAdmin/r.total),0)/data.length;
+    const avgPct=data.reduce((a,r)=>a+(r.biayaAdmin/orderTotal(r)),0)/data.length;
     return avgPct*(total||0);
   }
   const b=DB.biaya||DEFAULT_BIAYA;const pct=(b.mp_fee&&b.mp_fee[mp]!=null)?b.mp_fee[mp]:3;
@@ -720,7 +850,7 @@ function getSaranBiayaTambahan(){
   return (ex.ongkir||0)+(ex.packaging||0)+(ex.lain||0);
 }
 function saranBiayaAdminPesanan(){
-  const mp=document.getElementById('f-mp').value;const total=parseFloat(document.getElementById('f-total').value)||0;
+  const mp=document.getElementById('f-mp').value;const total=_formItems.reduce((a,it)=>a+(it.qty||0)*(it.harga||0),0);
   document.getElementById('f-biaya-admin').value=Math.round(getSaranBiayaAdmin(mp,total));
 }
 function saranBiayaTambahanPesanan(){
@@ -731,77 +861,47 @@ function populateProdukDatalist(){
   const uniq=[...new Set(DB.stok.map(s=>s.prod))].sort();
   dl.innerHTML=uniq.map(p=>`<option value="${p}">`).join('');
 }
-function populateVarianDatalist(prod){
-  const dl=document.getElementById('dl-varian-stok');if(!dl)return;
-  const opts=[...new Set(DB.stok.filter(s=>s.prod===prod).map(s=>s.varian).filter(Boolean))];
-  dl.innerHTML=opts.map(v=>`<option value="${v}">`).join('');
-}
-// Dipanggil setiap kali field Produk/Varian/Qty di form pesanan diketik.
-// Menunjukkan SECARA REAL-TIME apakah produk yang diketik cocok dengan data
-// di Stok Gudang (akan ikut otomatis berkurang) atau tidak (perlu dikoreksi).
-function onProdukPesananInput(){
-  const prod=document.getElementById('f-prod').value.trim();
-  const varian=document.getElementById('f-var').value.trim();
-  const qty=parseInt(document.getElementById('f-qty').value)||1;
-  populateVarianDatalist(prod);
-  const hint=document.getElementById('f-stok-hint');
-  if(!hint)return;
-  if(!prod){hint.style.display='none';hint.innerHTML='';return}
-  hint.style.display='block';
-  const siMatch=cariStok(prod,varian);
-  if(siMatch){
-    if(siMatch.kat){const el=document.getElementById('f-kat-jual');if(el)el.value=siMatch.kat}
-    const sisa=siMatch.stok-qty;
-    const kurang=sisa<0;
-    hint.style.background=kurang?'var(--danger-bg)':'var(--success-bg)';
-    hint.style.color=kurang?'var(--danger)':'var(--success)';
-    hint.innerHTML=kurang
-      ?`⚠️ Stok tidak cukup! Stok saat ini <strong>${siMatch.stok} pcs</strong>, pesanan ini butuh ${qty} pcs.`
-      :`✅ Cocok dengan Stok Gudang — stok saat ini <strong>${siMatch.stok} pcs</strong>, sisa setelah pesanan ini <strong>${sisa} pcs</strong>.`;
-  }else{
-    const match=DB.penjualan.find(r=>r.prod===prod);
-    if(match&&match.kat){const el=document.getElementById('f-kat-jual');if(el)el.value=match.kat}
-    hint.style.background='var(--warning-bg)';hint.style.color='var(--warning)';
-    hint.innerHTML=`⚠️ Produk/varian ini <strong>tidak ditemukan persis sama</strong> di Stok Gudang — stok TIDAK akan otomatis berkurang. Cek lagi ejaan nama produk &amp; varian, atau pilih dari saran yang muncul saat mengetik.`;
-  }
-}
 // ===== SINKRONISASI STOK <-> PENJUALAN (otomatis & real-time) =====
 // Pesanan berstatus 'Dibatalkan' dianggap tidak pernah mengurangi stok asli.
+// Sejak pesanan bisa berisi banyak barang, efek stok diterapkan PER ITEM.
 function isStatusAktif(status){return status!=='Dibatalkan'}
 function cariStok(prod,varian){return DB.stok.find(s=>s.prod===prod&&s.varian===varian)}
 // arah -1 = kurangi stok (pesanan baru/aktif), arah +1 = kembalikan stok (batal/hapus/edit)
 function terapkanEfekStok(order,arah){
   if(!order||!isStatusAktif(order.status))return;
-  const si=cariStok(order.prod,order.varian);
-  if(!si)return;
-  if(arah<0){
-    si.stok=Math.max(0,(si.stok||0)-order.qty);
-    si.terjual=(si.terjual||0)+order.qty;
-  }else{
-    si.stok=(si.stok||0)+order.qty;
-    si.terjual=Math.max(0,(si.terjual||0)-order.qty);
-  }
+  (order.items||[]).forEach(it=>{
+    const si=cariStok(it.prod,it.varian);
+    if(!si)return;
+    if(arah<0){
+      si.stok=Math.max(0,(si.stok||0)-(it.qty||0));
+      si.terjual=(si.terjual||0)+(it.qty||0);
+    }else{
+      si.stok=(si.stok||0)+(it.qty||0);
+      si.terjual=Math.max(0,(si.terjual||0)-(it.qty||0));
+    }
+  });
 }
 
 function simpanPesanan(){
   if(!canWrite()){alert("Anda tidak punya izin untuk menambah/mengubah pesanan.");return}
   const idx=document.getElementById('edit-jual-idx').value;
-  const no=document.getElementById('f-no').value.trim();const prod=document.getElementById('f-prod').value.trim();const tgl=document.getElementById('f-tgl').value;
-  if(!no||!prod||!tgl){alert('Mohon isi No. Pesanan, Tanggal, dan Nama Produk');return}
+  const no=document.getElementById('f-no').value.trim();const tgl=document.getElementById('f-tgl').value;
+  const items=_formItems.filter(it=>it.prod&&it.prod.trim()).map(it=>({sku:it.sku||'',prod:it.prod.trim(),varian:(it.varian||'').trim(),kat:it.kat||'Lainnya',qty:parseInt(it.qty)||1,harga:parseFloat(it.harga)||0}));
+  if(!no||!tgl){alert('Mohon isi No. Pesanan dan Tanggal');return}
+  if(!items.length){alert('Mohon isi minimal 1 barang (Nama Produk) dalam pesanan ini');return}
   const idxSaatIni=idx!==''&&idx>=0?parseInt(idx):-1;
   const duplikat=DB.penjualan.findIndex((r,i)=>i!==idxSaatIni&&r.no.trim().toLowerCase()===no.toLowerCase());
   if(duplikat!==-1){alert('⚠️ No. Pesanan "'+no+'" sudah dipakai oleh pesanan lain.\n\nSetiap No. Pesanan harus unik. Ganti nomornya atau edit pesanan yang sudah ada.');return}
-  const varianCek=document.getElementById('f-var').value.trim();
-  if(!cariStok(prod,varianCek)){
-    const lanjut=confirm('⚠️ Produk/varian "'+prod+(varianCek?' - '+varianCek:'')+'" tidak ditemukan persis sama di Stok Gudang.\n\nStok TIDAK akan otomatis berkurang untuk pesanan ini.\n\nLanjutkan simpan tanpa update stok? (Klik Batal untuk perbaiki nama produk/varian dulu)');
+  const tidakDiStok=items.filter(it=>!cariStok(it.prod,it.varian));
+  if(tidakDiStok.length){
+    const lanjut=confirm('⚠️ '+tidakDiStok.length+' barang ('+tidakDiStok.map(it=>it.prod+(it.varian?' - '+it.varian:'')).join(', ')+') tidak ditemukan persis sama di Stok Gudang.\n\nStok TIDAK akan otomatis berkurang untuk barang tersebut.\n\nLanjutkan simpan? (Klik Batal untuk perbaiki nama produk/varian dulu)');
     if(!lanjut)return;
   }
   const r={no,tanggal:fmtTgl(new Date(tgl)),_date:new Date(tgl).toISOString(),mp:document.getElementById('f-mp').value,
-    prod,varian:document.getElementById('f-var').value,kat:document.getElementById('f-kat-jual').value,
-    qty:parseInt(document.getElementById('f-qty').value)||1,total:parseInt(document.getElementById('f-total').value)||0,
     status:document.getElementById('f-status').value,
     biayaAdmin:parseFloat(document.getElementById('f-biaya-admin').value)||0,
-    biayaTambahan:parseFloat(document.getElementById('f-biaya-tambahan').value)||0};
+    biayaTambahan:parseFloat(document.getElementById('f-biaya-tambahan').value)||0,
+    items};
   if(idx!==''&&idx>=0){
     const old=DB.penjualan[parseInt(idx)];
     terapkanEfekStok(old,+1);   // kembalikan dulu efek stok dari data lama (qty/produk/status lama)
@@ -938,7 +1038,7 @@ function renderProduk(){
 function renderKatList(){
   document.getElementById('kat-list').innerHTML=DB.kategori.length?DB.kategori.map((k,i)=>{
     const cnt=DB.stok.filter(s=>s.kat===k.nama).length;
-    const jual=DB.penjualan.filter(r=>r.kat===k.nama&&r.status!=='Dibatalkan').length;
+    const jual=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&(r.items||[]).some(it=>it.kat===k.nama)).length;
     return `<div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:12px">
       <div style="width:16px;height:16px;border-radius:4px;background:${k.color};flex-shrink:0"></div>
       <div style="flex:1"><div style="font-weight:600;font-size:13px">${k.nama}</div><div style="font-size:11px;color:var(--text3)">${cnt} varian stok · ${jual} pesanan</div></div>
@@ -950,7 +1050,7 @@ function renderKatList(){
 
 function renderKatPerf(){
   const pm={};DB.kategori.forEach(k=>pm[k.nama]={rev:0,qty:0,color:k.color});
-  DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>{if(pm[r.kat]){pm[r.kat].rev+=r.total;pm[r.kat].qty+=r.qty}});
+  DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>(r.items||[]).forEach(it=>{if(pm[it.kat]){pm[it.kat].rev+=(it.qty||0)*(it.harga||0);pm[it.kat].qty+=(it.qty||0)}}));
   const arr=Object.entries(pm).sort((a,b)=>b[1].rev-a[1].rev);const maxR=Math.max(...arr.map(e=>e[1].rev))||1;
   document.getElementById('kat-perf-bars').innerHTML=arr.map(([n,d])=>`
     <div class="prog-row"><div class="prog-label">${n}</div>
@@ -1074,28 +1174,56 @@ function getHppDariStok(prod,varian){
 }
 
 // ===== LABA PER PRODUK =====
+// Menghitung laba di level PESANAN (menjumlahkan seluruh barang di dalamnya).
+// Biaya admin & biaya tambahan tetap di level pesanan (memang begitu cara
+// marketplace memotongnya per transaksi/checkout, bukan per barang).
 function hitungLaba(r){
-  const biaya=DB.biaya||DEFAULT_BIAYA;const omzet=r.total||0;
+  const biaya=DB.biaya||DEFAULT_BIAYA;const omzet=orderTotal(r);
   let mpFee;
   if(r.biayaAdmin!=null){mpFee=r.biayaAdmin}
   else{const feeMp=biaya.mp_fee[r.mp];mpFee=(feeMp!=null?feeMp:3)/100*omzet}
   let extra;
   if(r.biayaTambahan!=null){extra=r.biayaTambahan}
   else{extra=(biaya.extra.ongkir||0)+(biaya.extra.packaging||0)+(biaya.extra.lain||0)}
-  let hpp=0;
   const hppPct=biaya.hpp_pct!=null?biaya.hpp_pct:45;
-  if(biaya.hpp_mode==='pct')hpp=hppPct/100*omzet;
-  else{const ph=getHppDariStok(r.prod,r.varian);hpp=(ph!=null)?ph*(r.qty||1):hppPct/100*omzet}
+  let hpp=0;
+  (r.items||[]).forEach(it=>{
+    const subtotal=(it.qty||0)*(it.harga||0);
+    if(biaya.hpp_mode==='pct'){hpp+=hppPct/100*subtotal}
+    else{const ph=getHppDariStok(it.prod,it.varian);hpp+=(ph!=null?ph:hppPct/100*(it.harga||0))*(it.qty||0)}
+  });
   const laba=omzet-mpFee-extra-hpp;
   return{omzet,hpp,mpFee,extra,laba,margin:omzet>0?laba/omzet*100:0};
 }
 
+// Menghitung laba per BARANG (item) di dalam sebuah pesanan: biaya admin &
+// biaya tambahan pesanan dialokasikan proporsional sesuai porsi subtotal
+// barang tsb terhadap total pesanan.
+function hitungLabaItem(r,it,h){
+  h=h||hitungLaba(r);
+  const biaya=DB.biaya||DEFAULT_BIAYA;
+  const subtotal=(it.qty||0)*(it.harga||0);
+  const share=h.omzet>0?subtotal/h.omzet:0;
+  const mpFee=h.mpFee*share,extra=h.extra*share;
+  const hppPct=biaya.hpp_pct!=null?biaya.hpp_pct:45;
+  let hpp;
+  if(biaya.hpp_mode==='pct'){hpp=hppPct/100*subtotal}
+  else{const ph=getHppDariStok(it.prod,it.varian);hpp=(ph!=null?ph:hppPct/100*(it.harga||0))*(it.qty||0)}
+  const laba=subtotal-mpFee-extra-hpp;
+  return{omzet:subtotal,mpFee,extra,hpp,laba,margin:subtotal>0?laba/subtotal*100:0};
+}
+
 function getLabaPerProduk(filterMP,filterKat){
   const map={};
-  DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&(!filterMP||r.mp===filterMP)&&(!filterKat||r.kat===filterKat)).forEach(r=>{
-    const key=r.prod+'|||'+r.mp;
-    if(!map[key])map[key]={prod:r.prod,kat:r.kat||'–',mp:r.mp,qty:0,omzet:0,hpp:0,mpFee:0,extra:0,laba:0};
-    const h=hitungLaba(r);map[key].qty+=r.qty||1;map[key].omzet+=h.omzet;map[key].hpp+=h.hpp;map[key].mpFee+=h.mpFee;map[key].extra+=h.extra;map[key].laba+=h.laba;
+  DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&(!filterMP||r.mp===filterMP)).forEach(r=>{
+    const h=hitungLaba(r);
+    (r.items||[]).forEach(it=>{
+      if(filterKat&&it.kat!==filterKat)return;
+      const key=it.prod+'|||'+r.mp;
+      if(!map[key])map[key]={prod:it.prod,kat:it.kat||'–',mp:r.mp,qty:0,omzet:0,hpp:0,mpFee:0,extra:0,laba:0};
+      const li=hitungLabaItem(r,it,h);
+      map[key].qty+=it.qty||0;map[key].omzet+=li.omzet;map[key].hpp+=li.hpp;map[key].mpFee+=li.mpFee;map[key].extra+=li.extra;map[key].laba+=li.laba;
+    });
   });
   return Object.values(map).map(p=>({...p,margin:p.omzet>0?p.laba/p.omzet*100:0}));
 }
@@ -1134,7 +1262,7 @@ function renderLabaRingkasan(){
   const blabels=['HPP','Admin MP','Ongkir','Packaging'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b','#6b7280'];const bvals=[th,tf,te*.6,te*.4];
   document.getElementById('biaya-pie-legend').innerHTML=blabels.map((l,i)=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${bcolors[i]}"></span>${l}: ${to>0?(bvals[i]/to*100).toFixed(1):0}%</span>`).join('');
 
-  const byProd={};DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>{if(!byProd[r.prod])byProd[r.prod]={prod:r.prod,laba:0,omzet:0};const h=hitungLaba(r);byProd[r.prod].laba+=h.laba;byProd[r.prod].omzet+=h.omzet});
+  const byProd={};DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>{const h=hitungLaba(r);(r.items||[]).forEach(it=>{if(!byProd[it.prod])byProd[it.prod]={prod:it.prod,laba:0,omzet:0};const li=hitungLabaItem(r,it,h);byProd[it.prod].laba+=li.laba;byProd[it.prod].omzet+=li.omzet})});
   const pa=Object.values(byProd).map(p=>({...p,margin:p.omzet>0?p.laba/p.omzet*100:0}));
   const tt=[...pa].sort((a,b)=>b.laba-a.laba).slice(0,5);const tr=[...pa].sort((a,b)=>a.margin-b.margin).slice(0,5);
   document.getElementById('top-laba-tinggi').innerHTML=tt.map(p=>`<div class="prog-row"><div class="prog-label">${p.prod}</div><div class="prog-track"><div class="prog-fill" style="width:${Math.max(0,Math.min(100,p.margin))}%;background:var(--success)"></div></div><div class="prog-val green">+${(p.laba/1e6).toFixed(1)}jt</div></div>`).join('');
@@ -1176,7 +1304,7 @@ function renderLabaRingkasan(){
 
   // Laba per kategori
   const byKat={};DB.kategori.forEach(k=>byKat[k.nama]={nama:k.nama,color:k.color,omzet:0,laba:0,fee:0,trx:0});
-  DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>{const kat=r.kat||'Lainnya';if(!byKat[kat])byKat[kat]={nama:kat,color:'#888',omzet:0,laba:0,fee:0,trx:0};const h=hitungLaba(r);byKat[kat].omzet+=h.omzet;byKat[kat].laba+=h.laba;byKat[kat].fee+=h.mpFee;byKat[kat].trx++});
+  DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>{const h=hitungLaba(r);(r.items||[]).forEach(it=>{const kat=it.kat||'Lainnya';if(!byKat[kat])byKat[kat]={nama:kat,color:'#888',omzet:0,laba:0,fee:0,trx:0};const li=hitungLabaItem(r,it,h);byKat[kat].omzet+=li.omzet;byKat[kat].laba+=li.laba;byKat[kat].fee+=li.mpFee;byKat[kat].trx++})});
   const katArr=Object.values(byKat).filter(k=>k.trx>0).sort((a,b)=>b.laba-a.laba);const maxKatLaba=Math.max(...katArr.map(k=>k.laba),1);
   const katEl=document.getElementById('laba-per-kat');
   if(katEl)katEl.innerHTML=katArr.map(k=>`<div class="prog-row">
@@ -1223,9 +1351,9 @@ function renderLabaTable(){
 function renderBiayaInputs(){
   const aktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
   document.getElementById('mp-fee-summary').innerHTML=MP_LIST.map(m=>{
-    const data=aktif.filter(r=>r.mp===m&&r.biayaAdmin!=null&&r.total>0);
+    const data=aktif.filter(r=>r.mp===m&&r.biayaAdmin!=null&&orderTotal(r)>0);
     if(!data.length)return `<div class="hpp-item"><label>${m}</label><div style="font-size:13px;color:var(--text3)">Belum ada data</div></div>`;
-    const totalOmzet=data.reduce((a,r)=>a+r.total,0);const totalFee=data.reduce((a,r)=>a+r.biayaAdmin,0);
+    const totalOmzet=data.reduce((a,r)=>a+orderTotal(r),0);const totalFee=data.reduce((a,r)=>a+r.biayaAdmin,0);
     const pct=totalOmzet>0?totalFee/totalOmzet*100:0;
     return `<div class="hpp-item"><label>${m}</label><div style="font-weight:600;font-size:14px">${fmtRp(totalFee/data.length)} <span style="font-weight:400;font-size:11px;color:var(--text3)">/transaksi (~${pct.toFixed(1)}%)</span></div></div>`;
   }).join('');
@@ -1284,7 +1412,7 @@ function renderLaporan(){
   ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
 
   if(charts.mpBar)charts.mpBar.destroy();
-  const mpRev={};MP_LIST.forEach(m=>mpRev[m]=0);DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>mpRev[r.mp]+=r.total);
+  const mpRev={};MP_LIST.forEach(m=>mpRev[m]=0);DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>mpRev[r.mp]+=orderTotal(r));
   charts.mpBar=new Chart(document.getElementById('chartMpBar'),{type:'bar',data:{labels:MP_LIST,datasets:[{label:'Revenue',data:MP_LIST.map(m=>Math.round(mpRev[m]/1e6*10)/10),backgroundColor:MP_LIST.map(m=>getMpColor(m)),borderWidth:0,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+v+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
 
   if(charts.bulanan)charts.bulanan.destroy();
@@ -1322,12 +1450,22 @@ function processCSV(file,type){
       try{
         if(type==='jual'){const d=row.tanggal||fmtTgl(new Date());const mpNama=row.marketplace||'Shopee';if(!DB.marketplace.some(m=>m.nama.toLowerCase()===mpNama.toLowerCase())){DB.marketplace.push({nama:mpNama,color:MP_COLOR_CHOICES[DB.marketplace.length%MP_COLOR_CHOICES.length]});refreshMpGlobals()}
           const noImp=row.no_pesanan||row.no||'IMP-'+i;
-          const orderBaru={no:noImp,tanggal:d,_date:new Date(d.split('/').reverse().join('-')||d).toISOString(),mp:mpNama,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',qty:parseInt(row.qty||1),total:parseInt((row.total||'0').replace(/[^0-9]/g,'')),status:row.status||'Selesai',biayaAdmin:row.biaya_admin!==undefined&&row.biaya_admin!==''?parseFloat(row.biaya_admin.replace(/[^0-9.]/g,'')):null,biayaTambahan:row.biaya_tambahan!==undefined&&row.biaya_tambahan!==''?parseFloat(row.biaya_tambahan.replace(/[^0-9.]/g,'')):null};
-          // Cegah No. Pesanan duplikat (yang menyebabkan gagal sinkron ke Supabase):
-          // jika nomor ini sudah ada (di data lama ATAU sudah diimport di baris CSV sebelumnya),
-          // TIMPA (update) baris yang sudah ada, jangan tambah baris baru.
+          // Harga satuan: dukung kolom baru "harga_satuan", atau kolom lama "total"
+          // (jika masih format lama 1-baris-1-pesanan, dianggap harga satuan = total/qty)
+          const qtyImp=parseInt(row.qty||1)||1;
+          let hargaImp;
+          if(row.harga_satuan!==undefined&&row.harga_satuan!==''){hargaImp=parseFloat(row.harga_satuan.replace(/[^0-9.]/g,''))||0}
+          else{const totalLama=parseInt((row.total||'0').replace(/[^0-9]/g,''))||0;hargaImp=qtyImp>0?Math.round(totalLama/qtyImp):0}
+          const itemBaru={sku:'',prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',qty:qtyImp,harga:hargaImp};
+          // Baris dengan No. Pesanan yang SAMA (baik dari data lama maupun baris
+          // CSV sebelumnya) berarti barang tambahan untuk pesanan yang sama —
+          // ditambahkan ke `items`, bukan dianggap pesanan baru.
           const idxAda=DB.penjualan.findIndex(r=>r.no.trim().toLowerCase()===noImp.trim().toLowerCase());
-          if(idxAda!==-1)DB.penjualan[idxAda]=orderBaru;else DB.penjualan.push(orderBaru);
+          if(idxAda!==-1){DB.penjualan[idxAda].items.push(itemBaru)}
+          else{
+            const orderBaru={no:noImp,tanggal:d,_date:new Date(d.split('/').reverse().join('-')||d).toISOString(),mp:mpNama,status:row.status||'Selesai',biayaAdmin:row.biaya_admin!==undefined&&row.biaya_admin!==''?parseFloat(row.biaya_admin.replace(/[^0-9.]/g,'')):null,biayaTambahan:row.biaya_tambahan!==undefined&&row.biaya_tambahan!==''?parseFloat(row.biaya_tambahan.replace(/[^0-9.]/g,'')):null,items:[itemBaru]};
+            DB.penjualan.push(orderBaru);
+          }
           imported++}
         else{DB.stok.push({sku:row.sku||'SKU-IMP-'+i,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',stok:parseInt(row.stok||0),terjual:parseInt(row.terjual_30h||row.terjual||0),hpp:parseFloat((row.hpp||'0').replace(/[^0-9.]/g,''))||0});imported++}
       }catch(err){errors++}
@@ -1340,7 +1478,17 @@ function processCSV(file,type){
 }
 
 // ===== EXPORT =====
-function exportCSV(){const h='No. Pesanan,Tanggal,Marketplace,Produk,Varian,Kategori,Qty,Total,Status,Biaya Admin,Biaya Tambahan\n';dlFile(h+DB.penjualan.map(r=>[r.no,r.tanggal,r.mp,r.prod,r.varian||'',r.kat||'',r.qty,r.total,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):''].join(',')).join('\n'),'penjualan_'+today()+'.csv','text/csv')}
+// Format: 1 baris = 1 BARANG. Barang-barang dengan No. Pesanan yang sama
+// artinya satu pesanan berisi banyak barang (kolom Biaya Admin/Tambahan/Status
+// milik pesanan diulang di tiap barisnya, memudahkan re-import).
+function exportCSV(){
+  const h='No. Pesanan,Tanggal,Marketplace,Produk,Varian,Kategori,Qty,Harga Satuan,Status,Biaya Admin,Biaya Tambahan\n';
+  const rows=[];
+  DB.penjualan.forEach(r=>(r.items||[]).forEach(it=>{
+    rows.push([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):''].join(','));
+  }));
+  dlFile(h+rows.join('\n'),'penjualan_'+today()+'.csv','text/csv');
+}
 function exportStokCSV(){const h='SKU,Produk,Varian,Kategori,Stok,HPP,Terjual 30h\n';dlFile(h+DB.stok.map(r=>[r.sku,r.prod,r.varian,r.kat||'',r.stok,r.hpp||0,r.terjual].join(',')).join('\n'),'stok_'+today()+'.csv','text/csv')}
 function exportLabaCSV(){const data=_labaFiltered.length?_labaFiltered:getLabaPerProduk();const h='Produk,Kategori,Marketplace,Qty,Omzet,HPP,Biaya Admin MP (%),Biaya Lain,Laba Bersih,Margin (%)\n';dlFile(h+data.map(r=>[r.prod,r.kat,r.mp,r.qty,r.omzet,Math.round(r.hpp),Math.round(r.mpFee),Math.round(r.extra),Math.round(r.laba),r.margin.toFixed(1)].join(',')).join('\n'),'laba_per_produk_'+today()+'.csv','text/csv')}
 function exportLabaCSV2(){exportLabaCSV()}
