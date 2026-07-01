@@ -774,23 +774,14 @@ function hapusBarisBarang(i){
   if(_formItems.length<=1){alert('Pesanan harus punya minimal 1 barang.');return}
   _formItems.splice(i,1);renderFormItems();
 }
-// Render ulang seluruh baris form barang + total & hint stok per baris.
+// Render ulang seluruh baris form barang (dipakai saat baris ditambah/dihapus/
+// modal dibuka). TIDAK dipanggil lagi setiap kali user mengetik, supaya
+// elemen <input> yang sedang difokus tidak dihancurkan & dibuat ulang
+// (itulah penyebab bug "1 klik hanya bisa menulis 1 huruf").
 function renderFormItems(){
   const wrap=document.getElementById('f-items-wrap');if(!wrap)return;
   wrap.innerHTML=_formItems.map((it,i)=>{
-    const si=cariStok(it.prod,it.varian);
-    const qty=it.qty||0;
-    let hint='';
-    if(it.prod){
-      if(si){
-        const sisa=si.stok-qty;const kurang=sisa<0;
-        hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:${kurang?'var(--danger-bg)':'var(--success-bg)'};color:${kurang?'var(--danger)':'var(--success)'}">${kurang?`⚠️ Stok kurang (tersisa ${si.stok} pcs)`:`✅ Stok cukup, sisa ${sisa} pcs`}</div>`;
-      }else{
-        hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:var(--warning-bg);color:var(--warning)">⚠️ Tidak ditemukan di Stok Gudang — stok tidak otomatis berkurang</div>`;
-      }
-    }
-    const subtotal=(it.qty||0)*(it.harga||0);
-    return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
+    return `<div class="f-item-row" id="f-item-row-${i}" style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
       <div style="display:grid;grid-template-columns:2fr 1.3fr;gap:8px">
         <div class="form-group" style="margin-bottom:6px"><label style="font-size:11px">Nama Produk</label>
           <input class="form-input" list="dl-produk-stok" value="${it.prod||''}" placeholder="Pilih/ketik produk" oninput="updateBarisBarang(${i},'prod',this.value)" autocomplete="off"></div>
@@ -800,7 +791,7 @@ function renderFormItems(){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Kategori</label>
-          <select class="form-input" onchange="updateBarisBarang(${i},'kat',this.value)">${getKatNames().map(k=>`<option value="${k}" ${it.kat===k?'selected':''}>${k}</option>`).join('')}</select></div>
+          <select class="form-input" id="f-item-kat-${i}" onchange="updateBarisBarang(${i},'kat',this.value)">${getKatNames().map(k=>`<option value="${k}" ${it.kat===k?'selected':''}>${k}</option>`).join('')}</select></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Qty</label>
           <input class="form-input" type="number" min="1" value="${it.qty!=null?it.qty:1}" oninput="updateBarisBarang(${i},'qty',this.value)"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Harga Satuan (Rp)</label>
@@ -808,26 +799,62 @@ function renderFormItems(){
         <button type="button" class="btn btn-sm btn-icon btn-danger" title="Hapus barang ini" onclick="hapusBarisBarang(${i})" style="margin-bottom:2px">🗑</button>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-        <span style="font-size:11px;color:var(--text3)">Subtotal: <strong style="color:var(--text1)">${fmtRp(subtotal)}</strong></span>
+        <span style="font-size:11px;color:var(--text3)">Subtotal: <strong style="color:var(--text1)" id="f-item-subtotal-${i}">${fmtRp((it.qty||0)*(it.harga||0))}</strong></span>
       </div>
-      ${hint}
+      <div id="f-item-hint-${i}"></div>
     </div>`;
   }).join('');
-  const totalPesanan=_formItems.reduce((a,it)=>a+(it.qty||0)*(it.harga||0),0);
-  const totalEl=document.getElementById('f-total-pesanan');
-  if(totalEl)totalEl.textContent=fmtRp(totalPesanan);
+  // Isi hint stok awal untuk setiap baris (tanpa perlu re-render penuh nantinya)
+  _formItems.forEach((it,i)=>refreshBarisBarangTampilan(i));
+  updateTotalPesanan();
 }
+// Update data 1 baris barang saat user mengetik/memilih, TANPA merender ulang
+// seluruh form (supaya fokus/cursor di input tidak hilang tiap ketikan).
 function updateBarisBarang(i,field,val){
   if(!_formItems[i])return;
   if(field==='qty')_formItems[i].qty=parseInt(val)||1;
   else if(field==='harga')_formItems[i].harga=parseFloat(val)||0;
   else _formItems[i][field]=val;
-  if(field==='prod'){
-    // Auto-isi kategori dari Stok Gudang saat nama produk cocok
-    const si=cariStok(val,_formItems[i].varian);
-    if(si)_formItems[i].kat=si.kat;
+  if(field==='prod'||field==='varian'){
+    // Sinkronisasi otomatis kategori dari Stok Gudang saat nama produk/varian cocok
+    const si=cariStok(_formItems[i].prod,_formItems[i].varian);
+    if(si){
+      _formItems[i].kat=si.kat;
+      const katSel=document.getElementById(`f-item-kat-${i}`);
+      if(katSel)katSel.value=si.kat;
+    }
+    if(field==='prod'){
+      // Perbarui daftar pilihan varian sesuai produk yang baru diketik/dipilih
+      const dl=document.getElementById(`dl-varian-stok-${i}`);
+      if(dl)dl.innerHTML=[...new Set(DB.stok.filter(s=>s.prod===val).map(s=>s.varian).filter(Boolean))].map(v=>`<option value="${v}">`).join('');
+    }
   }
-  renderFormItems();
+  refreshBarisBarangTampilan(i);
+  updateTotalPesanan();
+}
+// Perbarui hanya subtotal & hint stok 1 baris (tidak menyentuh elemen <input>)
+function refreshBarisBarangTampilan(i){
+  const it=_formItems[i];if(!it)return;
+  const si=cariStok(it.prod,it.varian);
+  const qty=it.qty||0;
+  let hint='';
+  if(it.prod){
+    if(si){
+      const sisa=si.stok-qty;const kurang=sisa<0;
+      hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:${kurang?'var(--danger-bg)':'var(--success-bg)'};color:${kurang?'var(--danger)':'var(--success)'}">${kurang?`⚠️ Stok kurang (tersisa ${si.stok} pcs)`:`✅ Stok cukup, sisa ${sisa} pcs`}</div>`;
+    }else{
+      hint=`<div style="font-size:11px;padding:4px 8px;border-radius:6px;margin-top:4px;background:var(--warning-bg);color:var(--warning)">⚠️ Tidak ditemukan di Stok Gudang — stok tidak otomatis berkurang</div>`;
+    }
+  }
+  const hintEl=document.getElementById(`f-item-hint-${i}`);
+  if(hintEl)hintEl.innerHTML=hint;
+  const subEl=document.getElementById(`f-item-subtotal-${i}`);
+  if(subEl)subEl.textContent=fmtRp((it.qty||0)*(it.harga||0));
+}
+function updateTotalPesanan(){
+  const totalPesanan=_formItems.reduce((a,it)=>a+(it.qty||0)*(it.harga||0),0);
+  const totalEl=document.getElementById('f-total-pesanan');
+  if(totalEl)totalEl.textContent=fmtRp(totalPesanan);
 }
 // ===== SARAN BIAYA ADMIN & BIAYA TAMBAHAN (berdasarkan riwayat pesanan) =====
 // Mengganti pengaturan global lama (Biaya Admin per Marketplace % & Biaya
@@ -1401,12 +1428,16 @@ function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa rese
 // ===== LAPORAN =====
 function renderLaporan(){
   const all=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
-  let to=0,tl=0,tf=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee});
+  // th = total HPP, te = total Ongkir & biaya lain (dari biayaTambahan tiap
+  // pesanan, atau default pengaturan biaya jika pesanan tidak diisi manual).
+  // Semua diambil dari hitungLaba() per pesanan (data asli), BUKAN angka
+  // tetap/dummy, supaya totalnya konsisten dengan Estimasi Laba Bersih.
+  let to=0,tl=0,tf=0,th=0,te=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee;th+=h.hpp;te+=h.extra});
   document.getElementById('keuangan-rows').innerHTML=[
     {l:'Total Omzet (30 hari)',v:fmtRp(to),c:''},
     {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
-    {l:'Ongkos Kirim (subsidi)',v:'− Rp 3.240.000',c:'red'},
-    {l:'HPP Estimasi',v:'− '+fmtRp(to*((DB.biaya&&DB.biaya.hpp_pct!=null)?DB.biaya.hpp_pct:45)/100),c:'red'},
+    {l:'Ongkir & Biaya Lain (subsidi)',v:'− '+fmtRp(te),c:'red'},
+    {l:'HPP Estimasi',v:'− '+fmtRp(th),c:'red'},
     {l:'Estimasi Laba Bersih',v:fmtRp(tl),c:'green'},
     {l:'Margin Bersih',v:(to>0?tl/to*100:0).toFixed(1)+'%',c:'green'},
   ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
