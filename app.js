@@ -316,6 +316,7 @@ async function initApp(){
   filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];
   applyPengaturan();
   applyLogo();
+  populatePeriodeYearSelect();
   renderDashboard();
   renderJualTable();
   renderStokTable();
@@ -327,6 +328,7 @@ async function initApp(){
 
 // ===== ADMIN AUTH (Supabase Auth) + ROLE/PRIVILEGE =====
 let _currentAdminRole=null; // 'owner' | 'staff' | 'viewer' | 'pending' | null
+let _currentAdminNama=null; // nama admin dari admin_users.nama (fallback ke email)
 function showLoginScreen(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-wrap').style.display='none';
@@ -374,6 +376,7 @@ async function proceedAfterAuth(user){
     }
     // Kasus 5: normal — masuk app
     _currentAdminRole=data.role;
+    _currentAdminNama=(data.nama&&data.nama.trim())?data.nama.trim():user.email;
     showAppScreen();
     await initApp();             // render semua section
     applyRolePermissions();      // terapkan permission SETELAH render selesai
@@ -444,24 +447,66 @@ async function adminLogin(){
 async function adminLogout(){
   if(!confirm('Keluar dari dashboard?'))return;
   try{await supabaseClient.auth.signOut()}catch(e){}
-  _currentAdminUser=null;_currentAdminRole=null;
+  _currentAdminUser=null;_currentAdminRole=null;_currentAdminNama=null;
   document.getElementById('login-email').value='';
   document.getElementById('login-password').value='';
   loginAlert('');
   showLoginScreen();
 }
+function initialsFromNama(nama){
+  if(!nama)return '?';
+  const parts=nama.trim().split(/\s+/).filter(Boolean);
+  if(parts.length===1)return parts[0].substring(0,2).toUpperCase();
+  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+}
+const ROLE_META={
+  owner:{label:'Owner',full:'👑 Owner (akses penuh)',cls:'role-owner',emoji:'👑'},
+  staff:{label:'Staff',full:'🛠 Staff (kelola transaksi & stok)',cls:'role-staff',emoji:'🛠'},
+  viewer:{label:'Viewer',full:'👁 Viewer (hanya lihat)',cls:'role-viewer',emoji:'👁'}
+};
 function updateAdminInfo(){
   const emailEl=document.getElementById('info-admin-email');
   const sinceEl=document.getElementById('info-admin-since');
-  if(!emailEl)return;
-  emailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
-  sinceEl.textContent=_currentAdminUser&&_currentAdminUser.last_sign_in_at?new Date(_currentAdminUser.last_sign_in_at).toLocaleString('id-ID'):'–';
-  const roleEl=document.getElementById('info-admin-role');
-  if(roleEl){
-    const label={owner:'👑 Owner (akses penuh)',staff:'🛠 Staff (kelola transaksi & stok)',viewer:'👁 Viewer (hanya lihat)'}[_currentAdminRole]||_currentAdminRole||'–';
-    roleEl.textContent=label;
+  if(emailEl){
+    emailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
+    sinceEl.textContent=_currentAdminUser&&_currentAdminUser.last_sign_in_at?new Date(_currentAdminUser.last_sign_in_at).toLocaleString('id-ID'):'–';
   }
+  const roleEl=document.getElementById('info-admin-role');
+  const meta=ROLE_META[_currentAdminRole]||{label:_currentAdminRole||'–',full:_currentAdminRole||'–',cls:'role-viewer'};
+  if(roleEl)roleEl.textContent=meta.full;
+
+  // ===== Widget "User Menu" pojok kiri atas =====
+  const nama=_currentAdminNama||(_currentAdminUser?_currentAdminUser.email:'');
+  const inisial=initialsFromNama(nama);
+  ['user-avatar','user-avatar-lg'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=inisial});
+  const nameEl=document.getElementById('user-menu-name');if(nameEl)nameEl.textContent=nama||'–';
+  const ddNameEl=document.getElementById('user-menu-dropdown-name');if(ddNameEl)ddNameEl.textContent=nama||'–';
+  const ddEmailEl=document.getElementById('user-menu-dropdown-email');if(ddEmailEl)ddEmailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
+  ['user-menu-role-pill','user-menu-dropdown-role-pill'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.className='user-menu-role-pill '+meta.cls;
+    el.textContent=(meta.emoji?meta.emoji+' ':'')+meta.label;
+  });
 }
+// Buka/tutup dropdown user menu di pojok kiri atas
+function toggleUserMenu(){
+  const dd=document.getElementById('user-menu-dropdown');
+  const trg=document.getElementById('user-menu-trigger');
+  if(!dd||!trg)return;
+  const willOpen=!dd.classList.contains('open');
+  dd.classList.toggle('open',willOpen);
+  trg.classList.toggle('open',willOpen);
+}
+function closeUserMenu(){
+  const dd=document.getElementById('user-menu-dropdown');
+  const trg=document.getElementById('user-menu-trigger');
+  if(dd)dd.classList.remove('open');
+  if(trg)trg.classList.remove('open');
+}
+document.addEventListener('click',function(e){
+  const wrap=document.getElementById('user-menu-wrap');
+  if(wrap&&!wrap.contains(e.target))closeUserMenu();
+});
 function bukaModalGantiPassword(){
   document.getElementById('pw-baru').value='';document.getElementById('pw-ulang').value='';
   openModal('modal-ganti-password');
@@ -581,7 +626,7 @@ window.onload=async function(){
 // Jika sesi berubah (login/logout dari tab lain, token refresh, dst)
 if(typeof supabaseClient!=='undefined'&&supabaseClient){
   supabaseClient.auth.onAuthStateChange((event,session)=>{
-    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;showLoginScreen()}
+    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;_currentAdminNama=null;showLoginScreen()}
   });
 }
 
@@ -611,12 +656,114 @@ function populateKatDropdowns(){
   });
 }
 
+// ===== SISTEM PERIODE DATA (Hari Ini, Kemarin, Per Hari/Minggu/Bulan/Tahun) =====
+function pad2(n){return String(n).padStart(2,'0')}
+function orderDateObj(r){return new Date(r._date||r.tanggal.split('/').reverse().join('-'))}
+function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
+function endOfDay(d){const x=new Date(d);x.setHours(23,59,59,999);return x}
+// Senin dari minggu ISO tertentu (dipakai untuk input type="week", format YYYY-Www)
+function mondayOfISOWeek(year,week){
+  const simple=new Date(year,0,1+(week-1)*7);
+  const dow=simple.getDay();
+  const monday=new Date(simple);
+  if(dow<=4)monday.setDate(simple.getDate()-dow+1);
+  else monday.setDate(simple.getDate()+8-dow);
+  monday.setHours(0,0,0,0);
+  return monday;
+}
+function currentISOWeekValue(){
+  const d=new Date();
+  const target=new Date(d.valueOf());
+  const dayNr=(d.getDay()+6)%7;
+  target.setDate(target.getDate()-dayNr+3);
+  const firstThursday=target.valueOf();
+  target.setMonth(0,1);
+  if(target.getDay()!==4)target.setMonth(0,1+((4-target.getDay()+7)%7));
+  const week=1+Math.ceil((firstThursday-target)/(7*24*3600*1000));
+  return `${d.getFullYear()}-W${pad2(week)}`;
+}
+const BULAN_NAMA=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
+// Tampilkan/sembunyikan input tanggal sesuai mode periode yang dipilih,
+// isi nilai default (hari/minggu/bulan/tahun berjalan), lalu muat ulang data.
+function onPeriodeModeChange(){
+  const mode=document.getElementById('periodeMode').value;
+  const elDate=document.getElementById('periodeDate');
+  const elWeek=document.getElementById('periodeWeek');
+  const elMonth=document.getElementById('periodeMonth');
+  const elYear=document.getElementById('periodeYear');
+  elDate.style.display=mode==='daily'?'':'none';
+  elWeek.style.display=mode==='weekly'?'':'none';
+  elMonth.style.display=mode==='monthly'?'':'none';
+  elYear.style.display=mode==='yearly'?'':'none';
+  if(mode==='daily'&&!elDate.value)elDate.value=today();
+  if(mode==='weekly'&&!elWeek.value)elWeek.value=currentISOWeekValue();
+  if(mode==='monthly'&&!elMonth.value)elMonth.value=today().slice(0,7);
+  if(mode==='yearly'&&!elYear.value){populatePeriodeYearSelect();elYear.value=String(new Date().getFullYear())}
+  reloadData();
+}
+// Isi pilihan tahun di dropdown "Berdasarkan Tahun" dari tahun-tahun yang
+// benar-benar ada di data pesanan (+ tahun berjalan), bukan daftar statis.
+function populatePeriodeYearSelect(){
+  const elYear=document.getElementById('periodeYear');if(!elYear)return;
+  const tahunSet=new Set([new Date().getFullYear()]);
+  (DB.penjualan||[]).forEach(r=>{try{tahunSet.add(orderDateObj(r).getFullYear())}catch(e){}});
+  const tahunArr=[...tahunSet].sort((a,b)=>b-a);
+  const cur=elYear.value;
+  elYear.innerHTML=tahunArr.map(y=>`<option value="${y}">Tahun ${y}</option>`).join('');
+  if(cur&&tahunArr.includes(parseInt(cur)))elYear.value=cur;
+}
+// Menghitung rentang tanggal (start-end) & label sesuai mode periode yang aktif.
+function getPeriodeRange(){
+  const mode=document.getElementById('periodeMode').value;
+  if(mode==='today'){
+    return{start:startOfDay(new Date()),end:endOfDay(new Date()),label:'Hari Ini'};
+  }
+  if(mode==='yesterday'){
+    const y=new Date();y.setDate(y.getDate()-1);
+    return{start:startOfDay(y),end:endOfDay(y),label:'Kemarin'};
+  }
+  if(mode==='daily'){
+    const v=document.getElementById('periodeDate').value||today();
+    const d=new Date(v+'T00:00:00');
+    return{start:startOfDay(d),end:endOfDay(d),label:fmtTgl(d)};
+  }
+  if(mode==='weekly'){
+    const v=document.getElementById('periodeWeek').value||currentISOWeekValue();
+    const[yy,ww]=v.split('-W').map(Number);
+    const mon=mondayOfISOWeek(yy,ww);
+    const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    return{start:startOfDay(mon),end:endOfDay(sun),label:`Minggu ${ww} (${fmtTgl(mon)} – ${fmtTgl(sun)})`};
+  }
+  if(mode==='monthly'){
+    const v=document.getElementById('periodeMonth').value||today().slice(0,7);
+    const[yy,mm]=v.split('-').map(Number);
+    const start=new Date(yy,mm-1,1);const end=new Date(yy,mm,0,23,59,59,999);
+    return{start,end,label:`${BULAN_NAMA[mm-1]} ${yy}`};
+  }
+  if(mode==='yearly'){
+    const yy=parseInt(document.getElementById('periodeYear').value)||new Date().getFullYear();
+    const start=new Date(yy,0,1);const end=new Date(yy,11,31,23,59,59,999);
+    return{start,end,label:`Tahun ${yy}`};
+  }
+  // fallback: mode rolling "N hari terakhir" (7/30/90)
+  const p=parseInt(mode)||30;
+  const end=endOfDay(new Date());
+  const start=startOfDay(new Date());start.setDate(start.getDate()-p);
+  return{start,end,label:`${p} Hari Terakhir`};
+}
+function dalamPeriode(r,range){const d=orderDateObj(r);return d>=range.start&&d<=range.end}
+
 // ===== DASHBOARD =====
-function reloadData(){renderDashboard()}
+function reloadData(){
+  renderDashboard();
+  const activeSection=document.querySelector('.section.active');
+  const id=activeSection?activeSection.id.replace('sec-',''):'';
+  if(id==='laporan')renderLaporan();
+}
 function renderDashboard(){
-  const p=parseInt(document.getElementById('periodeSelect').value);
-  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-p);
-  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&new Date(r._date||r.tanggal.split('/').reverse().join('-'))>=cutoff);
+  const range=getPeriodeRange();
+  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&dalamPeriode(r,range));
   const totalRev=recent.reduce((a,r)=>a+orderTotal(r),0);
   const totalOrd=recent.length;
   const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
@@ -627,9 +774,9 @@ function renderDashboard(){
   const margin=totalRev>0?totalLaba/totalRev*100:0;
 
   document.getElementById('m-rev').textContent=fmtRp(totalRev);
-  document.getElementById('m-rev-sub').textContent='▲ 18.4% vs periode lalu';
+  const revSub=document.getElementById('m-rev-sub');revSub.textContent=range.label;revSub.classList.remove('green','red');revSub.style.color='var(--text3)';
   document.getElementById('m-ord').textContent=totalOrd.toLocaleString('id-ID');
-  document.getElementById('m-ord-sub').textContent='▲ 12.1% vs periode lalu';
+  const ordSub=document.getElementById('m-ord-sub');ordSub.textContent=range.label;ordSub.classList.remove('green','red');ordSub.style.color='var(--text3)';
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
   document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih';
   document.getElementById('m-kritis').textContent=kritis;
@@ -1427,14 +1574,15 @@ function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa rese
 
 // ===== LAPORAN =====
 function renderLaporan(){
-  const all=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
+  const range=getPeriodeRange();
+  const all=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&dalamPeriode(r,range));
   // th = total HPP, te = total Ongkir & biaya lain (dari biayaTambahan tiap
   // pesanan, atau default pengaturan biaya jika pesanan tidak diisi manual).
   // Semua diambil dari hitungLaba() per pesanan (data asli), BUKAN angka
   // tetap/dummy, supaya totalnya konsisten dengan Estimasi Laba Bersih.
   let to=0,tl=0,tf=0,th=0,te=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee;th+=h.hpp;te+=h.extra});
   document.getElementById('keuangan-rows').innerHTML=[
-    {l:'Total Omzet (30 hari)',v:fmtRp(to),c:''},
+    {l:`Total Omzet (${range.label})`,v:fmtRp(to),c:''},
     {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
     {l:'Ongkir & Biaya Lain (subsidi)',v:'− '+fmtRp(te),c:'red'},
     {l:'HPP Estimasi',v:'− '+fmtRp(th),c:'red'},
