@@ -191,6 +191,8 @@ tr:hover td{background:var(--surface2)}
   .grid-4{grid-template-columns:1fr 1fr}
   .page-content{padding:12px}
   .topbar{padding:0 12px}
+  .item-row{grid-template-columns:1fr 1fr!important}
+  .item-row .btn-danger{grid-column:1/-1;justify-self:end}
 }
 
 ::-webkit-scrollbar{width:5px;height:5px}
