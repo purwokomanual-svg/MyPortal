@@ -401,7 +401,23 @@
     <!-- LAPORAN KEUANGAN -->
     <div class="section" id="sec-laporan">
       <div class="grid-2 mb18">
-        <div class="card"><div class="card-title">Ringkasan Keuangan (30 hari)</div><div id="keuangan-rows"></div></div>
+        <div class="card">
+          <div class="card-title">
+            <span id="keuangan-title">Ringkasan Keuangan</span>
+            <select class="form-select" id="f-periode-laporan" onchange="renderLaporan()" style="font-size:12px;padding:5px 10px">
+              <option value="hari_ini">Hari Ini</option>
+              <option value="kemarin">Kemarin</option>
+              <option value="7_hari" selected>7 Hari Terakhir</option>
+              <option value="30_hari">30 Hari Terakhir</option>
+              <option value="per_hari">Per Hari</option>
+              <option value="per_minggu">Per Minggu</option>
+              <option value="per_bulan">Per Bulan</option>
+              <option value="per_tahun">Berdasarkan Tahun</option>
+            </select>
+          </div>
+          <div id="keuangan-rows"></div>
+          <div class="table-wrap" id="keuangan-breakdown-table" style="display:none"></div>
+        </div>
         <div class="card"><div class="card-title">Revenue per Marketplace</div><div class="chart-box" style="height:210px"><canvas id="chartMpBar"></canvas></div></div>
       </div>
       <div class="card mb18"><div class="card-title"><span id="bulanan-title">Tren Bulanan (6 Bulan Terakhir)</span><select class="form-select" id="f-periode-bulanan" onchange="renderLaporan()" style="font-size:12px;padding:5px 10px"><option value="3">3 Bulan</option><option value="6" selected>6 Bulan</option><option value="12">12 Bulan</option></select></div><div class="chart-box" style="height:250px"><canvas id="chartBulanan"></canvas></div></div>
