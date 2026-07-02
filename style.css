@@ -58,11 +58,30 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 [data-theme="dark"] .nav-item.active{background:var(--accent);color:#0c1512;box-shadow:0 6px 16px -4px rgba(0,0,0,.5)}
 [data-theme="dark"] .nav-item.active svg{color:#0c1512}
 .nav-badge{margin-left:auto;background:var(--accent2);color:#3a2c10;font-size:10px;padding:1px 7px;border-radius:20px;font-weight:800}
-/* "Marketplace Terhubung" disembunyikan supaya daftar menu utama presisi
-   mengisi sidebar tanpa blok tambahan di bawahnya. */
-.sidebar-footer{display:none}
-.mp-chip{display:flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(255,255,255,.75);padding:4px 6px;font-weight:500}
-.mp-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px rgba(255,255,255,.08)}
+
+/* ===== Sidebar user / account widget (menu login) ===== */
+.sidebar-user{position:relative;margin:8px 6px 6px;border-top:1px solid rgba(255,255,255,.12);padding-top:8px;flex-shrink:0}
+.su-trigger{width:100%;display:flex;align-items:center;gap:9px;padding:8px;border-radius:16px;border:none;background:rgba(255,255,255,.06);cursor:pointer;text-align:left;font-family:inherit;transition:background .15s}
+.su-trigger:hover{background:rgba(255,255,255,.12)}
+.su-avatar{flex-shrink:0;width:32px;height:32px;border-radius:50%;background:var(--accent2);color:#3a2c10;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;text-transform:uppercase}
+.su-info{flex:1;min-width:0}
+.su-name{font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.su-role{font-size:10px;font-weight:700;margin-top:1px;color:rgba(255,255,255,.55)}
+.su-role.role-owner{color:var(--accent2)}
+.su-role.role-staff{color:#7db8ff}
+.su-role.role-kasir{color:#8fe0a8}
+.su-role.role-viewer{color:rgba(255,255,255,.55)}
+.su-chev{flex-shrink:0;color:rgba(255,255,255,.5);transition:transform .15s}
+.sidebar-user.open .su-chev{transform:rotate(180deg)}
+.su-menu{display:none;position:absolute;left:0;right:0;bottom:calc(100% + 8px);background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:6px;border:1px solid var(--border)}
+.sidebar-user.open .su-menu{display:block}
+.su-menu-email{font-size:11px;color:var(--text3);padding:8px 10px 6px;word-break:break-all}
+.su-menu-item{width:100%;display:flex;align-items:center;gap:9px;padding:9px 10px;border:none;background:none;border-radius:11px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--text2);text-align:left}
+.su-menu-item:hover{background:var(--surface2);color:var(--text)}
+.su-menu-item svg{flex-shrink:0;opacity:.8}
+.su-menu-sep{height:1px;background:var(--border);margin:4px 2px}
+.su-menu-danger{color:#e5484d}
+.su-menu-danger:hover{background:rgba(229,72,77,.1);color:#e5484d}
 
 /* ===== Buttons ===== */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:30px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;white-space:nowrap}
@@ -283,12 +302,15 @@ tr:hover td{background:var(--surface2)}
 
 @media(max-width:900px){
   .sidebar{width:64px;left:8px;top:8px;bottom:8px;border-radius:22px}
-  .sidebar-logo h1 em,.sidebar-logo small,.nav-item span,.nav-section,.sidebar-footer small,.mp-chip span{display:none}
+  .sidebar-logo h1 em,.sidebar-logo small,.nav-item span,.nav-section{display:none}
   .main{margin-left:88px}
   .topbar{margin:8px 12px 0}
   .grid-4{grid-template-columns:repeat(2,1fr)}
   .grid-2,.grid-3{grid-template-columns:1fr}
   .nav-item{justify-content:center;padding:11px}
+  .su-trigger{justify-content:center;padding:8px 4px}
+  .su-info,.su-chev{display:none}
+  .su-menu{left:4px;right:auto;width:220px}
 }
 @media(max-width:600px){
   .grid-4{grid-template-columns:1fr 1fr}
