@@ -446,6 +446,14 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-metric.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
 .fin-metric.fm-success .fin-metric-value{color:var(--success)}
 .fin-metric-hero{grid-column:span 4;background:linear-gradient(120deg,var(--accent-dark),var(--accent));border:none;box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
+/* PENTING: kartu hero ini juga mendapat class "fm-success" dari app.js saat
+   laba positif. Tanpa override eksplisit ini, aturan `.fin-metric.fm-success`
+   (2 selector class = specificity lebih tinggi) menimpa background gradasi
+   gelap di atas dengan background TERANG (--success-bg), padahal teksnya
+   tetap dipaksa putih -> kontras rusak & "Estimasi Laba Bersih" nyaris tak
+   terbaca di mode terang. Override bernama sama persis di sini supaya
+   menang, dan tetap konsisten dengan bahasa warna sukses tema. */
+.fin-metric-hero.fm-success{background:linear-gradient(120deg,var(--accent-dark),var(--success));box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
 .fin-metric-hero.fm-danger{background:linear-gradient(120deg,#6b1f1a,var(--danger))}
 .fin-metric-hero .fin-metric-icon{background:rgba(255,255,255,.16)}
 .fin-metric-hero .margin-track{background:rgba(255,255,255,.22)}
