@@ -90,15 +90,42 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:18px}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
 .mb18{margin-bottom:18px}
-.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
-.metric-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:4px;background:var(--accent)}
-.grid-4 .metric-card:nth-child(2)::before{background:var(--accent2)}
-.grid-4 .metric-card:nth-child(3)::before{background:var(--success)}
-.grid-4 .metric-card:nth-child(4)::before{background:var(--danger)}
+
+/* Kartu metrik "futuristik" — dipakai di Dashboard, Produk & Kategori, Laba
+   per Produk, dan Laporan Keuangan, supaya satu bahasa desain konsisten di
+   semua halaman: garis aksen bercahaya di atas, sapuan highlight halus saat
+   di-hover, dan sedikit terangkat (lift) untuk kesan kartu "melayang". */
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;transition:transform .18s,box-shadow .18s}
+.metric-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:4px;background:var(--accent);box-shadow:0 0 12px 0 var(--accent)}
+.metric-card::after{content:'';position:absolute;inset:0;background:radial-gradient(140px 90px at 100% 0%,rgba(255,255,255,.5),transparent 70%);opacity:0;transition:opacity .18s;pointer-events:none}
+[data-theme="dark"] .metric-card::after{background:radial-gradient(140px 90px at 100% 0%,rgba(255,255,255,.08),transparent 70%)}
+.metric-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.metric-card:hover::after{opacity:1}
+.grid-4 .metric-card:nth-child(2)::before{background:var(--accent2);box-shadow:0 0 12px 0 var(--accent2)}
+.grid-4 .metric-card:nth-child(3)::before{background:var(--success);box-shadow:0 0 12px 0 var(--success)}
+.grid-4 .metric-card:nth-child(4)::before{background:var(--danger);box-shadow:0 0 12px 0 var(--danger)}
 .metric-label{font-size:12px;color:var(--text3);margin-bottom:7px;font-weight:600}
 .metric-value{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.5px}
 .metric-sub{font-size:12px;margin-top:5px;font-weight:600}
 .green{color:var(--success)}.red{color:var(--danger)}.orange{color:var(--warning)}
+
+/* Varian "hero" — gradient penuh warna, dipakai untuk metrik laba/profit
+   yang ingin ditonjolkan (mis. "Estimasi Laba Bersih") supaya langsung
+   menarik perhatian di antara kartu metrik lain, konsisten dengan kartu
+   hero di Laporan Keuangan. Warna teks dipaksa putih (!important) supaya
+   TIDAK ketiban aturan warna .green/.red/.orange lain yang lebih spesifik —
+   ini yang tadinya bikin tulisan "Estimasi Laba Bersih" nyaris tak
+   terbaca di mode terang (teks hijau redup di atas gradasi hijau tua). */
+.metric-card.metric-hero{background:linear-gradient(120deg,var(--accent-dark),var(--accent));border:none;box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
+.metric-card.metric-hero.metric-hero-danger{background:linear-gradient(120deg,#6b1f1a,var(--danger));box-shadow:0 16px 34px -14px rgba(226,104,95,.5)}
+.metric-card.metric-hero::before{display:none}
+.metric-card.metric-hero .metric-label{color:rgba(255,255,255,.78)!important}
+.metric-card.metric-hero .metric-value{color:#fff!important}
+.metric-card.metric-hero .metric-sub{color:rgba(255,255,255,.85)!important}
+
+/* Kartu hero yang sama juga dipakai di Laporan Keuangan (class fin-metric-hero) */
+.fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:rgba(255,255,255,.78)!important}
+.fin-metric-hero .fin-metric-value{color:#fff!important}
 
 /* ===== Sections ===== */
 .section{display:none}.section.active{display:block}
@@ -421,8 +448,6 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-metric-hero{grid-column:span 4;background:linear-gradient(120deg,var(--accent-dark),var(--accent));border:none;box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
 .fin-metric-hero.fm-danger{background:linear-gradient(120deg,#6b1f1a,var(--danger))}
 .fin-metric-hero .fin-metric-icon{background:rgba(255,255,255,.16)}
-.fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:rgba(255,255,255,.78)}
-.fin-metric-hero .fin-metric-value{color:#fff}
 .fin-metric-hero .margin-track{background:rgba(255,255,255,.22)}
 .fin-metric-hero span{color:#fff!important}
 @media(max-width:980px){
