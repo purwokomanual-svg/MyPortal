@@ -394,3 +394,77 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .pp-list{width:100%;border-right:none;border-bottom:1px solid var(--border)}
   .pp-side{width:100%}
 }
+
+/* =========================================================
+   LAPORAN KEUANGAN — kartu metrik "futuristik" & kop cetak
+   ========================================================= */
+.fin-hero{position:relative;overflow:hidden}
+.fin-metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.fin-metric{position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:16px 16px 14px;overflow:hidden;transition:transform .18s,box-shadow .18s}
+.fin-metric::after{content:'';position:absolute;inset:0;background:radial-gradient(120px 80px at 100% 0%,rgba(255,255,255,.5),transparent 70%);opacity:0;transition:opacity .18s;pointer-events:none}
+[data-theme="dark"] .fin-metric::after{background:radial-gradient(120px 80px at 100% 0%,rgba(255,255,255,.08),transparent 70%)}
+.fin-metric:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
+.fin-metric:hover::after{opacity:1}
+.fin-metric-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;background:var(--surface)}
+.fin-metric-label{font-size:11.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+.fin-metric-value{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px}
+.fin-metric-value-lg{font-size:26px}
+.fin-metric-sub{font-size:11.5px;color:var(--text3);font-weight:600;margin-top:4px}
+.fin-metric.fm-accent{background:linear-gradient(160deg,var(--accent-light),var(--surface2))}
+.fin-metric.fm-accent .fin-metric-icon{color:var(--accent)}
+.fin-metric.fm-warning{background:linear-gradient(160deg,var(--warning-bg),var(--surface2))}
+.fin-metric.fm-warning .fin-metric-value{color:var(--warning)}
+.fin-metric.fm-danger{background:linear-gradient(160deg,var(--danger-bg),var(--surface2))}
+.fin-metric.fm-danger .fin-metric-value{color:var(--danger)}
+.fin-metric.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
+.fin-metric.fm-success .fin-metric-value{color:var(--success)}
+.fin-metric-hero{grid-column:span 4;background:linear-gradient(120deg,var(--accent-dark),var(--accent));border:none;box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
+.fin-metric-hero.fm-danger{background:linear-gradient(120deg,#6b1f1a,var(--danger))}
+.fin-metric-hero .fin-metric-icon{background:rgba(255,255,255,.16)}
+.fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:rgba(255,255,255,.78)}
+.fin-metric-hero .fin-metric-value{color:#fff}
+.fin-metric-hero .margin-track{background:rgba(255,255,255,.22)}
+.fin-metric-hero span{color:#fff!important}
+@media(max-width:980px){
+  .fin-metric-grid{grid-template-columns:repeat(2,1fr)}
+  .fin-metric-hero{grid-column:span 2}
+}
+@media(max-width:560px){
+  .fin-metric-grid{grid-template-columns:1fr}
+  .fin-metric-hero{grid-column:span 1}
+}
+
+/* Kop halaman untuk file cetak — tersembunyi di layar, muncul saat print */
+.fin-print-header{display:none}
+
+/* =========================================================
+   MODE CETAK — dipicu tombol "🖨 Cetak Laporan" (window.print()).
+   Sembunyikan chrome aplikasi (sidebar, topbar, tombol aksi, filter
+   interaktif) dan tampilkan kop laporan + konten Laporan Keuangan saja
+   dengan tata letak rapi hitam-putih ramah printer, tetap mempertahankan
+   aksen warna secukupnya untuk kesan modern di kertas.
+   ========================================================= */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff!important}
+  .sidebar,.topbar,.no-print,#login-screen,.modal-overlay,.toast-container{display:none!important}
+  .main{margin-left:0!important}
+  .page-content{padding:0!important;max-width:100%!important}
+  .section{display:none!important}
+  .section.active{display:block!important}
+  .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid}
+  .fin-metric,.fin-metric-hero{break-inside:avoid;box-shadow:none!important}
+  .fin-metric-hero{background:#eef6f1!important;border:1.5px solid var(--accent-dark)!important}
+  .fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:#3a5147!important}
+  .fin-metric-hero .fin-metric-value,.fin-metric-hero span{color:var(--accent-dark)!important}
+  .fin-print-header{
+    display:flex!important;align-items:center;justify-content:space-between;
+    padding-bottom:14px;margin-bottom:16px;border-bottom:2.5px solid var(--accent-dark);
+  }
+  .fin-print-brand{display:flex;align-items:center;gap:10px}
+  .fin-print-brand img{width:36px;height:36px;border-radius:9px;object-fit:cover}
+  .fin-print-toko{font-size:16px;font-weight:800;color:#111}
+  .fin-print-sub{font-size:11px;color:#666;font-weight:600;margin-top:2px}
+  .fin-print-meta{text-align:right;font-size:11px;color:#444;font-weight:600;line-height:1.7}
+  .chart-box{height:180px!important}
+}
