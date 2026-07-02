@@ -369,13 +369,13 @@ async function initApp(){
   if(!DB.biaya)DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
   if(!DB.pengaturan.logo)DB.pengaturan.logo='';
   refreshMpGlobals();
-  filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];
+  filteredStok=[...DB.stok];
   applyPengaturan();
   applyLogo();
-  ppInit('pp-dash',{mode:'30_hari'},()=>renderDashboard());
+  ppInit('pp-dash',{mode:'30_hari'},()=>{renderDashboard();filterJual();});
   ppInit('pp-laporan',{mode:'7_hari'},()=>renderLaporan());
   renderDashboard();
-  renderJualTable();
+  filterJual();
   renderStokTable();
   populateKatDropdowns();
   populateMpDropdowns();
@@ -694,6 +694,12 @@ function showSection(id,el){
   if(navEl)navEl.classList.add('active');
   document.getElementById('page-title').textContent=PAGE_TITLES[id]||id;
   setRouteHash(id,false);
+  // Periode-picker + Ekspor CSV + Tambah Pesanan di topbar hanya relevan untuk
+  // data Penjualan (dipakai Dashboard & tabel Penjualan). Section lain sudah
+  // punya tombol export/tambah sendiri yang lebih tepat (Stok, Laba, Laporan),
+  // jadi disembunyikan di sana supaya tidak membingungkan/duplikat.
+  const jualTools=document.getElementById('topbar-jual-tools');
+  if(jualTools)jualTools.style.display=(id==='dashboard'||id==='penjualan')?'flex':'none';
   if(id==='laporan')renderLaporan();
   if(id==='produk')renderProduk();
   if(id==='laba'){renderLabaSection();renderBiayaInputs();renderHppMode();}
@@ -814,8 +820,10 @@ function renderStokPieChart(){
 // ===== PENJUALAN TABLE =====
 function filterJual(){
   pageJual=1;const q=(document.getElementById('q-jual').value||'').toLowerCase();const mp=document.getElementById('f-mp-jual').value;const st=document.getElementById('f-status-jual').value;
-  filteredJual=DB.penjualan.filter(r=>(!q||r.no.toLowerCase().includes(q)||(r.items||[]).some(it=>it.prod.toLowerCase().includes(q)))&&(!mp||r.mp===mp)&&(!st||r.status===st));
+  const{start,end,label}=ppGetRange('pp-dash');
+  filteredJual=DB.penjualan.filter(r=>(!q||r.no.toLowerCase().includes(q)||(r.items||[]).some(it=>it.prod.toLowerCase().includes(q)))&&(!mp||r.mp===mp)&&(!st||r.status===st)&&(!r._date||(new Date(r._date)>=start&&new Date(r._date)<=end)));
   sortJualArray(filteredJual);
+  const lbl=document.getElementById('jual-periode-label');if(lbl)lbl.textContent=label;
   renderJualTable();
 }
 // Urutkan array pesanan IN-PLACE sesuai pilihan dropdown "f-sort-jual".
@@ -1103,7 +1111,7 @@ function simpanPesanan(){
     DB.penjualan.unshift(r);
     terapkanEfekStok(r,-1);
   }
-  saveDB(['penjualan','stok']);filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];renderJualTable();renderStokTable();renderDashboard();closeModal('modal-tambah-jual');
+  saveDB(['penjualan','stok']);filteredStok=[...DB.stok];filterJual();renderStokTable();renderDashboard();closeModal('modal-tambah-jual');
 }
 
 // ===== STOK TABLE =====
@@ -1222,7 +1230,7 @@ function hapusData(type,idx){
   if(type==='jual'){
     const order=DB.penjualan[idx];
     terapkanEfekStok(order,+1); // kembalikan stok yang sebelumnya terpakai pesanan ini
-    DB.penjualan.splice(idx,1);filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];renderJualTable();renderStokTable();affected=['penjualan','stok'];
+    DB.penjualan.splice(idx,1);filteredStok=[...DB.stok];filterJual();renderStokTable();affected=['penjualan','stok'];
   }
   else if(type==='stok'){DB.stok.splice(idx,1);filteredStok=[...DB.stok];renderStokTable();affected=['stok']}
   else if(type==='kat'){DB.kategori.splice(idx,1);renderKatList();populateKatDropdowns();affected=['kategori']}
@@ -1704,6 +1712,7 @@ function ppFmtTglSingkat(d){return d.getDate()+' '+BULAN_SINGKAT[d.getMonth()]}
 function ppLabel(state){
   const now=new Date();
   switch(state.mode){
+    case 'semua':return 'Semua Waktu';
     case 'hari_ini':return 'Real-time  Hari Ini - Pk '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+' (GMT+7)';
     case 'kemarin':return 'Kemarin';
     case '7_hari':return '7 Hari Terakhir';
@@ -1723,6 +1732,7 @@ function ppGetRange(containerId){
   const endOfDay=d=>{const x=new Date(d);x.setHours(23,59,59,999);return x};
   let start,end=endOfDay(now);
   switch(state.mode){
+    case 'semua': start=new Date(2000,0,1); end=endOfDay(new Date(2100,0,1)); break;
     case 'hari_ini': start=startOfDay(now); break;
     case 'kemarin': {const y=new Date(now);y.setDate(y.getDate()-1);start=startOfDay(y);end=endOfDay(y);break;}
     case '30_hari': {start=startOfDay(now);start.setDate(start.getDate()-29);break;}
@@ -1733,6 +1743,17 @@ function ppGetRange(containerId){
     case '7_hari': default: {start=startOfDay(now);start.setDate(start.getDate()-6);break;}
   }
   return{start,end,label:ppLabel(state),mode:state.mode};
+}
+// Ubah mode periode secara terprogram (bukan lewat klik user), lalu sinkronkan
+// label tombolnya. Dipakai mis. setelah restore/reset data supaya periode
+// otomatis kembali ke "Semua Waktu" — jangan sampai data yang baru dipulihkan
+// malah tersembunyi karena kebetulan periode lama tidak mencakupnya.
+function ppSetMode(containerId,mode){
+  const state=ppState[containerId];
+  if(!state)return;
+  state.mode=mode;
+  const btn=document.getElementById(containerId+'-btn');
+  if(btn){const val=btn.querySelector('.pp-value');if(val)val.textContent=ppLabel(state);}
 }
 // Bangun & pasang komponen picker di dalam <div id="containerId">.
 // onChange(state) dipanggil setiap kali user memilih periode baru.
@@ -1748,6 +1769,8 @@ function ppInit(containerId,defaultState,onChange){
     </button>
     <div class="periode-panel" id="${containerId}-panel" style="display:none">
       <div class="pp-list">
+        <div class="pp-item" data-mode="semua">Semua Waktu</div>
+        <div class="pp-sep"></div>
         <div class="pp-item" data-mode="hari_ini">Real-time</div>
         <div class="pp-item" data-mode="kemarin">Kemarin</div>
         <div class="pp-item" data-mode="7_hari">7 hari sebelumnya.</div>
@@ -1838,7 +1861,7 @@ function ppInit(containerId,defaultState,onChange){
     el.addEventListener('click',(e)=>{
       e.stopPropagation();
       const mode=el.dataset.mode;
-      if(['hari_ini','kemarin','7_hari','30_hari'].includes(mode)){state.mode=mode;selesai();return}
+      if(['semua','hari_ini','kemarin','7_hari','30_hari'].includes(mode)){state.mode=mode;selesai();return}
       tandaiAktif(mode);
       if(mode==='per_hari')renderKalender(new Date(state.tgl),(dt)=>{state.mode='per_hari';state.tgl=dt;selesai()},(dt)=>state.mode==='per_hari'&&ppSamaHari(dt,state.tgl));
       else if(mode==='per_minggu')renderKalender(new Date(state.tgl),(dt)=>{state.mode='per_minggu';state.tgl=dt;selesai()},(dt)=>state.mode==='per_minggu'&&ppSamaMinggu(dt,state.tgl));
@@ -2031,7 +2054,7 @@ function processCSV(file,type){
         }catch(err){errors++}
       }
     }
-    saveDB(['penjualan','stok','marketplace']);filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateMpDropdowns();renderJualTable();renderStokTable();renderDashboard();
+    saveDB(['penjualan','stok','marketplace']);filteredStok=[...DB.stok];populateMpDropdowns();filterJual();renderStokTable();renderDashboard();
     const res=document.getElementById(type==='jual'?'import-result':'import-stok-result');
     res.innerHTML=`<div class="alert alert-success">✅ Berhasil import <strong>${imported} baris</strong>${errors?` (${errors} baris gagal)`:''}</div>`;
   };
@@ -2048,15 +2071,40 @@ function csvCell(v){
   return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
 }
 function csvRow(arr){return arr.map(csvCell).join(',')}
+// Ubah label periode (mis. "30 Hari Terakhir", "1 Jan – 7 Jan 2026") jadi
+// potongan nama file yang aman: huruf kecil, spasi/simbol -> underscore.
+function slugPeriode(label){
+  return (label||'periode').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'periode';
+}
+// Export CSV Penjualan — SATU sumber kebenaran dengan Dashboard & tabel Penjualan:
+// - Rentang tanggal selalu mengikuti periode yang sedang dipilih di "Periode Data" (topbar).
+// - Kalau dipanggil saat sedang membuka menu Penjualan, ikut juga filter pencarian/
+//   marketplace/status serta urutan yang sedang aktif di tabel (filteredJual) —
+//   supaya hasil export = persis apa yang sedang dilihat user di layar.
+// - Kalau dipanggil dari menu lain (mis. Dashboard), export seluruh Penjualan
+//   dalam periode terpilih tanpa filter tabel (karena tabelnya sedang tidak tampil).
 function exportCSV(){
+  const{start,end,label}=ppGetRange('pp-dash');
+  const adaFilterTabel=_currentSection==='penjualan';
+  let data;
+  if(adaFilterTabel){
+    data=[...filteredJual];
+  }else{
+    data=DB.penjualan.filter(r=>!r._date||(new Date(r._date)>=start&&new Date(r._date)<=end));
+    sortJualArray(data);
+  }
+  if(!data.length){
+    alert('Tidak ada data Penjualan untuk periode "'+label+'"'+(adaFilterTabel?' dengan filter yang sedang aktif':'')+'. Ubah periode atau filter, lalu coba lagi.');
+    return;
+  }
   const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan'])+'\n';
   const rows=[];
-  DB.penjualan.forEach(r=>{
+  data.forEach(r=>{
     (r.items&&r.items.length?r.items:[{prod:'',varian:'',kat:'',qty:'',harga:'',subtotal:''}]).forEach(it=>{
       rows.push(csvRow([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,it.subtotal,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):'']));
     });
   });
-  dlFile(h+rows.join('\n'),'penjualan_'+today()+'.csv','text/csv');
+  dlFile(h+rows.join('\n'),'penjualan_'+slugPeriode(label)+'_'+today()+'.csv','text/csv');
 }
 function exportStokCSV(){const h=csvRow(['SKU','Produk','Varian','Kategori','Stok','HPP','Terjual 30h'])+'\n';dlFile(h+DB.stok.map(r=>csvRow([r.sku,r.prod,r.varian,r.kat||'',r.stok,r.hpp||0,r.terjual])).join('\n'),'stok_'+today()+'.csv','text/csv')}
 function exportLabaCSV(){const data=_labaFiltered.length?_labaFiltered:getLabaPerProduk();const h=csvRow(['Produk','Kategori','Marketplace','Qty','Omzet','HPP','Biaya Admin MP (%)','Biaya Lain','Laba Bersih','Margin (%)'])+'\n';dlFile(h+data.map(r=>csvRow([r.prod,r.kat,r.mp,r.qty,r.omzet,Math.round(r.hpp),Math.round(r.mpFee),Math.round(r.extra),Math.round(r.laba),r.margin.toFixed(1)])).join('\n'),'laba_per_produk_'+today()+'.csv','text/csv')}
@@ -2089,10 +2137,10 @@ function migrasiPenjualanLama(list){
     return{...r,items:r.items||[]};
   });
 }
-function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.penjualan=migrasiPenjualanLama(DB.penjualan);refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];applyPengaturan();populateKatDropdowns();populateMpDropdowns();renderDashboard();renderJualTable();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid: '+err.message)}};reader.readAsText(e.target.files[0])}
+function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.penjualan=migrasiPenjualanLama(DB.penjualan);refreshMpGlobals();saveDB();filteredStok=[...DB.stok];applyPengaturan();populateKatDropdowns();populateMpDropdowns();ppSetMode('pp-dash','semua');renderDashboard();filterJual();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid: '+err.message)}};reader.readAsText(e.target.files[0])}
 function resetData(){if(!canManageSettings()){alert('Hanya Owner yang bisa reset data.');return}if(confirm('Hapus SEMUA data penjualan & stok? Tindakan ini tidak bisa dibatalkan.')){
   DB.penjualan=[];DB.stok=[];DB.kategori=[...DEFAULT_KAT];DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
-  refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateKatDropdowns();populateMpDropdowns();applyPengaturan();renderDashboard();renderJualTable();renderStokTable();
+  refreshMpGlobals();saveDB();filteredStok=[...DB.stok];populateKatDropdowns();populateMpDropdowns();applyPengaturan();ppSetMode('pp-dash','semua');renderDashboard();filterJual();renderStokTable();
   alert('Semua data berhasil dikosongkan. Silakan mulai input data Anda sendiri.');
 }}
 
