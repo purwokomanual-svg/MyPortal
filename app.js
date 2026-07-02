@@ -1406,7 +1406,7 @@ function renderLabaRingkasan(){
       <th style="text-align:left;padding:8px 12px;color:var(--text3);font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--surface2)">Margin</th>
       <th style="text-align:left;padding:8px 12px;color:var(--text3);font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--surface2)">Transaksi</th>
     </tr></thead>
-    <tbody>${MP_LIST.map(m=>{const d=mpDetail[m];const mg=d.omzet>0?d.laba/d.omzet*100:0;const mc=mg>=30?'#1a7f47':mg>=15?'#8a5c00':'#b91c1c';return`<tr>
+    <tbody>${MP_LIST.map(m=>{const d=mpDetail[m];const mg=d.omzet>0?d.laba/d.omzet*100:0;const mc=mg>=30?'var(--success)':mg>=15?'var(--warning)':'var(--danger)';return`<tr>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span class="mp-tag" style="${mpTagStyle(m)}">${m}</span></td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--warning);font-weight:700">${b.mp_fee[m]!=null?b.mp_fee[m]:3}%</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);font-weight:600">${fmtRp(d.omzet)}</td>
@@ -1455,7 +1455,7 @@ function renderLabaTable(){
   const start=(pageLaba-1)*PER_PAGE,slice=_labaFiltered.slice(start,start+PER_PAGE);
   document.getElementById('tbl-laba').innerHTML=slice.length?slice.map(r=>{
     const mc=r.margin>=30?'laba-positive':r.margin>=15?'laba-neutral':'laba-negative';
-    const bc=r.margin>=30?'#1a7f47':r.margin>=15?'#f59e0b':'#b91c1c';
+    const bc=r.margin>=30?'var(--success)':r.margin>=15?'var(--warning)':'var(--danger)';
     return `<tr>
       <td style="font-weight:600">${r.prod}</td>
       <td><span class="badge badge-gray" style="background:${getKatColor(r.kat)}22;color:${getKatColor(r.kat)}">${r.kat}</span></td>
