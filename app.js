@@ -1678,7 +1678,12 @@ function ppInit(containerId,defaultState,onChange){
       </div>
       <div class="pp-cal-grid pp-cal-grid-head">${HARI_SINGKAT.map(h=>`<div>${h}</div>`).join('')}</div>
       <div class="pp-cal-grid">${cells}</div>`;
-    side.querySelectorAll('.pp-cal-nav').forEach(b=>b.addEventListener('click',()=>{
+    side.querySelectorAll('.pp-cal-nav').forEach(b=>b.addEventListener('click',(e)=>{
+      e.stopPropagation(); // penting: side.innerHTML digambar ulang di bawah ini, yang
+      // melepas tombol ini dari DOM — tanpa stopPropagation, klik ini akan tetap
+      // "menggelembung" ke listener document (lihat bawah) dan salah dianggap
+      // "klik di luar picker" karena root.contains(tombol-yang-sudah-lepas)=false,
+      // sehingga seluruh panel periode tertutup paksa padahal user baru mau navigasi.
       const nav=b.dataset.nav;
       if(nav==='-year')viewDate.setFullYear(viewDate.getFullYear()-1);
       if(nav==='+year')viewDate.setFullYear(viewDate.getFullYear()+1);
@@ -1686,7 +1691,8 @@ function ppInit(containerId,defaultState,onChange){
       if(nav==='+month')viewDate.setMonth(viewDate.getMonth()+1);
       renderKalender(viewDate,onPick,isHighlight);
     }));
-    side.querySelectorAll('.pp-cal-day:not(.pp-muted)').forEach(el=>el.addEventListener('click',()=>{
+    side.querySelectorAll('.pp-cal-day:not(.pp-muted)').forEach(el=>el.addEventListener('click',(e)=>{
+      e.stopPropagation();
       onPick(new Date(+el.dataset.y,+el.dataset.m,+el.dataset.d));
     }));
   }
@@ -1698,20 +1704,21 @@ function ppInit(containerId,defaultState,onChange){
         <button type="button" class="pp-cal-nav" data-nav="+year">»</button>
       </div>
       <div class="pp-bulan-grid">${BULAN_SINGKAT.map((b,i)=>`<div class="pp-bulan-item${i===state.bulan&&state.mode==='per_bulan'?' pp-selected':''}" data-m="${i}">${b}</div>`).join('')}</div>`;
-    side.querySelector('[data-nav="-year"]').addEventListener('click',()=>{state.tahun--;renderBulanGrid()});
-    side.querySelector('[data-nav="+year"]').addEventListener('click',()=>{state.tahun++;renderBulanGrid()});
-    side.querySelectorAll('.pp-bulan-item').forEach(el=>el.addEventListener('click',()=>{state.mode='per_bulan';state.bulan=+el.dataset.m;selesai()}));
+    side.querySelector('[data-nav="-year"]').addEventListener('click',(e)=>{e.stopPropagation();state.tahun--;renderBulanGrid()});
+    side.querySelector('[data-nav="+year"]').addEventListener('click',(e)=>{e.stopPropagation();state.tahun++;renderBulanGrid()});
+    side.querySelectorAll('.pp-bulan-item').forEach(el=>el.addEventListener('click',(e)=>{e.stopPropagation();state.mode='per_bulan';state.bulan=+el.dataset.m;selesai()}));
   }
   function renderTahunGrid(){
     const base=state.tahun-4;
     let items='';
     for(let i=0;i<9;i++){const y=base+i;items+=`<div class="pp-tahun-item${y===state.tahun&&state.mode==='per_tahun'?' pp-selected':''}" data-y="${y}">${y}</div>`}
     side.innerHTML=`<div class="pp-tahun-grid">${items}</div>`;
-    side.querySelectorAll('.pp-tahun-item').forEach(el=>el.addEventListener('click',()=>{state.mode='per_tahun';state.tahun=+el.dataset.y;selesai()}));
+    side.querySelectorAll('.pp-tahun-item').forEach(el=>el.addEventListener('click',(e)=>{e.stopPropagation();state.mode='per_tahun';state.tahun=+el.dataset.y;selesai()}));
   }
 
   root.querySelectorAll('.pp-item').forEach(el=>{
-    el.addEventListener('click',()=>{
+    el.addEventListener('click',(e)=>{
+      e.stopPropagation();
       const mode=el.dataset.mode;
       if(['hari_ini','kemarin','7_hari','30_hari'].includes(mode)){state.mode=mode;selesai();return}
       tandaiAktif(mode);
