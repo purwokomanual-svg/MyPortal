@@ -1365,7 +1365,7 @@ function renderLabaRingkasan(){
     <div class="metric-card m-accent"><div class="metric-icon">💵</div><div class="metric-label">Total Omzet</div><div class="metric-value">${fmtRp(to)}</div><div class="metric-sub" style="color:var(--text3)">${allOrders.length} pesanan · ${all.length} barang</div></div>
     <div class="metric-card m-warning"><div class="metric-icon">🏬</div><div class="metric-label">Total Biaya Admin MP</div><div class="metric-value orange">${fmtRp(tf)}</div><div class="metric-sub orange">${to>0?(tf/to*100).toFixed(1):0}% dari omzet</div></div>
     <div class="metric-card m-danger"><div class="metric-icon">🏭</div><div class="metric-label">Total HPP</div><div class="metric-value red">${fmtRp(th)}</div><div class="metric-sub red">${to>0?(th/to*100).toFixed(1):0}% dari omzet</div></div>
-    <div class="metric-card metric-hero${tl>=0?'':' metric-hero-danger'}"><div class="metric-icon">${tl>=0?'📈':'📉'}</div><div class="metric-label">Laba Bersih</div><div class="metric-value">${fmtRp(tl)}</div><div class="metric-sub">${margin.toFixed(1)}% margin</div></div>`;
+    <div class="metric-card metric-hero${tl>=0?'':' metric-hero-danger'}"><div class="metric-icon">${tl>=0?'📈':'📉'}</div><div class="metric-label">Laba Bersih</div><div class="metric-value metric-value-lg">${fmtRp(tl)}</div><div class="metric-sub">${margin.toFixed(1)}% margin</div></div>`;
 
   const mpData={};MP_LIST.forEach(m=>mpData[m]={laba:0,biaya:0});
   all.forEach(r=>{const h=hitungLaba(r);if(!mpData[r.mp])mpData[r.mp]={laba:0,biaya:0};mpData[r.mp].laba+=h.laba;mpData[r.mp].biaya+=h.omzet-h.laba});
