@@ -1005,7 +1005,16 @@ function populateProdukDatalist(){
 // Efek stok sekarang diterapkan PER BARANG di dalam pesanan, bukan per pesanan,
 // supaya pesanan dengan beberapa produk mengurangi SKU yang tepat masing-masing.
 function isStatusAktif(status){return status!=='Dibatalkan'}
-function cariStok(prod,varian){return DB.stok.find(s=>s.prod===prod&&s.varian===varian)}
+function _normStokKey(s){return(s||'').trim().toLowerCase().replace(/\s+/g,' ')}
+function cariStok(prod,varian){
+  const np=_normStokKey(prod),nv=_normStokKey(varian);
+  // 1) coba cocok persis dulu (case-sensitive) supaya perilaku lama tidak berubah
+  let hit=DB.stok.find(s=>s.prod===prod&&(s.varian||'')===(varian||''));
+  if(hit)return hit;
+  // 2) fallback: cocok tanpa peduli huruf besar/kecil & spasi berlebih
+  //    (mencegah pesanan "Breast milk 150 ML" gagal sinkron ke SKU "Breast Milk 150 ml")
+  return DB.stok.find(s=>_normStokKey(s.prod)===np&&_normStokKey(s.varian)===nv);
+}
 // arah -1 = kurangi stok (pesanan baru/aktif), arah +1 = kembalikan stok (batal/hapus/edit)
 function terapkanEfekStok(order,arah){
   if(!order||!isStatusAktif(order.status))return;
@@ -1020,6 +1029,37 @@ function terapkanEfekStok(order,arah){
       si.terjual=Math.max(0,(si.terjual||0)-(item.qty||0));
     }
   });
+}
+// ===== REKONSILIASI: hitung ulang "terjual" per SKU dari SELURUH data
+// Penjualan yang aktif (bukan "Dibatalkan"), lalu sesuaikan "stok" dengan
+// SELISIHNYA (bukan ditimpa total) supaya stok fisik yang sudah dikoreksi
+// manual oleh user tetap dihormati — hanya bagian yang "hilang" akibat bug
+// sinkronisasi (mis. import CSV lama yang tidak memotong stok) yang dikoreksi.
+function rekonsiliasiStok(){
+  if(!canWriteOrders()){alert('Anda tidak punya izin untuk melakukan rekonsiliasi.');return}
+  if(!confirm('Hitung ulang "terjual" & sesuaikan "stok" semua SKU berdasarkan seluruh Data Penjualan aktif saat ini?\n\nGunakan ini jika ada SKU yang jumlah terjualnya tidak sesuai dengan Data Penjualan (misal karena pernah import CSV sebelum perbaikan sinkronisasi).'))return;
+  const terjualBaru={}; // key: sku -> total qty aktif dari Penjualan
+  DB.penjualan.forEach(order=>{
+    if(!isStatusAktif(order.status))return;
+    (order.items||[]).forEach(item=>{
+      const si=cariStok(item.prod,item.varian);
+      if(!si)return;
+      terjualBaru[si.sku]=(terjualBaru[si.sku]||0)+(item.qty||0);
+    });
+  });
+  let jumlahDiperbaiki=0;
+  DB.stok.forEach(si=>{
+    const targetTerjual=terjualBaru[si.sku]||0;
+    const selisih=targetTerjual-(si.terjual||0); // positif = ada penjualan yg belum pernah memotong stok
+    if(selisih!==0){
+      jumlahDiperbaiki++;
+      si.stok=Math.max(0,(si.stok||0)-selisih);
+      si.terjual=targetTerjual;
+    }
+  });
+  saveDB(['stok']);filteredStok=[...DB.stok];renderStokTable();renderDashboard();
+  const res=document.getElementById('rekonsiliasi-result');
+  if(res)res.innerHTML=jumlahDiperbaiki?`<div class="alert alert-success">✅ Selesai. <strong>${jumlahDiperbaiki} SKU</strong> disesuaikan agar "terjual" cocok dengan Data Penjualan.</div>`:`<div class="alert alert-success">✅ Semua SKU sudah sinkron, tidak ada yang perlu diperbaiki.</div>`;
 }
 
 function simpanPesanan(){
@@ -1944,7 +1984,17 @@ function processCSV(file,type){
         // Cegah No. Pesanan duplikat dengan data yang SUDAH ada sebelumnya di aplikasi
         // (yang menyebabkan gagal sinkron ke Supabase): timpa (update), jangan tambah baris baru.
         const idxAda=DB.penjualan.findIndex(r=>r.no.trim().toLowerCase()===key);
-        if(idxAda!==-1)DB.penjualan[idxAda]=orderBaru;else DB.penjualan.push(orderBaru);
+        if(idxAda!==-1){
+          // PENTING: sebelumnya baris ini TIDAK memanggil terapkanEfekStok sama sekali,
+          // sehingga pesanan yang masuk lewat import CSV tidak pernah mengurangi stok
+          // gudang / menambah "terjual" di tabel Stok (penyebab data Penjualan & Stok
+          // tidak sinkron). Sekarang: balikkan dulu efek pesanan lama, baru terapkan efek baru.
+          terapkanEfekStok(DB.penjualan[idxAda],+1);
+          DB.penjualan[idxAda]=orderBaru;
+        }else{
+          DB.penjualan.push(orderBaru);
+        }
+        terapkanEfekStok(orderBaru,-1);
       });
     }else{
       for(let i=1;i<lines.length;i++){
