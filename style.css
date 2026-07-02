@@ -75,13 +75,19 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .btn-warning{background:var(--warning-bg);color:var(--warning);border-color:transparent}
 .btn-icon{padding:6px 9px;font-size:13px;border-radius:12px}
 
-/* ===== Forms ===== */
+/* ===== Forms =====
+   Semua "kotak teks" (input pencarian, input form, textarea) disamakan
+   gayanya dengan kotak-kotak di halaman Laporan Keuangan (dropdown filter
+   & tombol periode: latar bersih var(--surface), border tipis var(--border2),
+   sudut membulat 12px) — supaya semua halaman terasa satu tema yang sama,
+   bukan campuran latar putih & latar hijau muda pudar seperti sebelumnya. */
 .form-select{padding:8px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;font-family:inherit}
-.form-input{padding:9px 13px;border-radius:12px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;outline:none;width:100%;transition:border-color .15s,box-shadow .15s,background .15s}
-.form-input:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px var(--accent-light)}
+.form-input{padding:9px 13px;border-radius:12px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:inherit;outline:none;width:100%;transition:border-color .15s,box-shadow .15s}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-light)}
 .form-group{margin-bottom:13px}
 .form-group label{display:block;font-size:12px;color:var(--text2);margin-bottom:5px;font-weight:600}
-.form-group textarea{width:100%;padding:9px 13px;border-radius:12px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical;min-height:70px}
+.form-group textarea{width:100%;padding:9px 13px;border-radius:12px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:inherit;resize:vertical;min-height:70px}
+
 
 /* ===== Cards & Grid ===== */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 22px;margin-bottom:0;box-shadow:var(--shadow-sm)}
@@ -91,34 +97,43 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
 .mb18{margin-bottom:18px}
 
-/* Kartu metrik "futuristik" — dipakai di Dashboard, Produk & Kategori, Laba
-   per Produk, dan Laporan Keuangan, supaya satu bahasa desain konsisten di
-   semua halaman: garis aksen bercahaya di atas, sapuan highlight halus saat
-   di-hover, dan sedikit terangkat (lift) untuk kesan kartu "melayang". */
-.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;transition:transform .18s,box-shadow .18s}
-.metric-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:4px;background:var(--accent);box-shadow:0 0 12px 0 var(--accent)}
+/* Kartu metrik — DISAMAKAN PERSIS dengan bahasa desain kartu di Laporan
+   Keuangan (.fin-metric): badge ikon bulat di kiri-atas, label huruf
+   kapital kecil, dan latar bertingkat warna (m-accent/m-warning/m-danger/
+   m-success) alih-alih garis aksen di atas seperti versi lama. Dipakai di
+   Dashboard, Produk & Kategori, dan Laba per Produk supaya satu bahasa
+   visual dengan Laporan Keuangan. */
+.metric-card{position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:16px 16px 14px;overflow:hidden;transition:transform .18s,box-shadow .18s}
 .metric-card::after{content:'';position:absolute;inset:0;background:radial-gradient(140px 90px at 100% 0%,rgba(255,255,255,.5),transparent 70%);opacity:0;transition:opacity .18s;pointer-events:none}
 [data-theme="dark"] .metric-card::after{background:radial-gradient(140px 90px at 100% 0%,rgba(255,255,255,.08),transparent 70%)}
-.metric-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.metric-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
 .metric-card:hover::after{opacity:1}
-.grid-4 .metric-card:nth-child(2)::before{background:var(--accent2);box-shadow:0 0 12px 0 var(--accent2)}
-.grid-4 .metric-card:nth-child(3)::before{background:var(--success);box-shadow:0 0 12px 0 var(--success)}
-.grid-4 .metric-card:nth-child(4)::before{background:var(--danger);box-shadow:0 0 12px 0 var(--danger)}
-.metric-label{font-size:12px;color:var(--text3);margin-bottom:7px;font-weight:600}
-.metric-value{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.5px}
-.metric-sub{font-size:12px;margin-top:5px;font-weight:600}
+.metric-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;background:var(--surface)}
+.metric-label{font-size:11.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+.metric-value{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px}
+.metric-value-lg{font-size:26px}
+.metric-sub{font-size:11.5px;color:var(--text3);font-weight:600;margin-top:4px}
 .green{color:var(--success)}.red{color:var(--danger)}.orange{color:var(--warning)}
+.metric-card.m-accent{background:linear-gradient(160deg,var(--accent-light),var(--surface2))}
+.metric-card.m-accent .metric-icon{color:var(--accent)}
+.metric-card.m-warning{background:linear-gradient(160deg,var(--warning-bg),var(--surface2))}
+.metric-card.m-warning .metric-value{color:var(--warning)}
+.metric-card.m-danger{background:linear-gradient(160deg,var(--danger-bg),var(--surface2))}
+.metric-card.m-danger .metric-value{color:var(--danger)}
+.metric-card.m-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
+.metric-card.m-success .metric-value{color:var(--success)}
 
 /* Varian "hero" — gradient penuh warna, dipakai untuk metrik laba/profit
    yang ingin ditonjolkan (mis. "Estimasi Laba Bersih") supaya langsung
-   menarik perhatian di antara kartu metrik lain, konsisten dengan kartu
-   hero di Laporan Keuangan. Warna teks dipaksa putih (!important) supaya
-   TIDAK ketiban aturan warna .green/.red/.orange lain yang lebih spesifik —
-   ini yang tadinya bikin tulisan "Estimasi Laba Bersih" nyaris tak
-   terbaca di mode terang (teks hijau redup di atas gradasi hijau tua). */
+   menarik perhatian di antara kartu metrik lain, PERSIS sama dengan kartu
+   hero di Laporan Keuangan (.fin-metric-hero). Warna teks dipaksa putih
+   (!important) supaya TIDAK ketiban aturan warna .green/.red/.orange lain
+   yang lebih spesifik — ini yang tadinya bikin tulisan "Estimasi Laba
+   Bersih" nyaris tak terbaca di mode terang (teks hijau redup di atas
+   gradasi hijau tua). */
 .metric-card.metric-hero{background:linear-gradient(120deg,var(--accent-dark),var(--accent));border:none;box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
 .metric-card.metric-hero.metric-hero-danger{background:linear-gradient(120deg,#6b1f1a,var(--danger));box-shadow:0 16px 34px -14px rgba(226,104,95,.5)}
-.metric-card.metric-hero::before{display:none}
+.metric-card.metric-hero .metric-icon{background:rgba(255,255,255,.16)}
 .metric-card.metric-hero .metric-label{color:rgba(255,255,255,.78)!important}
 .metric-card.metric-hero .metric-value{color:#fff!important}
 .metric-card.metric-hero .metric-sub{color:rgba(255,255,255,.85)!important}
