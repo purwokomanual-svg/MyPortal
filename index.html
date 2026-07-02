@@ -228,6 +228,20 @@
     <div class="section" id="sec-penjualan">
       <div class="filter-row">
         <input class="form-input" style="flex:1;min-width:180px" placeholder="Cari no. pesanan atau produk..." id="q-jual" oninput="filterJual()">
+        <select class="form-select" id="f-export-periode-jual" title="Pilih periode untuk tombol Export di sebelahnya" style="min-width:130px">
+          <option value="semua">Semua Periode</option>
+          <option value="hari">Per Hari (Hari Ini)</option>
+          <option value="minggu">Per Minggu (Minggu Ini)</option>
+          <option value="bulan">Per Bulan (Bulan Ini)</option>
+          <option value="tahun">Per Tahun (Tahun Ini)</option>
+        </select>
+        <button class="btn btn-sm" onclick="exportCSVPeriode()" title="Export data Penjualan sesuai periode & filter yang sedang aktif">📤 Export</button>
+        <select class="form-select" id="f-sort-jual" onchange="filterJual()" style="min-width:170px">
+          <option value="terbaru">Urutkan: Pesanan Terbaru</option>
+          <option value="terlama">Urutkan: Pesanan Terlama</option>
+          <option value="total-desc">Urutkan: Total Tertinggi</option>
+          <option value="total-asc">Urutkan: Total Terendah</option>
+        </select>
         <select class="form-select" id="f-mp-jual" onchange="filterJual()">
           <option value="">Semua Marketplace</option>
         </select>
@@ -252,6 +266,13 @@
     <div class="section" id="sec-stok">
       <div class="filter-row">
         <input class="form-input" style="flex:1;min-width:180px" placeholder="Cari SKU atau produk..." id="q-stok" oninput="filterStok()">
+        <button class="btn btn-sm" onclick="exportStokCSV()" title="Export seluruh data Stok Gudang ke CSV">📤 Export</button>
+        <select class="form-select" id="f-sort-stok" onchange="filterStok()" style="min-width:160px">
+          <option value="sku-terbaru">Urutkan: SKU Terbaru</option>
+          <option value="sku-terlama">Urutkan: SKU Terlama</option>
+          <option value="stok-tertinggi">Urutkan: Stok Tertinggi</option>
+          <option value="stok-terendah">Urutkan: Stok Terendah</option>
+        </select>
         <select class="form-select" id="f-status-stok" onchange="filterStok()"><option value="">Semua Status</option><option value="Aman">Aman</option><option value="Rendah">Stok Rendah</option><option value="Habis">Habis</option></select>
         <select class="form-select" id="f-kat-stok" onchange="filterStok()"><option value="">Semua Kategori</option></select>
         <button class="btn btn-danger btn-sm" onclick="filterStokKritis()">⚠ Kritis</button>
