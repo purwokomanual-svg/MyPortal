@@ -191,9 +191,11 @@
     <div style="font-size:15px;font-weight:600;color:var(--text)" id="page-title">Dashboard</div>
     <div style="display:flex;align-items:center;gap:10px">
       <span id="sync-status" style="font-size:11px;color:var(--text3)" title="Status sinkronisasi Supabase">☁️ Menghubungkan...</span>
-      <div class="periode-picker" id="pp-dash"></div>
-      <button class="btn btn-sm" onclick="exportCSV()">📥 Ekspor CSV</button>
-      <button class="btn btn-primary btn-sm" data-need="write-jual" onclick="openModal('modal-tambah-jual')">+ Tambah Pesanan</button>
+      <div id="topbar-jual-tools" style="display:flex;align-items:center;gap:10px">
+        <div class="periode-picker" id="pp-dash" title="Periode ini berlaku untuk Dashboard, tabel Penjualan, dan tombol Ekspor CSV di sebelah kanan"></div>
+        <button class="btn btn-sm" onclick="exportCSV()" title="Export data Penjualan sesuai periode terpilih (dan filter tabel jika sedang di menu Penjualan)">📥 Ekspor CSV</button>
+        <button class="btn btn-primary btn-sm" data-need="write-jual" onclick="openModal('modal-tambah-jual')">+ Tambah Pesanan</button>
+      </div>
       <button class="toggle-theme" onclick="toggleTheme()" title="Ganti tema"></button>
     </div>
   </div>
@@ -226,6 +228,7 @@
 
     <!-- PENJUALAN -->
     <div class="section" id="sec-penjualan">
+      <div id="jual-periode-info" style="font-size:12px;color:var(--text3);margin-bottom:10px">📅 Menampilkan periode: <strong id="jual-periode-label">–</strong> — ubah lewat "Periode Data" di kanan atas</div>
       <div class="filter-row">
         <input class="form-input" style="flex:1;min-width:180px" placeholder="Cari no. pesanan atau produk..." id="q-jual" oninput="filterJual()">
         <select class="form-select" id="f-sort-jual" onchange="filterJual()" style="min-width:170px">
