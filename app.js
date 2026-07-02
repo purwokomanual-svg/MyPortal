@@ -79,7 +79,7 @@ function mpTagStyle(nama){const c=getMpColor(nama);return `background:${c}22;col
 
 // ===== UTILS =====
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a}
-function fmtRp(n){return 'Rp '+Math.round(n).toLocaleString('id-ID')}
+function fmtRp(n){const v=Number(n);return 'Rp '+(isFinite(v)?Math.round(v):0).toLocaleString('id-ID')}
 function fmtTgl(d){return d.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'})}
 function today(){return new Date().toISOString().split('T')[0]}
 function getKatNames(){return DB.kategori.map(k=>k.nama)}
@@ -91,7 +91,7 @@ function saveDB(tables){
   localStorage.setItem('omniseller_v2',JSON.stringify(DB));
   syncToSupabase(tables);
 }
-function loadDB(){const r=localStorage.getItem('omniseller_v2');if(r){DB=JSON.parse(r);return true}return false}
+function loadDB(){const r=localStorage.getItem('omniseller_v2');if(r){DB=JSON.parse(r);if(DB.penjualan)DB.penjualan=migrasiPenjualanLama(DB.penjualan);return true}return false}
 
 // ===== SUPABASE SYNC (skema relasional - 7 tabel, SELEKTIF) =====
 // `tables`: array nama tabel logis yang berubah, mis. ['penjualan','stok'].
@@ -372,6 +372,8 @@ async function initApp(){
   filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];
   applyPengaturan();
   applyLogo();
+  ppInit('pp-dash',{mode:'30_hari'},()=>renderDashboard());
+  ppInit('pp-laporan',{mode:'7_hari'},()=>renderLaporan());
   renderDashboard();
   renderJualTable();
   renderStokTable();
@@ -676,9 +678,8 @@ function populateKatDropdowns(){
 // ===== DASHBOARD =====
 function reloadData(){renderDashboard()}
 function renderDashboard(){
-  const p=parseInt(document.getElementById('periodeSelect').value);
-  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-p);
-  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&new Date(r._date||r.tanggal.split('/').reverse().join('-'))>=cutoff);
+  const{start,end}=ppGetRange('pp-dash');
+  const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date&&new Date(r._date)>=start&&new Date(r._date)<=end);
   const totalRev=recent.reduce((a,r)=>a+r.total,0);
   const totalOrd=recent.length;
   const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
@@ -689,10 +690,22 @@ function renderDashboard(){
   let totalLaba=0;flattenPenjualan(recent).forEach(f=>{totalLaba+=hitungLaba(f).laba});
   const margin=totalRev>0?totalLaba/totalRev*100:0;
 
+  // Perbandingan vs periode SEBELUMNYA (durasi yang sama, persis sebelum
+  // rentang saat ini) — dihitung real dari data, bukan angka tetap.
+  const durMs=end.getTime()-start.getTime();
+  const prevEnd=new Date(start.getTime()-1);
+  const prevStart=new Date(prevEnd.getTime()-durMs);
+  const prev=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date&&new Date(r._date)>=prevStart&&new Date(r._date)<=prevEnd);
+  const prevRev=prev.reduce((a,r)=>a+r.total,0);
+  const prevOrd=prev.length;
+  const pctRev=prevRev>0?((totalRev-prevRev)/prevRev*100):(totalRev>0?100:0);
+  const pctOrd=prevOrd>0?((totalOrd-prevOrd)/prevOrd*100):(totalOrd>0?100:0);
+  const panahSub=(pct)=>(pct>=0?'▲ ':'▼ ')+Math.abs(pct).toFixed(1)+'% vs periode lalu';
+
   document.getElementById('m-rev').textContent=fmtRp(totalRev);
-  document.getElementById('m-rev-sub').textContent='▲ 18.4% vs periode lalu';
+  document.getElementById('m-rev-sub').textContent=panahSub(pctRev);
   document.getElementById('m-ord').textContent=totalOrd.toLocaleString('id-ID');
-  document.getElementById('m-ord-sub').textContent='▲ 12.1% vs periode lalu';
+  document.getElementById('m-ord-sub').textContent=panahSub(pctOrd);
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
   document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih';
   document.getElementById('m-kritis').textContent=kritis;
@@ -724,28 +737,27 @@ function renderDashboard(){
     <div class="prog-track"><div class="prog-fill" style="width:${Math.round(q/maxQ*100)}%"></div></div>
     <div class="prog-val">${q} pcs</div></div>`).join('');
 
-  renderTrendChart(recent,p);
+  renderTrendChart(start,end);
   renderStokPieChart();
 }
 
-function renderTrendChart(recent,days){
-  const labels=[],d1=[],d2=[],d3=[];
-  for(let i=days-1;i>=0;i--){
-    const d=new Date();d.setDate(d.getDate()-i);
-    labels.push(`${d.getDate()}/${d.getMonth()+1}`);
-    const ds=fmtTgl(d);const dr=recent.filter(r=>r.tanggal===ds);
-    d1.push(dr.filter(r=>r.mp==='Shopee').reduce((a,r)=>a+r.total,0));
-    d2.push(dr.filter(r=>r.mp==='Tokopedia').reduce((a,r)=>a+r.total,0));
-    d3.push(dr.filter(r=>r.mp==='TikTok Shop').reduce((a,r)=>a+r.total,0));
-  }
+function renderTrendChart(start,end){
+  // Granularitas grafik menyesuaikan otomatis lebar rentang yang dipilih di
+  // periode picker (harian utk rentang pendek, sampai tahunan utk rentang panjang).
+  const unit=unitOtomatis(start,end);
+  const buckets=buatBucketLaporan(start,end,unit);
+  const aktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date);
+  const labels=buckets.map(b=>b.label);
+  const datasets=MP_LIST.map(m=>({
+    label:m,
+    data:buckets.map(b=>aktif.filter(r=>r.mp===m&&new Date(r._date)>=b.start&&new Date(r._date)<=b.end).reduce((a,r)=>a+(r.total||0),0)),
+    borderColor:getMpColor(m),tension:.4,pointRadius:0,borderWidth:1.5,fill:false
+  }));
   if(charts.trend)charts.trend.destroy();
-  charts.trend=new Chart(document.getElementById('chartTrend'),{type:'line',data:{labels,datasets:[
-    {label:'Shopee',data:d1,borderColor:'#ee4d2d',tension:.4,pointRadius:0,borderWidth:1.5,fill:false},
-    {label:'Tokopedia',data:d2,borderColor:'#00aa5b',tension:.4,pointRadius:0,borderWidth:1.5,fill:false},
-    {label:'TikTok',data:d3,borderColor:'#888',tension:.4,pointRadius:0,borderWidth:1.5,fill:false}]},
+  charts.trend=new Chart(document.getElementById('chartTrend'),{type:'line',data:{labels,datasets},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{ticks:{color:'#888',font:{size:10},maxTicksLimit:8,autoSkip:true},grid:{color:'rgba(128,128,128,.1)'}},
-        y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+(v/1e6).toFixed(1)+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
+        y:{ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
 }
 
 function renderStokPieChart(){
@@ -855,16 +867,6 @@ function saranBiayaAdminPesanan(){
 }
 function saranBiayaTambahanPesanan(){
   document.getElementById('f-biaya-tambahan').value=Math.round(getSaranBiayaTambahan());
-}
-function populateProdukDatalist(){
-  const dl=document.getElementById('dl-produk-stok');if(!dl)return;
-  const uniq=[...new Set(DB.stok.map(s=>s.prod))].sort();
-  dl.innerHTML=uniq.map(p=>`<option value="${p}">`).join('');
-}
-function populateVarianDatalist(prod){
-  const dl=document.getElementById('dl-varian-stok');if(!dl)return;
-  const opts=[...new Set(DB.stok.filter(s=>s.prod===prod).map(s=>s.varian).filter(Boolean))];
-  dl.innerHTML=opts.map(v=>`<option value="${v}">`).join('');
 }
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function escAttr(s){return esc(s).replace(/`/g,'&#96;')}
@@ -1335,9 +1337,13 @@ function renderLabaRingkasan(){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},
       scales:{x:{ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{ticks:{color:'#888',font:{size:10},callback:v=>v+'rb'},grid:{color:'rgba(128,128,128,.1)'}}}}});
 
+  // Catatan: sejak biaya tambahan diisi sebagai 1 angka per pesanan (bukan
+  // rincian ongkir/packaging/lain terpisah), grafik ini TIDAK LAGI membelah
+  // angka itu dengan asumsi rasio tetap (dulu 60/40) karena itu memalsukan
+  // data — sekarang ditampilkan apa adanya sebagai 1 kategori "Ongkir & Biaya Lain".
   if(charts.biayaPie)charts.biayaPie.destroy();
-  charts.biayaPie=new Chart(document.getElementById('chartBiayaPie'),{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir','Packaging & Lain'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te*.6),Math.round(te*.4)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b','#6b7280'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'60%'}});
-  const blabels=['HPP','Admin MP','Ongkir','Packaging'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b','#6b7280'];const bvals=[th,tf,te*.6,te*.4];
+  charts.biayaPie=new Chart(document.getElementById('chartBiayaPie'),{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'60%'}});
+  const blabels=['HPP','Admin MP','Ongkir & Biaya Lain'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b'];const bvals=[th,tf,te];
   document.getElementById('biaya-pie-legend').innerHTML=blabels.map((l,i)=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${bcolors[i]}"></span>${l}: ${to>0?(bvals[i]/to*100).toFixed(1):0}%</span>`).join('');
 
   const byProd={};all.forEach(r=>{if(!byProd[r.prod])byProd[r.prod]={prod:r.prod,laba:0,omzet:0};const h=hitungLaba(r);byProd[r.prod].laba+=h.laba;byProd[r.prod].omzet+=h.omzet});
@@ -1391,7 +1397,7 @@ function renderLabaRingkasan(){
     <div style="width:10px;height:10px;border-radius:3px;background:${k.color};flex-shrink:0"></div>
     <div class="prog-label" style="width:100px">${k.nama}</div>
     <div class="prog-track"><div class="prog-fill" style="width:${Math.round(k.laba/maxKatLaba*100)}%;background:${k.color}"></div></div>
-    <div class="prog-val" style="width:90px;color:var(--success);font-weight:600">${fmtRp(k.laba/1000)}rb</div>
+    <div class="prog-val" style="width:90px;color:var(--success);font-weight:600">${fmtRingkas(k.laba)}</div>
     <div style="width:45px;text-align:right;font-size:11px;color:var(--text3)">${k.omzet>0?(k.laba/k.omzet*100).toFixed(0):0}%</div>
   </div>`).join('');
 }
@@ -1480,33 +1486,251 @@ function resetBiaya(){if(!canManageSettings()){alert("Hanya Owner yang bisa rese
 
 // ===== LAPORAN =====
 function renderLaporan(){
-  const all=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
-  // Semua komponen (tf/te/th) dihitung PER PESANAN lewat hitungLaba() supaya
-  // konsisten dengan Estimasi Laba Bersih (tl) — tidak ada lagi angka
-  // hardcode/dummy yang tidak berhubungan dengan data transaksi asli.
-  let to=0,tl=0,tf=0,te=0,th=0;
-  all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee;te+=h.extra;th+=h.hpp});
-  document.getElementById('keuangan-rows').innerHTML=[
-    {l:'Total Omzet (30 hari)',v:fmtRp(to),c:''},
-    {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
-    {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),c:'red'},
-    {l:'HPP Estimasi',v:'− '+fmtRp(th),c:'red'},
-    {l:'Estimasi Laba Bersih',v:fmtRp(tl),c:'green'},
-    {l:'Margin Bersih',v:(to>0?tl/to*100:0).toFixed(1)+'%',c:'green'},
-  ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
+  const{start,end,label}=ppGetRange('pp-laporan');
+  const semuaAktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date);
+  const dalamRentang=semuaAktif.filter(r=>{const d=new Date(r._date);return d>=start&&d<=end});
+
+  const judulEl=document.getElementById('keuangan-title');
+  if(judulEl)judulEl.textContent='Ringkasan Keuangan — '+label;
+
+  const rowsEl=document.getElementById('keuangan-rows');
+  const{to,tl,tf,te,th}=hitungRingkasPeriode(dalamRentang);
+  if(rowsEl){
+    rowsEl.innerHTML=[
+      {l:'Total Omzet',v:fmtRp(to),c:''},
+      {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
+      {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),c:'red'},
+      {l:'HPP Estimasi',v:'− '+fmtRp(th),c:'red'},
+      {l:'Estimasi Laba Bersih',v:fmtRp(tl),c:'green'},
+      {l:'Margin Bersih',v:(to>0?tl/to*100:0).toFixed(1)+'%',c:'green'},
+    ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
+  }
 
   if(charts.mpBar)charts.mpBar.destroy();
-  const mpRev={};MP_LIST.forEach(m=>mpRev[m]=0);DB.penjualan.filter(r=>r.status!=='Dibatalkan').forEach(r=>mpRev[r.mp]+=r.total);
+  const mpRev={};MP_LIST.forEach(m=>mpRev[m]=0);dalamRentang.forEach(r=>mpRev[r.mp]=(mpRev[r.mp]||0)+(r.total||0));
   charts.mpBar=new Chart(document.getElementById('chartMpBar'),{type:'bar',data:{labels:MP_LIST,datasets:[{label:'Revenue',data:MP_LIST.map(m=>Math.round(mpRev[m]/1e6*10)/10),backgroundColor:MP_LIST.map(m=>getMpColor(m)),borderWidth:0,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+v+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
 
   if(charts.bulanan)charts.bulanan.destroy();
-  const selPeriode=document.getElementById('f-periode-bulanan');
-  const bulanCount=selPeriode?parseInt(selPeriode.value)||6:6;
+  const selBulan=document.getElementById('f-periode-bulanan');
+  const bulanCount=selBulan?parseInt(selBulan.value)||6:6;
   const titleEl=document.getElementById('bulanan-title');
   if(titleEl)titleEl.textContent='Tren Bulanan ('+bulanCount+' Bulan Terakhir)';
   const tren=hitungTrenBulanan(bulanCount);
   charts.bulanan=new Chart(document.getElementById('chartBulanan'),{type:'bar',data:{labels:tren.labels,datasets:MP_LIST.map(m=>({label:m,data:tren.data[m]||tren.labels.map(()=>0),backgroundColor:getMpColor(m),borderRadius:3}))},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{stacked:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
+}
+// Pilih satuan waktu (day/week/month/year) otomatis dari lebar rentang
+// [start,end] — dipakai grafik Tren Penjualan di Dashboard supaya tetap
+// enak dibaca meski orang memilih rentang sangat panjang (mis. 1 tahun).
+function unitOtomatis(start,end){
+  const hari=(end-start)/86400000;
+  if(hari<=31)return 'day';
+  if(hari<=210)return 'week';
+  if(hari<=900)return 'month';
+  return 'year';
+}
+// =========================================================
+// PERIODE PICKER — komponen date-range picker custom (tombol + panel
+// kalender/grid bulan/grid tahun), dipakai di topbar (Dashboard) & Laporan
+// Keuangan. Satu fungsi builder dipakai berkali-kali lewat id container.
+// =========================================================
+const BULAN_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const BULAN_SINGKAT=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+const HARI_SINGKAT=['S','S','R','K','J','S','M']; // Senin..Minggu (kalender mulai Senin)
+const ppState={}; // { [containerId]: {mode, tgl, bulan, tahun} }
+
+function ppSeninMinggu(d){const x=new Date(d);const dow=x.getDay();x.setDate(x.getDate()+(dow===0?-6:1-dow));x.setHours(0,0,0,0);return x}
+function ppSamaHari(a,b){return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate()}
+function ppSamaMinggu(a,b){return ppSeninMinggu(a).getTime()===ppSeninMinggu(b).getTime()}
+function ppFmtTgl(d){return d.getDate()+' '+BULAN_ID[d.getMonth()]+' '+d.getFullYear()}
+function ppFmtTglSingkat(d){return d.getDate()+' '+BULAN_SINGKAT[d.getMonth()]}
+
+// Label yang tampil di tombol & judul kartu, sesuai mode+pilihan tersimpan.
+function ppLabel(state){
+  const now=new Date();
+  switch(state.mode){
+    case 'hari_ini':return 'Real-time  Hari Ini - Pk '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+' (GMT+7)';
+    case 'kemarin':return 'Kemarin';
+    case '7_hari':return '7 Hari Terakhir';
+    case '30_hari':return '30 Hari Terakhir';
+    case 'per_hari':return ppFmtTgl(state.tgl);
+    case 'per_minggu':{const s=ppSeninMinggu(state.tgl);const e=new Date(s);e.setDate(e.getDate()+6);return ppFmtTglSingkat(s)+' – '+ppFmtTgl(e);}
+    case 'per_bulan':return BULAN_ID[state.bulan]+' '+state.tahun;
+    case 'per_tahun':return String(state.tahun);
+  }
+  return '';
+}
+// Terjemahkan state picker menjadi rentang tanggal [start,end] + label siap-tampil.
+function ppGetRange(containerId){
+  const state=ppState[containerId]||{mode:'7_hari',tgl:new Date(),bulan:new Date().getMonth(),tahun:new Date().getFullYear()};
+  const now=new Date();
+  const startOfDay=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x};
+  const endOfDay=d=>{const x=new Date(d);x.setHours(23,59,59,999);return x};
+  let start,end=endOfDay(now);
+  switch(state.mode){
+    case 'hari_ini': start=startOfDay(now); break;
+    case 'kemarin': {const y=new Date(now);y.setDate(y.getDate()-1);start=startOfDay(y);end=endOfDay(y);break;}
+    case '30_hari': {start=startOfDay(now);start.setDate(start.getDate()-29);break;}
+    case 'per_hari': {start=startOfDay(state.tgl);end=endOfDay(state.tgl);break;}
+    case 'per_minggu': {const s=ppSeninMinggu(state.tgl);const e=new Date(s);e.setDate(e.getDate()+6);start=startOfDay(s);end=endOfDay(e);break;}
+    case 'per_bulan': {start=new Date(state.tahun,state.bulan,1);end=endOfDay(new Date(state.tahun,state.bulan+1,0));break;}
+    case 'per_tahun': {start=new Date(state.tahun,0,1);end=endOfDay(new Date(state.tahun,11,31));break;}
+    case '7_hari': default: {start=startOfDay(now);start.setDate(start.getDate()-6);break;}
+  }
+  return{start,end,label:ppLabel(state),mode:state.mode};
+}
+// Bangun & pasang komponen picker di dalam <div id="containerId">.
+// onChange(state) dipanggil setiap kali user memilih periode baru.
+function ppInit(containerId,defaultState,onChange){
+  const root=document.getElementById(containerId);
+  if(!root)return;
+  ppState[containerId]={mode:'7_hari',tgl:new Date(),bulan:new Date().getMonth(),tahun:new Date().getFullYear(),...defaultState};
+  const state=ppState[containerId];
+
+  root.innerHTML=`
+    <button type="button" class="periode-btn" id="${containerId}-btn">
+      <span class="pp-label">Periode Data</span><span class="pp-value"></span><span class="pp-cal-icon">📅</span>
+    </button>
+    <div class="periode-panel" id="${containerId}-panel" style="display:none">
+      <div class="pp-list">
+        <div class="pp-item" data-mode="hari_ini">Real-time</div>
+        <div class="pp-item" data-mode="kemarin">Kemarin</div>
+        <div class="pp-item" data-mode="7_hari">7 hari sebelumnya.</div>
+        <div class="pp-item" data-mode="30_hari">30 hari sebelumnya.</div>
+        <div class="pp-sep"></div>
+        <div class="pp-item" data-mode="per_hari">Per Hari <span class="pp-chev">›</span></div>
+        <div class="pp-item" data-mode="per_minggu">Per Minggu <span class="pp-chev">›</span></div>
+        <div class="pp-item" data-mode="per_bulan">Per Bulan <span class="pp-chev">›</span></div>
+        <div class="pp-item" data-mode="per_tahun">Berdasarkan Tahun <span class="pp-chev">›</span></div>
+      </div>
+      <div class="pp-side" id="${containerId}-side"></div>
+    </div>`;
+
+  const btn=document.getElementById(containerId+'-btn');
+  const panel=document.getElementById(containerId+'-panel');
+  const side=document.getElementById(containerId+'-side');
+
+  function refreshBtn(){btn.querySelector('.pp-value').textContent=ppLabel(state)}
+  function tandaiAktif(mode){root.querySelectorAll('.pp-item').forEach(x=>x.classList.toggle('pp-active',x.dataset.mode===mode))}
+  function selesai(){refreshBtn();tandaiAktif(state.mode);panel.style.display='none';onChange({...state})}
+
+  function renderKalender(viewDate,onPick,isHighlight){
+    const y=viewDate.getFullYear(),m=viewDate.getMonth();
+    const first=new Date(y,m,1);
+    const startOffset=(first.getDay()+6)%7; // 0=Senin
+    const daysInMonth=new Date(y,m+1,0).getDate();
+    const daysInPrev=new Date(y,m,0).getDate();
+    let cells='';
+    for(let i=0;i<startOffset;i++)cells+=`<div class="pp-cal-day pp-muted">${daysInPrev-startOffset+1+i}</div>`;
+    for(let d=1;d<=daysInMonth;d++){
+      const dt=new Date(y,m,d);
+      let cls='pp-cal-day';
+      if(isHighlight&&isHighlight(dt))cls+=' pp-selected';
+      else if(ppSamaHari(dt,new Date()))cls+=' pp-today';
+      cells+=`<div class="${cls}" data-y="${y}" data-m="${m}" data-d="${d}">${d}</div>`;
+    }
+    const remain=(7-((startOffset+daysInMonth)%7))%7;
+    for(let i=1;i<=remain;i++)cells+=`<div class="pp-cal-day pp-muted">${i}</div>`;
+    side.innerHTML=`
+      <div class="pp-cal-head">
+        <button type="button" class="pp-cal-nav" data-nav="-year">«</button>
+        <button type="button" class="pp-cal-nav" data-nav="-month">‹</button>
+        <div class="pp-cal-title">${BULAN_ID[m]} ${y}</div>
+        <button type="button" class="pp-cal-nav" data-nav="+month">›</button>
+        <button type="button" class="pp-cal-nav" data-nav="+year">»</button>
+      </div>
+      <div class="pp-cal-grid pp-cal-grid-head">${HARI_SINGKAT.map(h=>`<div>${h}</div>`).join('')}</div>
+      <div class="pp-cal-grid">${cells}</div>`;
+    side.querySelectorAll('.pp-cal-nav').forEach(b=>b.addEventListener('click',()=>{
+      const nav=b.dataset.nav;
+      if(nav==='-year')viewDate.setFullYear(viewDate.getFullYear()-1);
+      if(nav==='+year')viewDate.setFullYear(viewDate.getFullYear()+1);
+      if(nav==='-month')viewDate.setMonth(viewDate.getMonth()-1);
+      if(nav==='+month')viewDate.setMonth(viewDate.getMonth()+1);
+      renderKalender(viewDate,onPick,isHighlight);
+    }));
+    side.querySelectorAll('.pp-cal-day:not(.pp-muted)').forEach(el=>el.addEventListener('click',()=>{
+      onPick(new Date(+el.dataset.y,+el.dataset.m,+el.dataset.d));
+    }));
+  }
+  function renderBulanGrid(){
+    side.innerHTML=`
+      <div class="pp-cal-head">
+        <button type="button" class="pp-cal-nav" data-nav="-year">«</button>
+        <div class="pp-cal-title">${state.tahun}</div>
+        <button type="button" class="pp-cal-nav" data-nav="+year">»</button>
+      </div>
+      <div class="pp-bulan-grid">${BULAN_SINGKAT.map((b,i)=>`<div class="pp-bulan-item${i===state.bulan&&state.mode==='per_bulan'?' pp-selected':''}" data-m="${i}">${b}</div>`).join('')}</div>`;
+    side.querySelector('[data-nav="-year"]').addEventListener('click',()=>{state.tahun--;renderBulanGrid()});
+    side.querySelector('[data-nav="+year"]').addEventListener('click',()=>{state.tahun++;renderBulanGrid()});
+    side.querySelectorAll('.pp-bulan-item').forEach(el=>el.addEventListener('click',()=>{state.mode='per_bulan';state.bulan=+el.dataset.m;selesai()}));
+  }
+  function renderTahunGrid(){
+    const base=state.tahun-4;
+    let items='';
+    for(let i=0;i<9;i++){const y=base+i;items+=`<div class="pp-tahun-item${y===state.tahun&&state.mode==='per_tahun'?' pp-selected':''}" data-y="${y}">${y}</div>`}
+    side.innerHTML=`<div class="pp-tahun-grid">${items}</div>`;
+    side.querySelectorAll('.pp-tahun-item').forEach(el=>el.addEventListener('click',()=>{state.mode='per_tahun';state.tahun=+el.dataset.y;selesai()}));
+  }
+
+  root.querySelectorAll('.pp-item').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const mode=el.dataset.mode;
+      if(['hari_ini','kemarin','7_hari','30_hari'].includes(mode)){state.mode=mode;selesai();return}
+      tandaiAktif(mode);
+      if(mode==='per_hari')renderKalender(new Date(state.tgl),(dt)=>{state.mode='per_hari';state.tgl=dt;selesai()},(dt)=>state.mode==='per_hari'&&ppSamaHari(dt,state.tgl));
+      else if(mode==='per_minggu')renderKalender(new Date(state.tgl),(dt)=>{state.mode='per_minggu';state.tgl=dt;selesai()},(dt)=>state.mode==='per_minggu'&&ppSamaMinggu(dt,state.tgl));
+      else if(mode==='per_bulan')renderBulanGrid();
+      else if(mode==='per_tahun')renderTahunGrid();
+    });
+  });
+
+  btn.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const sedangTerbuka=panel.style.display!=='none';
+    document.querySelectorAll('.periode-panel').forEach(p=>p.style.display='none');
+    if(!sedangTerbuka){panel.style.display='flex';tandaiAktif(state.mode)}
+  });
+  document.addEventListener('click',(e)=>{if(!root.contains(e.target))panel.style.display='none'});
+
+  refreshBtn();
+}
+// Pecah rentang [start,end] jadi baris-baris satuan waktu (hari/minggu/bulan/tahun).
+function buatBucketLaporan(start,end,groupBy){
+  const buckets=[];
+  if(groupBy==='day'){
+    let d=new Date(start);
+    while(d<=end){
+      buckets.push({label:d.toLocaleDateString('id-ID',{weekday:'short',day:'2-digit',month:'short'}),start:new Date(d.setHours(0,0,0,0)),end:new Date(new Date(d).setHours(23,59,59,999))});
+      d=new Date(d);d.setDate(d.getDate()+1);
+    }
+  }else if(groupBy==='week'){
+    let d=new Date(start);
+    const dow=d.getDay();d.setDate(d.getDate()+(dow===0?-6:1-dow));d.setHours(0,0,0,0); // mundur ke Senin
+    while(d<=end){
+      const s=new Date(d);const e=new Date(d);e.setDate(e.getDate()+6);e.setHours(23,59,59,999);
+      buckets.push({label:s.toLocaleDateString('id-ID',{day:'2-digit',month:'short'})+' – '+e.toLocaleDateString('id-ID',{day:'2-digit',month:'short'}),start:s,end:e});
+      d.setDate(d.getDate()+7);
+    }
+  }else if(groupBy==='month'){
+    let d=new Date(start.getFullYear(),start.getMonth(),1);
+    while(d<=end){
+      const s=new Date(d.getFullYear(),d.getMonth(),1);const e=new Date(d.getFullYear(),d.getMonth()+1,0);e.setHours(23,59,59,999);
+      buckets.push({label:d.toLocaleDateString('id-ID',{month:'long',year:'numeric'}),start:s,end:e});
+      d.setMonth(d.getMonth()+1);
+    }
+  }else if(groupBy==='year'){
+    let y=start.getFullYear();const endY=end.getFullYear();
+    while(y<=endY){buckets.push({label:String(y),start:new Date(y,0,1),end:new Date(y,11,31,23,59,59,999)});y++}
+  }
+  return buckets;
+}
+// Jumlahkan Omzet/Laba/Biaya untuk sekumpulan pesanan (dipakai ringkasan total
+// maupun tiap baris breakdown), konsisten pakai hitungLaba() yang sama.
+function hitungRingkasPeriode(list){
+  let to=0,tl=0,tf=0,te=0,th=0;
+  list.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;tl+=h.laba;tf+=h.mpFee;te+=h.extra;th+=h.hpp});
+  return{to,tl,tf,te,th};
 }
 // Hitung total revenue per bulan & per marketplace, N bulan terakhir sampai
 // bulan berjalan (dipakai grafik Tren Bulanan di Laporan Keuangan). Data
@@ -1552,13 +1776,32 @@ function renderPagination(containerId,total,current,cb){
 }
 
 // ===== IMPORT =====
+// Parser CSV yang benar (RFC 4180): mengerti sel yang dibungkus tanda kutip
+// (boleh mengandung koma/baris baru di dalamnya) — dipakai untuk membaca file
+// CSV, baik hasil export aplikasi ini sendiri maupun file dari Excel/Sheets.
+function parseCSVLine(line){
+  const out=[];let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(inQ){
+      if(c==='"'){if(line[i+1]==='"'){cur+='"';i++}else inQ=false}
+      else cur+=c;
+    }else{
+      if(c==='"')inQ=true;
+      else if(c===','){out.push(cur);cur=''}
+      else cur+=c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
 function handleDrop(e,type){e.preventDefault();const f=e.dataTransfer.files[0];if(f)processCSV(f,type)}
 function importFile(e,type){if(e.target.files[0])processCSV(e.target.files[0],type)}
 function processCSV(file,type){
   const reader=new FileReader();
   reader.onload=function(e){
-    const lines=e.target.result.split('\n').filter(l=>l.trim());
-    const headers=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/\s+/g,'_'));
+    const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());
+    const headers=parseCSVLine(lines[0]).map(h=>h.trim().toLowerCase().replace(/\s+/g,'_'));
     let imported=0,errors=0;
     if(type==='jual'){
       // Kelompokkan baris-baris CSV berdasarkan No. Pesanan yang sama -> jadi
@@ -1566,7 +1809,7 @@ function processCSV(file,type){
       const grouped={}; // no_pesanan -> {header fields, items:[]}
       const order=[];   // urutan kemunculan no_pesanan pertama kali, supaya hasil import rapi
       for(let i=1;i<lines.length;i++){
-        const cols=lines[i].split(',');const row={};headers.forEach((h,j)=>row[h]=(cols[j]||'').trim());
+        const cols=parseCSVLine(lines[i]);const row={};headers.forEach((h,j)=>row[h]=(cols[j]||'').trim());
         try{
           const noImp=row.no_pesanan||row.no||('IMP-'+i);
           const key=noImp.trim().toLowerCase();
@@ -1609,7 +1852,7 @@ function processCSV(file,type){
       });
     }else{
       for(let i=1;i<lines.length;i++){
-        const cols=lines[i].split(',');const row={};headers.forEach((h,j)=>row[h]=(cols[j]||'').trim());
+        const cols=parseCSVLine(lines[i]);const row={};headers.forEach((h,j)=>row[h]=(cols[j]||'').trim());
         try{
           DB.stok.push({sku:row.sku||'SKU-IMP-'+i,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',stok:parseInt(row.stok||0),terjual:parseInt(row.terjual_30h||row.terjual||0),hpp:parseFloat((row.hpp||'0').replace(/[^0-9.]/g,''))||0});
           imported++;
@@ -1624,18 +1867,27 @@ function processCSV(file,type){
 }
 
 // ===== EXPORT =====
+// Escape 1 sel CSV dengan benar (RFC 4180): bungkus dengan tanda kutip jika
+// selnya mengandung koma, tanda kutip, atau baris baru — supaya nama
+// produk/varian/kategori yang mengandung koma TIDAK memecah kolom saat
+// dibuka di Excel/Sheets atau saat di-import ulang ke aplikasi ini.
+function csvCell(v){
+  const s=v==null?'':String(v);
+  return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+function csvRow(arr){return arr.map(csvCell).join(',')}
 function exportCSV(){
-  const h='No. Pesanan,Tanggal,Marketplace,Produk,Varian,Kategori,Qty,Harga Satuan,Subtotal,Status,Biaya Admin,Biaya Tambahan\n';
+  const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan'])+'\n';
   const rows=[];
   DB.penjualan.forEach(r=>{
     (r.items&&r.items.length?r.items:[{prod:'',varian:'',kat:'',qty:'',harga:'',subtotal:''}]).forEach(it=>{
-      rows.push([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,it.subtotal,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):''].join(','));
+      rows.push(csvRow([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,it.subtotal,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):'']));
     });
   });
   dlFile(h+rows.join('\n'),'penjualan_'+today()+'.csv','text/csv');
 }
-function exportStokCSV(){const h='SKU,Produk,Varian,Kategori,Stok,HPP,Terjual 30h\n';dlFile(h+DB.stok.map(r=>[r.sku,r.prod,r.varian,r.kat||'',r.stok,r.hpp||0,r.terjual].join(',')).join('\n'),'stok_'+today()+'.csv','text/csv')}
-function exportLabaCSV(){const data=_labaFiltered.length?_labaFiltered:getLabaPerProduk();const h='Produk,Kategori,Marketplace,Qty,Omzet,HPP,Biaya Admin MP (%),Biaya Lain,Laba Bersih,Margin (%)\n';dlFile(h+data.map(r=>[r.prod,r.kat,r.mp,r.qty,r.omzet,Math.round(r.hpp),Math.round(r.mpFee),Math.round(r.extra),Math.round(r.laba),r.margin.toFixed(1)].join(',')).join('\n'),'laba_per_produk_'+today()+'.csv','text/csv')}
+function exportStokCSV(){const h=csvRow(['SKU','Produk','Varian','Kategori','Stok','HPP','Terjual 30h'])+'\n';dlFile(h+DB.stok.map(r=>csvRow([r.sku,r.prod,r.varian,r.kat||'',r.stok,r.hpp||0,r.terjual])).join('\n'),'stok_'+today()+'.csv','text/csv')}
+function exportLabaCSV(){const data=_labaFiltered.length?_labaFiltered:getLabaPerProduk();const h=csvRow(['Produk','Kategori','Marketplace','Qty','Omzet','HPP','Biaya Admin MP (%)','Biaya Lain','Laba Bersih','Margin (%)'])+'\n';dlFile(h+data.map(r=>csvRow([r.prod,r.kat,r.mp,r.qty,r.omzet,Math.round(r.hpp),Math.round(r.mpFee),Math.round(r.extra),Math.round(r.laba),r.margin.toFixed(1)])).join('\n'),'laba_per_produk_'+today()+'.csv','text/csv')}
 function exportLabaCSV2(){exportLabaCSV()}
 function dlFile(content,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+content],{type}));a.download=name;a.click()}
 
@@ -1646,7 +1898,26 @@ window.onclick=function(e){if(e.target.classList.contains('modal-overlay'))e.tar
 
 // ===== BACKUP / RESTORE =====
 function backupData(){dlFile(JSON.stringify(DB,null,2),'omniseller_backup_'+today()+'.json','application/json')}
-function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];applyPengaturan();populateKatDropdowns();populateMpDropdowns();renderDashboard();renderJualTable();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid.')}};reader.readAsText(e.target.files[0])}
+// Backup lama (sebelum fitur multi-item) menyimpan 1 pesanan = 1 barang
+// langsung di level pesanan (field prod/varian/qty/total ada di `r`, bukan
+// di `r.items[]`). Semua laporan sekarang membaca dari `r.items[]`, jadi
+// tanpa migrasi ini pesanan lama akan tampak "kosong" (0 barang) di semua
+// laporan/laba/grafik walau baris pesanannya sendiri masih ada.
+function migrasiPenjualanLama(list){
+  return (list||[]).map(r=>{
+    if(r.items&&r.items.length)return r; // sudah format baru
+    if(r.prod!=null){ // format lama: barang ada langsung di level pesanan
+      const qty=r.qty||1,harga=r.harga!=null?r.harga:(r.total!=null?Math.round(r.total/qty):0);
+      const items=[{prod:r.prod,varian:r.varian||'',kat:r.kat||'Lainnya',qty,harga,subtotal:r.total!=null?r.total:qty*harga}];
+      const{prod,varian,kat,qty:_q,total,harga:_h,...rest}=r;
+      const order={...rest,items};
+      recalcOrderTotal(order);
+      return order;
+    }
+    return{...r,items:r.items||[]};
+  });
+}
+function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.penjualan=migrasiPenjualanLama(DB.penjualan);refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];applyPengaturan();populateKatDropdowns();populateMpDropdowns();renderDashboard();renderJualTable();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid: '+err.message)}};reader.readAsText(e.target.files[0])}
 function resetData(){if(!canManageSettings()){alert('Hanya Owner yang bisa reset data.');return}if(confirm('Hapus SEMUA data penjualan & stok? Tindakan ini tidak bisa dibatalkan.')){
   DB.penjualan=[];DB.stok=[];DB.kategori=[...DEFAULT_KAT];DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
   refreshMpGlobals();saveDB();filteredJual=[...DB.penjualan];filteredStok=[...DB.stok];populateKatDropdowns();populateMpDropdowns();applyPengaturan();renderDashboard();renderJualTable();renderStokTable();
