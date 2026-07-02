@@ -2050,14 +2050,11 @@ function csvCell(v){
 }
 function csvRow(arr){return arr.map(csvCell).join(',')}
 // Hitung rentang [start,end] utk pilihan periode di dropdown "f-export-periode-jual".
-// 'hari' = hari ini, 'minggu' = Senin-Minggu minggu ini, 'bulan' = bulan berjalan,
-// 'tahun' = tahun berjalan. Return null untuk 'semua' (tidak ada batasan tanggal).
+// 'minggu' = Senin-Minggu minggu ini, 'bulan' = bulan berjalan, 'tahun' = tahun
+// berjalan. Return null untuk 'semua' (tidak ada batasan tanggal).
 function getRentangPeriode(periode){
   const now=new Date();let start,end;
-  if(periode==='hari'){
-    start=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0,0);
-    end=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59,999);
-  }else if(periode==='minggu'){
+  if(periode==='minggu'){
     const hari=now.getDay(); // 0=Minggu..6=Sabtu
     const selisihKeSenin=hari===0?-6:1-hari; // mulai minggu di hari Senin
     start=new Date(now.getFullYear(),now.getMonth(),now.getDate()+selisihKeSenin,0,0,0,0);
@@ -2073,7 +2070,7 @@ function getRentangPeriode(periode){
   }
   return{start,end};
 }
-const PERIODE_LABEL={semua:'semua_periode',hari:'per_hari',minggu:'per_minggu',bulan:'per_bulan',tahun:'per_tahun'};
+const PERIODE_LABEL={semua:'semua_periode',minggu:'per_minggu',bulan:'per_bulan',tahun:'per_tahun'};
 // Export CSV Penjualan sesuai PERIODE yang dipilih di dropdown, DIGABUNG dengan
 // filter pencarian/marketplace/status yang sedang aktif di tabel (q-jual, f-mp-jual,
 // f-status-jual) dan urutan sort yang sedang dipilih (f-sort-jual) — supaya hasil
