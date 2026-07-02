@@ -385,6 +385,7 @@ async function initApp(){
 
 // ===== ADMIN AUTH (Supabase Auth) + ROLE/PRIVILEGE =====
 let _currentAdminRole=null; // 'owner' | 'staff' | 'kasir' | 'viewer' | 'pending' | null
+let _currentAdminNama=''; // nama tampilan admin yang sedang login (dari admin_users.nama)
 function showLoginScreen(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-wrap').style.display='none';
@@ -432,6 +433,7 @@ async function proceedAfterAuth(user){
     }
     // Kasus 5: normal — masuk app
     _currentAdminRole=data.role;
+    _currentAdminNama=data.nama||'';
     showAppScreen();
     await initApp();             // render semua section
     handleHashRoute();           // buka menu sesuai path di URL (#/stok, dst) — bukan selalu Dashboard
@@ -503,7 +505,7 @@ async function adminLogin(){
 async function adminLogout(){
   if(!confirm('Keluar dari dashboard?'))return;
   try{await supabaseClient.auth.signOut()}catch(e){}
-  _currentAdminUser=null;_currentAdminRole=null;_currentSection=null;
+  _currentAdminUser=null;_currentAdminRole=null;_currentAdminNama='';_currentSection=null;
   history.replaceState(null,'','#/');
   document.getElementById('login-email').value='';
   document.getElementById('login-password').value='';
@@ -513,15 +515,38 @@ async function adminLogout(){
 function updateAdminInfo(){
   const emailEl=document.getElementById('info-admin-email');
   const sinceEl=document.getElementById('info-admin-since');
-  if(!emailEl)return;
-  emailEl.textContent=_currentAdminUser?_currentAdminUser.email:'–';
-  sinceEl.textContent=_currentAdminUser&&_currentAdminUser.last_sign_in_at?new Date(_currentAdminUser.last_sign_in_at).toLocaleString('id-ID'):'–';
-  const roleEl=document.getElementById('info-admin-role');
-  if(roleEl){
-    const label={owner:'👑 Owner (akses penuh)',staff:'🛠 Staff (kelola transaksi & stok)',kasir:'🧾 Kasir (kelola pesanan saja)',viewer:'👁 Viewer (hanya lihat)'}[_currentAdminRole]||_currentAdminRole||'–';
-    roleEl.textContent=label;
+  const email=_currentAdminUser?_currentAdminUser.email:'';
+  const namaTampil=_currentAdminNama||email||'–';
+  if(emailEl){
+    emailEl.textContent=email||'–';
+    sinceEl.textContent=_currentAdminUser&&_currentAdminUser.last_sign_in_at?new Date(_currentAdminUser.last_sign_in_at).toLocaleString('id-ID'):'–';
   }
+  const roleLabelFull={owner:'👑 Owner (akses penuh)',staff:'🛠 Staff (kelola transaksi & stok)',kasir:'🧾 Kasir (kelola pesanan saja)',viewer:'👁 Viewer (hanya lihat)'}[_currentAdminRole]||_currentAdminRole||'–';
+  const roleEl=document.getElementById('info-admin-role');
+  if(roleEl)roleEl.textContent=roleLabelFull;
+
+  // ===== Widget akun di sidebar ("menu login") =====
+  const roleLabelSingkat={owner:'Owner',staff:'Staff',kasir:'Kasir',viewer:'Viewer'}[_currentAdminRole]||_currentAdminRole||'–';
+  const avatarEl=document.getElementById('su-avatar');
+  if(avatarEl)avatarEl.textContent=namaTampil.trim().charAt(0)||'?';
+  const nameEl=document.getElementById('su-name');
+  if(nameEl)nameEl.textContent=namaTampil;
+  const roleBadgeEl=document.getElementById('su-role-badge');
+  if(roleBadgeEl){roleBadgeEl.textContent=roleLabelSingkat;roleBadgeEl.className='su-role role-'+(_currentAdminRole||'');}
+  const menuEmailEl=document.getElementById('su-menu-email');
+  if(menuEmailEl)menuEmailEl.textContent=email||'–';
 }
+// Buka/tutup popover menu akun di sidebar (nama, role, ganti password, logout).
+function toggleSidebarUserMenu(){
+  document.getElementById('sidebar-user').classList.toggle('open');
+}
+function closeSidebarUserMenu(){
+  document.getElementById('sidebar-user').classList.remove('open');
+}
+document.addEventListener('click',(e)=>{
+  const wrap=document.getElementById('sidebar-user');
+  if(wrap&&!wrap.contains(e.target))closeSidebarUserMenu();
+});
 function bukaModalGantiPassword(){
   document.getElementById('pw-baru').value='';document.getElementById('pw-ulang').value='';
   openModal('modal-ganti-password');
@@ -647,7 +672,7 @@ window.onload=async function(){
 // Jika sesi berubah (login/logout dari tab lain, token refresh, dst)
 if(typeof supabaseClient!=='undefined'&&supabaseClient){
   supabaseClient.auth.onAuthStateChange((event,session)=>{
-    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;_currentSection=null;showLoginScreen()}
+    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;_currentAdminNama='';_currentSection=null;showLoginScreen()}
   });
 }
 
