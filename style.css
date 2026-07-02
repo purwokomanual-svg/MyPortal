@@ -248,6 +248,20 @@ tr:hover td{background:var(--surface2)}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
 
+/* ===== Aksesibilitas & state yang sebelumnya belum ada gaya khususnya ===== */
+/* Tombol di-disable lewat JS saat proses submit (login/signup/dll), tapi
+   sebelumnya tidak ada gaya visual untuk state ini — user tidak tahu tombol
+   sedang nonaktif/berjalan. */
+.btn:disabled,.auth-btn-primary:disabled{opacity:.55;cursor:not-allowed;transform:none;pointer-events:none}
+/* Input readonly (mis. di modal Restock) sebelumnya terlihat identik dengan
+   input yang bisa diedit — membingungkan mana yang bisa diubah. */
+.form-input[readonly]{background:var(--surface2);color:var(--text2);cursor:not-allowed}
+/* Outline fokus keyboard yang konsisten (navigasi tanpa mouse). */
+a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
+.form-input:focus-visible,.form-select:focus-visible,.tab-pill:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;
+}
+
 /* ===== LOGIN SCREEN ===== */
 #login-screen{padding:16px}
 #login-alert .alert{margin-bottom:12px}
@@ -333,4 +347,50 @@ tr:hover td{background:var(--surface2)}
 @media(max-width:860px){
   .auth-panel-left{display:none}
   .auth-panel-right{padding:24px}
+}
+
+/* ===== PERIODE PICKER (dropdown periode custom bergaya date-range picker) ===== */
+.periode-picker{position:relative;display:inline-block}
+.periode-btn{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:12px;
+  border:1px solid var(--border2);background:var(--surface);cursor:pointer;font-family:inherit;
+  font-size:12.5px;color:var(--text);white-space:nowrap;max-width:340px;overflow:hidden
+}
+.periode-btn:hover{background:var(--surface2)}
+.periode-btn .pp-label{color:var(--text3);font-weight:500;flex-shrink:0}
+.periode-btn .pp-value{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.periode-btn .pp-cal-icon{margin-left:2px;flex-shrink:0;opacity:.55}
+.periode-panel{
+  position:absolute;top:calc(100% + 8px);left:0;z-index:400;display:flex;
+  background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);
+  overflow:hidden;min-width:640px
+}
+.pp-list{width:190px;flex-shrink:0;border-right:1px solid var(--border);padding:10px 0}
+.pp-item{padding:10px 18px;font-size:13px;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}
+.pp-item:hover{background:var(--surface2)}
+.pp-item.pp-active{color:var(--accent);font-weight:700;background:var(--accent-light)}
+.pp-item .pp-chev{opacity:.5;font-size:13px}
+.pp-sep{height:1px;background:var(--border);margin:8px 0}
+.pp-side{width:340px;padding:16px 18px;min-height:280px}
+.pp-side:empty{display:none}
+.pp-cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pp-cal-title{font-size:14px;font-weight:800;color:var(--text)}
+.pp-cal-nav{width:26px;height:26px;border-radius:8px;border:none;background:transparent;color:var(--text2);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center}
+.pp-cal-nav:hover{background:var(--surface2);color:var(--text)}
+.pp-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.pp-cal-grid.pp-cal-grid-head{margin-bottom:4px}
+.pp-cal-grid-head div{font-size:10.5px;font-weight:700;color:var(--text3);padding:4px 0}
+.pp-cal-day{padding:7px 0;font-size:12.5px;border-radius:9px;cursor:pointer;color:var(--text)}
+.pp-cal-day:hover{background:var(--surface2)}
+.pp-cal-day.pp-muted{color:var(--text3);opacity:.4;cursor:default;pointer-events:none}
+.pp-cal-day.pp-today{color:var(--accent);font-weight:800}
+.pp-cal-day.pp-selected{background:var(--accent);color:#fff;font-weight:800}
+.pp-bulan-grid,.pp-tahun-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.pp-bulan-item,.pp-tahun-item{padding:12px 6px;text-align:center;border-radius:12px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;background:var(--surface2)}
+.pp-bulan-item:hover,.pp-tahun-item:hover{background:var(--accent-light);color:var(--accent)}
+.pp-bulan-item.pp-selected,.pp-tahun-item.pp-selected{background:var(--accent);color:#fff}
+@media(max-width:640px){
+  .periode-panel{min-width:0;left:auto;right:0;flex-direction:column;max-height:80vh;overflow-y:auto}
+  .pp-list{width:100%;border-right:none;border-bottom:1px solid var(--border)}
+  .pp-side{width:100%}
 }
