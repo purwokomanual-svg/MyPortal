@@ -270,7 +270,7 @@ async function loadFromSupabase(){
 
     const kategori=(katRes.data||[]).map(k=>({nama:k.nama,color:k.color}));
     const marketplace=(mpRes.data||[]).map(m=>({nama:m.nama,color:m.color}));
-    const stok=(stokRes.data||[]).map(s=>({sku:s.sku,prod:s.produk,varian:s.varian,kat:s.kategori,stok:s.stok,terjual:s.terjual,hpp:Number(s.hpp)||0}));
+    const stok=(stokRes.data||[]).map(s=>({sku:s.sku,prod:s.produk,varian:s.varian,kat:s.kategori,stok:s.stok,terjual:s.terjual,hpp:Number(s.hpp)||0,created_at:s.created_at||null}));
 
     // Kelompokkan baris pesanan_item berdasarkan pesanan_id, lalu gabungkan
     // dengan header masing-masing dari tabel `pesanan` -> jadi 1 pesanan (bisa
@@ -815,7 +815,19 @@ function renderStokPieChart(){
 function filterJual(){
   pageJual=1;const q=(document.getElementById('q-jual').value||'').toLowerCase();const mp=document.getElementById('f-mp-jual').value;const st=document.getElementById('f-status-jual').value;
   filteredJual=DB.penjualan.filter(r=>(!q||r.no.toLowerCase().includes(q)||(r.items||[]).some(it=>it.prod.toLowerCase().includes(q)))&&(!mp||r.mp===mp)&&(!st||r.status===st));
+  sortJualArray(filteredJual);
   renderJualTable();
+}
+// Urutkan array pesanan IN-PLACE sesuai pilihan dropdown "f-sort-jual".
+// Dipisah jadi fungsi sendiri supaya bisa dipakai ulang oleh exportCSVPeriode().
+function sortJualArray(arr){
+  const sortEl=document.getElementById('f-sort-jual');const mode=sortEl?sortEl.value:'terbaru';
+  const waktu=r=>r._date?new Date(r._date).getTime():0;
+  if(mode==='terlama')arr.sort((a,b)=>waktu(a)-waktu(b));
+  else if(mode==='total-desc')arr.sort((a,b)=>(b.total||0)-(a.total||0));
+  else if(mode==='total-asc')arr.sort((a,b)=>(a.total||0)-(b.total||0));
+  else arr.sort((a,b)=>waktu(b)-waktu(a)); // default: 'terbaru'
+  return arr;
 }
 
 const ST_BADGE={'Selesai':'badge-green','Dibatalkan':'badge-red','Diproses':'badge-yellow','Dikirim':'badge-blue'};
@@ -1099,9 +1111,23 @@ function simpanPesanan(){
 function filterStok(){
   pageStok=1;const q=(document.getElementById('q-stok').value||'').toLowerCase();const st=document.getElementById('f-status-stok').value;const kat=document.getElementById('f-kat-stok').value;const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   filteredStok=DB.stok.filter(r=>{const status=r.stok===0?'Habis':r.stok<=batas?'Rendah':'Aman';return(!q||r.prod.toLowerCase().includes(q)||r.sku.toLowerCase().includes(q))&&(!st||status===st)&&(!kat||r.kat===kat)});
+  sortStokArray(filteredStok);
   renderStokTable();
 }
-function filterStokKritis(){document.getElementById('f-status-stok').value='';document.getElementById('q-stok').value='';document.getElementById('f-kat-stok').value='';const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);filteredStok=DB.stok.filter(s=>s.stok<=batas);pageStok=1;renderStokTable()}
+// Urutkan array Stok IN-PLACE sesuai dropdown "f-sort-stok".
+// "SKU Terbaru/Terlama" pakai timestamp created_at (diisi otomatis saat SKU
+// dibuat/diimport). SKU lama sebelum fitur ini ada belum punya created_at —
+// diperlakukan sebagai paling lama (fallback urutan tetap masuk akal).
+function sortStokArray(arr){
+  const sortEl=document.getElementById('f-sort-stok');const mode=sortEl?sortEl.value:'sku-terbaru';
+  const waktu=r=>r.created_at?new Date(r.created_at).getTime():0;
+  if(mode==='sku-terlama')arr.sort((a,b)=>waktu(a)-waktu(b));
+  else if(mode==='stok-tertinggi')arr.sort((a,b)=>(b.stok||0)-(a.stok||0));
+  else if(mode==='stok-terendah')arr.sort((a,b)=>(a.stok||0)-(b.stok||0));
+  else arr.sort((a,b)=>waktu(b)-waktu(a)); // default: 'sku-terbaru'
+  return arr;
+}
+function filterStokKritis(){document.getElementById('f-status-stok').value='';document.getElementById('q-stok').value='';document.getElementById('f-kat-stok').value='';const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);filteredStok=DB.stok.filter(s=>s.stok<=batas);sortStokArray(filteredStok);pageStok=1;renderStokTable()}
 function renderStokTable(){
   const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);const start=(pageStok-1)*PER_PAGE;const slice=filteredStok.slice(start,start+PER_PAGE);
   document.getElementById('tbl-stok').innerHTML=slice.length?slice.map(r=>{
@@ -1164,7 +1190,8 @@ function simpanStok(){
     stok:parseInt(document.getElementById('s-stok').value)||0,terjual:parseInt(document.getElementById('s-terjual').value)||0,
     hpp:parseFloat(document.getElementById('s-hpp').value)||0};
   if(!r.prod){alert('Nama produk wajib diisi');return}
-  if(idx!==''&&idx>=0)DB.stok[parseInt(idx)]=r;else DB.stok.unshift(r);
+  if(idx!==''&&idx>=0){DB.stok[parseInt(idx)]=Object.assign({},DB.stok[parseInt(idx)],r)}
+  else{r.created_at=new Date().toISOString();DB.stok.unshift(r)}
   saveDB(['stok']);filteredStok=[...DB.stok];renderStokTable();renderDashboard();closeModal('modal-tambah-stok');
 }
 function bukaRestock(idx){
@@ -2000,7 +2027,7 @@ function processCSV(file,type){
       for(let i=1;i<lines.length;i++){
         const cols=parseCSVLine(lines[i]);const row={};headers.forEach((h,j)=>row[h]=(cols[j]||'').trim());
         try{
-          DB.stok.push({sku:row.sku||'SKU-IMP-'+i,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',stok:parseInt(row.stok||0),terjual:parseInt(row.terjual_30h||row.terjual||0),hpp:parseFloat((row.hpp||'0').replace(/[^0-9.]/g,''))||0});
+          DB.stok.push({sku:row.sku||'SKU-IMP-'+i,prod:row.produk||'–',varian:row.varian||'',kat:row.kategori||'Lainnya',stok:parseInt(row.stok||0),terjual:parseInt(row.terjual_30h||row.terjual||0),hpp:parseFloat((row.hpp||'0').replace(/[^0-9.]/g,''))||0,created_at:new Date().toISOString()});
           imported++;
         }catch(err){errors++}
       }
@@ -2022,6 +2049,54 @@ function csvCell(v){
   return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
 }
 function csvRow(arr){return arr.map(csvCell).join(',')}
+// Hitung rentang [start,end] utk pilihan periode di dropdown "f-export-periode-jual".
+// 'hari' = hari ini, 'minggu' = Senin-Minggu minggu ini, 'bulan' = bulan berjalan,
+// 'tahun' = tahun berjalan. Return null untuk 'semua' (tidak ada batasan tanggal).
+function getRentangPeriode(periode){
+  const now=new Date();let start,end;
+  if(periode==='hari'){
+    start=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0,0);
+    end=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59,999);
+  }else if(periode==='minggu'){
+    const hari=now.getDay(); // 0=Minggu..6=Sabtu
+    const selisihKeSenin=hari===0?-6:1-hari; // mulai minggu di hari Senin
+    start=new Date(now.getFullYear(),now.getMonth(),now.getDate()+selisihKeSenin,0,0,0,0);
+    end=new Date(start.getFullYear(),start.getMonth(),start.getDate()+6,23,59,59,999);
+  }else if(periode==='bulan'){
+    start=new Date(now.getFullYear(),now.getMonth(),1,0,0,0,0);
+    end=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59,999);
+  }else if(periode==='tahun'){
+    start=new Date(now.getFullYear(),0,1,0,0,0,0);
+    end=new Date(now.getFullYear(),11,31,23,59,59,999);
+  }else{
+    return null; // 'semua'
+  }
+  return{start,end};
+}
+const PERIODE_LABEL={semua:'semua_periode',hari:'per_hari',minggu:'per_minggu',bulan:'per_bulan',tahun:'per_tahun'};
+// Export CSV Penjualan sesuai PERIODE yang dipilih di dropdown, DIGABUNG dengan
+// filter pencarian/marketplace/status yang sedang aktif di tabel (q-jual, f-mp-jual,
+// f-status-jual) dan urutan sort yang sedang dipilih (f-sort-jual) — supaya hasil
+// export = persis apa yang sedang dilihat user di layar, hanya dibatasi periode.
+function exportCSVPeriode(){
+  const periodeEl=document.getElementById('f-export-periode-jual');
+  const periode=periodeEl?periodeEl.value:'semua';
+  const rentang=getRentangPeriode(periode);
+  let data=filteredJual.length||document.getElementById('q-jual').value||document.getElementById('f-mp-jual').value||document.getElementById('f-status-jual').value?[...filteredJual]:[...DB.penjualan];
+  if(rentang){
+    data=data.filter(r=>{if(!r._date)return false;const d=new Date(r._date);return d>=rentang.start&&d<=rentang.end});
+  }
+  sortJualArray(data);
+  if(!data.length){alert('Tidak ada data Penjualan pada periode/filter yang dipilih untuk diexport.');return}
+  const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan'])+'\n';
+  const rows=[];
+  data.forEach(r=>{
+    (r.items&&r.items.length?r.items:[{prod:'',varian:'',kat:'',qty:'',harga:'',subtotal:''}]).forEach(it=>{
+      rows.push(csvRow([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,it.subtotal,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):'']));
+    });
+  });
+  dlFile(h+rows.join('\n'),'penjualan_'+(PERIODE_LABEL[periode]||'semua_periode')+'_'+today()+'.csv','text/csv');
+}
 function exportCSV(){
   const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan'])+'\n';
   const rows=[];
