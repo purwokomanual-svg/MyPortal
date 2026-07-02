@@ -191,11 +191,7 @@
     <div style="font-size:15px;font-weight:600;color:var(--text)" id="page-title">Dashboard</div>
     <div style="display:flex;align-items:center;gap:10px">
       <span id="sync-status" style="font-size:11px;color:var(--text3)" title="Status sinkronisasi Supabase">☁️ Menghubungkan...</span>
-      <select class="form-select" id="periodeSelect" onchange="reloadData()" style="font-size:13px">
-        <option value="7">7 hari terakhir</option>
-        <option value="30" selected>30 hari terakhir</option>
-        <option value="90">90 hari terakhir</option>
-      </select>
+      <div class="periode-picker" id="pp-dash"></div>
       <button class="btn btn-sm" onclick="exportCSV()">📥 Ekspor CSV</button>
       <button class="btn btn-primary btn-sm" data-need="write-jual" onclick="openModal('modal-tambah-jual')">+ Tambah Pesanan</button>
       <button class="toggle-theme" onclick="toggleTheme()" title="Ganti tema"></button>
@@ -401,7 +397,13 @@
     <!-- LAPORAN KEUANGAN -->
     <div class="section" id="sec-laporan">
       <div class="grid-2 mb18">
-        <div class="card"><div class="card-title">Ringkasan Keuangan (30 hari)</div><div id="keuangan-rows"></div></div>
+        <div class="card">
+          <div class="card-title">
+            <span id="keuangan-title">Ringkasan Keuangan</span>
+            <div class="periode-picker" id="pp-laporan"></div>
+          </div>
+          <div id="keuangan-rows"></div>
+        </div>
         <div class="card"><div class="card-title">Revenue per Marketplace</div><div class="chart-box" style="height:210px"><canvas id="chartMpBar"></canvas></div></div>
       </div>
       <div class="card mb18"><div class="card-title"><span id="bulanan-title">Tren Bulanan (6 Bulan Terakhir)</span><select class="form-select" id="f-periode-bulanan" onchange="renderLaporan()" style="font-size:12px;padding:5px 10px"><option value="3">3 Bulan</option><option value="6" selected>6 Bulan</option><option value="12">12 Bulan</option></select></div><div class="chart-box" style="height:250px"><canvas id="chartBulanan"></canvas></div></div>
