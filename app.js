@@ -434,6 +434,7 @@ async function proceedAfterAuth(user){
     _currentAdminRole=data.role;
     showAppScreen();
     await initApp();             // render semua section
+    handleHashRoute();           // buka menu sesuai path di URL (#/stok, dst) — bukan selalu Dashboard
     applyRolePermissions();      // terapkan permission SETELAH render selesai
     updateAdminInfo();
   }catch(e){
@@ -502,7 +503,8 @@ async function adminLogin(){
 async function adminLogout(){
   if(!confirm('Keluar dari dashboard?'))return;
   try{await supabaseClient.auth.signOut()}catch(e){}
-  _currentAdminUser=null;_currentAdminRole=null;
+  _currentAdminUser=null;_currentAdminRole=null;_currentSection=null;
+  history.replaceState(null,'','#/');
   document.getElementById('login-email').value='';
   document.getElementById('login-password').value='';
   loginAlert('');
@@ -645,18 +647,53 @@ window.onload=async function(){
 // Jika sesi berubah (login/logout dari tab lain, token refresh, dst)
 if(typeof supabaseClient!=='undefined'&&supabaseClient){
   supabaseClient.auth.onAuthStateChange((event,session)=>{
-    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;showLoginScreen()}
+    if(event==='SIGNED_OUT'){_currentAdminUser=null;_currentAdminRole=null;_currentSection=null;showLoginScreen()}
   });
 }
 
 // ===== SECTIONS =====
 const PAGE_TITLES={dashboard:'Dashboard',penjualan:'Laporan Penjualan',stok:'Stok & Gudang',produk:'Produk & Kategori',laba:'Laba & Biaya Admin per Produk',laporan:'Laporan Keuangan',import:'Import Data',pengaturan:'Pengaturan'};
+const MENU_IDS=Object.keys(PAGE_TITLES);
+let _currentSection=null;
+
+// ===== ROUTING (path per menu, lewat URL hash: #/dashboard, #/stok, dst) =====
+// Pakai hash (bukan history.pushState dgn path asli) supaya TIDAK butuh
+// konfigurasi server tambahan (SPA fallback) — file statis apa adanya tetap
+// bisa di-refresh langsung di URL #/menu manapun tanpa 404, di hosting mana pun.
+function menuIdFromHash(){
+  const h=(location.hash||'').replace(/^#\/?/,'').split('?')[0].split('/')[0];
+  return MENU_IDS.includes(h)?h:null;
+}
+// Dipanggil saat hash berubah (klik menu, tombol back/forward browser, atau
+// user mengetik/paste URL dengan #/menu langsung) -> pindah section tanpa reload.
+function handleHashRoute(){
+  if(document.getElementById('app-wrap').style.display==='none')return; // belum login, jangan pindah section dulu
+  const id=menuIdFromHash();
+  if(id&&id!==_currentSection)showSection(id);
+  else if(!id)showSection('dashboard'); // hash kosong/tidak dikenal -> default ke dashboard
+}
+// Set #/menu di address bar. `replace=true` dipakai untuk navigasi awal
+// (biar tidak menambah entri baru di history browser tiap kali app dibuka).
+function setRouteHash(id,replace){
+  const h='#/'+id;
+  if(location.hash===h)return;
+  _routingInternal=true;
+  if(replace)history.replaceState(null,'',h);else location.hash=h;
+  _routingInternal=false;
+}
+let _routingInternal=false;
+window.addEventListener('hashchange',()=>{if(!_routingInternal)handleHashRoute()});
+
 function showSection(id,el){
+  if(!MENU_IDS.includes(id))id='dashboard';
+  _currentSection=id;
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('sec-'+id).classList.add('active');
-  if(el)el.classList.add('active');
+  const navEl=el||document.querySelector('.nav-item[data-menu="'+id+'"]');
+  if(navEl)navEl.classList.add('active');
   document.getElementById('page-title').textContent=PAGE_TITLES[id]||id;
+  setRouteHash(id,false);
   if(id==='laporan')renderLaporan();
   if(id==='produk')renderProduk();
   if(id==='laba'){renderLabaSection();renderBiayaInputs();renderHppMode();}
