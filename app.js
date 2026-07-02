@@ -1526,21 +1526,71 @@ function renderLaporan(){
   const{start,end,label}=ppGetRange('pp-laporan');
   const semuaAktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date);
   const dalamRentang=semuaAktif.filter(r=>{const d=new Date(r._date);return d>=start&&d<=end});
+  // PENTING: hitungLaba() butuh baris per-BARANG (prod/varian/qty), bukan
+  // per-PESANAN (yang sejak skema multi-item hanya punya `items:[]`, tanpa
+  // field prod/varian di level header). Kalau dihitung langsung dari
+  // `dalamRentang` (level pesanan), mode HPP "per produk" gagal mengenali
+  // produknya (r.prod selalu undefined) dan diam-diam jatuh balik ke
+  // estimasi %, sehingga HPP Estimasi / Estimasi Laba Bersih / Margin
+  // Bersih di kartu Ringkasan Keuangan jadi salah. Flatten dulu di sini,
+  // sama seperti yang sudah benar dilakukan di renderDashboard() &
+  // renderLabaRingkasan().
+  const dalamRentangFlat=flattenPenjualan(dalamRentang);
 
   const judulEl=document.getElementById('keuangan-title');
   if(judulEl)judulEl.textContent='Ringkasan Keuangan — '+label;
 
+  const pMeta=document.getElementById('fin-print-periode');
+  if(pMeta)pMeta.textContent='Periode: '+label;
+  const tMeta=document.getElementById('fin-print-tanggal');
+  if(tMeta)tMeta.textContent='Dicetak: '+new Date().toLocaleString('id-ID',{dateStyle:'long',timeStyle:'short'});
+  const toko=document.getElementById('fin-print-toko');
+  if(toko)toko.textContent=DB.pengaturan.nama||'Toko Saya';
+  const printLogo=document.getElementById('fin-print-logo');
+  if(printLogo){
+    if(DB.pengaturan.logo){printLogo.src=DB.pengaturan.logo;printLogo.style.display='block'}
+    else{printLogo.style.display='none'}
+  }
+
   const rowsEl=document.getElementById('keuangan-rows');
-  const{to,tl,tf,te,th}=hitungRingkasPeriode(dalamRentang);
+  const{to,tl,tf,te,th}=hitungRingkasPeriode(dalamRentangFlat);
+  const margin=to>0?tl/to*100:0;
   if(rowsEl){
-    rowsEl.innerHTML=[
-      {l:'Total Omzet',v:fmtRp(to),c:''},
-      {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),c:'red'},
-      {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),c:'red'},
-      {l:'HPP Estimasi',v:'− '+fmtRp(th),c:'red'},
-      {l:'Estimasi Laba Bersih',v:fmtRp(tl),c:'green'},
-      {l:'Margin Bersih',v:(to>0?tl/to*100:0).toFixed(1)+'%',c:'green'},
-    ].map(r=>`<div class="sumrow"><span class="label">${r.l}</span><span class="${r.c}">${r.v}</span></div>`).join('');
+    const cards=[
+      {l:'Total Omzet',v:fmtRp(to),icon:'💵',cls:'fm-accent',sub:dalamRentang.length+' pesanan'},
+      {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),icon:'🏬',cls:'fm-warning',sub:to>0?(tf/to*100).toFixed(1)+'% dari omzet':'–'},
+      {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),icon:'📦',cls:'fm-warning',sub:to>0?(te/to*100).toFixed(1)+'% dari omzet':'–'},
+      {l:'HPP Estimasi',v:'− '+fmtRp(th),icon:'🏭',cls:'fm-danger',sub:to>0?(th/to*100).toFixed(1)+'% dari omzet':'–'},
+    ];
+    rowsEl.innerHTML=cards.map(c=>`
+      <div class="fin-metric ${c.cls}">
+        <div class="fin-metric-icon">${c.icon}</div>
+        <div class="fin-metric-label">${c.l}</div>
+        <div class="fin-metric-value">${c.v}</div>
+        <div class="fin-metric-sub">${c.sub}</div>
+      </div>`).join('')+`
+      <div class="fin-metric fin-metric-hero ${tl>=0?'fm-success':'fm-danger'}">
+        <div class="fin-metric-icon">${tl>=0?'📈':'📉'}</div>
+        <div class="fin-metric-label">Estimasi Laba Bersih</div>
+        <div class="fin-metric-value fin-metric-value-lg">${fmtRp(tl)}</div>
+        <div class="fin-metric-sub">Margin Bersih</div>
+        <div class="margin-bar" style="margin-top:6px">
+          <div class="margin-track" style="width:100%"><div class="margin-fill" style="width:${Math.max(0,Math.min(100,margin))}%;background:${margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)'}"></div></div>
+          <span style="font-weight:800;color:${margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)'}">${margin.toFixed(1)}%</span>
+        </div>
+      </div>`;
+  }
+
+  // Donut komposisi biaya (HPP / Admin MP / Ongkir & Lain) — cerminan dari
+  // total yang sama persis dengan kartu di atas, dihitung dari data yang
+  // sudah difilter sesuai periode terpilih.
+  const pieCanvas=document.getElementById('chartKeuanganPie');
+  if(pieCanvas){
+    if(charts.keuanganPie)charts.keuanganPie.destroy();
+    charts.keuanganPie=new Chart(pieCanvas,{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'68%'}});
+    const blabels=['HPP','Admin MP','Ongkir & Biaya Lain'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b'];const bvals=[th,tf,te];
+    const legendEl=document.getElementById('keuangan-pie-legend');
+    if(legendEl)legendEl.innerHTML=blabels.map((l,i)=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:${bcolors[i]}"></span>${l}: ${to>0?(bvals[i]/to*100).toFixed(1):0}%</span>`).join('');
   }
 
   if(charts.mpBar)charts.mpBar.destroy();
