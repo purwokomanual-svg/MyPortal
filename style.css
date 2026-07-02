@@ -123,24 +123,36 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .metric-card.m-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
 .metric-card.m-success .metric-value{color:var(--success)}
 
-/* Varian "hero" — gradient penuh warna, dipakai untuk metrik laba/profit
-   yang ingin ditonjolkan (mis. "Estimasi Laba Bersih") supaya langsung
-   menarik perhatian di antara kartu metrik lain, PERSIS sama dengan kartu
-   hero di Laporan Keuangan (.fin-metric-hero). Warna teks dipaksa putih
-   (!important) supaya TIDAK ketiban aturan warna .green/.red/.orange lain
-   yang lebih spesifik — ini yang tadinya bikin tulisan "Estimasi Laba
-   Bersih" nyaris tak terbaca di mode terang (teks hijau redup di atas
-   gradasi hijau tua). */
-.metric-card.metric-hero{background:linear-gradient(120deg,var(--accent-dark),var(--accent));border:none;box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
-.metric-card.metric-hero.metric-hero-danger{background:linear-gradient(120deg,#6b1f1a,var(--danger));box-shadow:0 16px 34px -14px rgba(226,104,95,.5)}
-.metric-card.metric-hero .metric-icon{background:rgba(255,255,255,.16)}
-.metric-card.metric-hero .metric-label{color:rgba(255,255,255,.78)!important}
-.metric-card.metric-hero .metric-value{color:#fff!important}
-.metric-card.metric-hero .metric-sub{color:rgba(255,255,255,.85)!important}
+/* Varian "hero" — dipakai untuk metrik laba/profit yang ingin ditonjolkan
+   (mis. "Estimasi Laba Bersih"), PERSIS sama dengan kartu hero di Laporan
+   Keuangan (.fin-metric-hero).
+   REVISI: sebelumnya kartu ini pakai gradasi hijau tua PEKAT + teks putih
+   paksa — kontrasnya keras dan tidak senada dengan kartu-kartu lembut/
+   pastel di sebelahnya (m-accent/m-warning/m-danger/m-success). Sekarang
+   disamakan ke keluarga warna pastel yang sama (accent-light/success-bg →
+   surface2, senada tema mint/hijau), tetap ditonjolkan lewat border warna
+   solid + glow bayangan lembut + teks besar & tebal, bukan lewat blok
+   warna pekat. */
+.metric-card.metric-hero{
+  background:linear-gradient(160deg,var(--success-bg),var(--surface2));
+  border:1.5px solid var(--success);
+  box-shadow:0 12px 28px -16px rgba(47,158,100,.35);
+}
+.metric-card.metric-hero.metric-hero-danger{
+  background:linear-gradient(160deg,var(--danger-bg),var(--surface2));
+  border:1.5px solid var(--danger);
+  box-shadow:0 12px 28px -16px rgba(226,104,95,.35);
+}
+.metric-card.metric-hero .metric-icon{background:var(--surface);color:var(--success)}
+.metric-card.metric-hero.metric-hero-danger .metric-icon{color:var(--danger)}
+.metric-card.metric-hero .metric-label{color:var(--success)!important;opacity:.92}
+.metric-card.metric-hero.metric-hero-danger .metric-label{color:var(--danger)!important}
+.metric-card.metric-hero .metric-value{color:var(--text)!important}
+.metric-card.metric-hero .metric-sub{color:var(--success)!important;font-weight:700}
+.metric-card.metric-hero.metric-hero-danger .metric-sub{color:var(--danger)!important}
 
-/* Kartu hero yang sama juga dipakai di Laporan Keuangan (class fin-metric-hero) */
-.fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:rgba(255,255,255,.78)!important}
-.fin-metric-hero .fin-metric-value{color:#fff!important}
+/* Kartu hero yang sama juga dipakai di Laporan Keuangan (class fin-metric-hero) —
+   lihat definisi lengkap & alasan revisi warna lembut di bagian bawah file. */
 
 /* ===== Sections ===== */
 .section{display:none}.section.active{display:block}
@@ -460,19 +472,28 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-metric.fm-danger .fin-metric-value{color:var(--danger)}
 .fin-metric.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
 .fin-metric.fm-success .fin-metric-value{color:var(--success)}
-.fin-metric-hero{grid-column:span 4;background:linear-gradient(120deg,var(--accent-dark),var(--accent));border:none;box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
-/* PENTING: kartu hero ini juga mendapat class "fm-success" dari app.js saat
-   laba positif. Tanpa override eksplisit ini, aturan `.fin-metric.fm-success`
-   (2 selector class = specificity lebih tinggi) menimpa background gradasi
-   gelap di atas dengan background TERANG (--success-bg), padahal teksnya
-   tetap dipaksa putih -> kontras rusak & "Estimasi Laba Bersih" nyaris tak
-   terbaca di mode terang. Override bernama sama persis di sini supaya
-   menang, dan tetap konsisten dengan bahasa warna sukses tema. */
-.fin-metric-hero.fm-success{background:linear-gradient(120deg,var(--accent-dark),var(--success));box-shadow:0 16px 34px -14px rgba(47,111,92,.55)}
-.fin-metric-hero.fm-danger{background:linear-gradient(120deg,#6b1f1a,var(--danger))}
-.fin-metric-hero .fin-metric-icon{background:rgba(255,255,255,.16)}
-.fin-metric-hero .margin-track{background:rgba(255,255,255,.22)}
-.fin-metric-hero span{color:#fff!important}
+/* REVISI: kartu hero ini sebelumnya pakai gradasi hijau tua PEKAT + teks
+   putih paksa (kontras keras, tidak senada kartu pastel di sekitarnya).
+   Disamakan ke keluarga warna pastel yang sama dengan kartu m-success/
+   fm-success (accent-light/success-bg → surface2), tetap ditonjolkan lewat
+   border warna solid + glow bayangan lembut, konsisten dengan kartu hero
+   di Dashboard & Laba per Produk (.metric-card.metric-hero). */
+.fin-metric-hero{
+  grid-column:span 4;
+  background:linear-gradient(160deg,var(--success-bg),var(--surface2));
+  border:1.5px solid var(--success);
+  box-shadow:0 12px 28px -16px rgba(47,158,100,.35);
+}
+.fin-metric-hero.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2));border:1.5px solid var(--success);box-shadow:0 12px 28px -16px rgba(47,158,100,.35)}
+.fin-metric-hero.fm-danger{background:linear-gradient(160deg,var(--danger-bg),var(--surface2));border:1.5px solid var(--danger);box-shadow:0 12px 28px -16px rgba(226,104,95,.35)}
+.fin-metric-hero .fin-metric-icon{background:var(--surface);color:var(--success)}
+.fin-metric-hero.fm-danger .fin-metric-icon{color:var(--danger)}
+.fin-metric-hero .fin-metric-label{color:var(--success)!important;opacity:.92}
+.fin-metric-hero.fm-danger .fin-metric-label{color:var(--danger)!important}
+.fin-metric-hero .fin-metric-value{color:var(--text)!important}
+.fin-metric-hero .fin-metric-sub{color:var(--success)!important}
+.fin-metric-hero.fm-danger .fin-metric-sub{color:var(--danger)!important}
+.fin-metric-hero .margin-track{background:var(--border2)}
 @media(max-width:980px){
   .fin-metric-grid{grid-template-columns:repeat(2,1fr)}
   .fin-metric-hero{grid-column:span 2}
