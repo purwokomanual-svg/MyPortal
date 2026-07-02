@@ -273,12 +273,6 @@ tr:hover td{background:var(--surface2)}
 /* ===== Search bar row ===== */
 .filter-row{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
 
-/* ===== Toolbar group (mis. periode + export digabung jadi satu unit visual) ===== */
-.toolbar-group{display:flex;align-items:center;border:1px solid var(--border2);border-radius:12px;overflow:hidden;background:var(--surface)}
-.toolbar-group .tg-select{border:none;border-radius:0;background:transparent;box-shadow:none}
-.toolbar-group .tg-btn{border:none;border-radius:0;border-left:1px solid var(--border2)}
-.toolbar-group .tg-select:focus-visible,.toolbar-group .tg-btn:focus-visible{outline-offset:-2px}
-
 /* ===== Color picker ===== */
 .color-swatch{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .color-swatch span{width:24px;height:24px;border-radius:8px;cursor:pointer;border:2px solid transparent;transition:all .15s}
