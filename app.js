@@ -819,7 +819,6 @@ function filterJual(){
   renderJualTable();
 }
 // Urutkan array pesanan IN-PLACE sesuai pilihan dropdown "f-sort-jual".
-// Dipisah jadi fungsi sendiri supaya bisa dipakai ulang oleh exportCSVPeriode().
 function sortJualArray(arr){
   const sortEl=document.getElementById('f-sort-jual');const mode=sortEl?sortEl.value:'terbaru';
   const waktu=r=>r._date?new Date(r._date).getTime():0;
@@ -2049,51 +2048,6 @@ function csvCell(v){
   return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
 }
 function csvRow(arr){return arr.map(csvCell).join(',')}
-// Hitung rentang [start,end] utk pilihan periode di dropdown "f-export-periode-jual".
-// 'minggu' = Senin-Minggu minggu ini, 'bulan' = bulan berjalan, 'tahun' = tahun
-// berjalan. Return null untuk 'semua' (tidak ada batasan tanggal).
-function getRentangPeriode(periode){
-  const now=new Date();let start,end;
-  if(periode==='minggu'){
-    const hari=now.getDay(); // 0=Minggu..6=Sabtu
-    const selisihKeSenin=hari===0?-6:1-hari; // mulai minggu di hari Senin
-    start=new Date(now.getFullYear(),now.getMonth(),now.getDate()+selisihKeSenin,0,0,0,0);
-    end=new Date(start.getFullYear(),start.getMonth(),start.getDate()+6,23,59,59,999);
-  }else if(periode==='bulan'){
-    start=new Date(now.getFullYear(),now.getMonth(),1,0,0,0,0);
-    end=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59,999);
-  }else if(periode==='tahun'){
-    start=new Date(now.getFullYear(),0,1,0,0,0,0);
-    end=new Date(now.getFullYear(),11,31,23,59,59,999);
-  }else{
-    return null; // 'semua'
-  }
-  return{start,end};
-}
-const PERIODE_LABEL={semua:'semua_periode',minggu:'per_minggu',bulan:'per_bulan',tahun:'per_tahun'};
-// Export CSV Penjualan sesuai PERIODE yang dipilih di dropdown, DIGABUNG dengan
-// filter pencarian/marketplace/status yang sedang aktif di tabel (q-jual, f-mp-jual,
-// f-status-jual) dan urutan sort yang sedang dipilih (f-sort-jual) — supaya hasil
-// export = persis apa yang sedang dilihat user di layar, hanya dibatasi periode.
-function exportCSVPeriode(){
-  const periodeEl=document.getElementById('f-export-periode-jual');
-  const periode=periodeEl?periodeEl.value:'semua';
-  const rentang=getRentangPeriode(periode);
-  let data=filteredJual.length||document.getElementById('q-jual').value||document.getElementById('f-mp-jual').value||document.getElementById('f-status-jual').value?[...filteredJual]:[...DB.penjualan];
-  if(rentang){
-    data=data.filter(r=>{if(!r._date)return false;const d=new Date(r._date);return d>=rentang.start&&d<=rentang.end});
-  }
-  sortJualArray(data);
-  if(!data.length){alert('Tidak ada data Penjualan pada periode/filter yang dipilih untuk diexport.');return}
-  const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan'])+'\n';
-  const rows=[];
-  data.forEach(r=>{
-    (r.items&&r.items.length?r.items:[{prod:'',varian:'',kat:'',qty:'',harga:'',subtotal:''}]).forEach(it=>{
-      rows.push(csvRow([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,it.subtotal,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):'']));
-    });
-  });
-  dlFile(h+rows.join('\n'),'penjualan_'+(PERIODE_LABEL[periode]||'semua_periode')+'_'+today()+'.csv','text/csv');
-}
 function exportCSV(){
   const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan'])+'\n';
   const rows=[];
