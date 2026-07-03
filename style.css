@@ -501,6 +501,17 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
    fm-success (accent-light/success-bg → surface2), tetap ditonjolkan lewat
    border warna solid + glow bayangan lembut, konsisten dengan kartu hero
    di Dashboard & Laba per Produk (.metric-card.metric-hero). */
+/* Kartu "Total Omzet" — baris paling atas, full-width, jadi titik awal
+   alur baca laporan (Omzet → rincian biaya → Laba Bersih di bawah).
+   Warna aksen (bukan hijau/merah) supaya beda jelas dari kartu Laba Bersih. */
+.fin-metric-top{
+  grid-column:span 4;
+  background:linear-gradient(160deg,var(--accent-light),var(--surface2));
+  border:1.5px solid var(--accent);
+}
+.fin-metric-top .fin-metric-icon{background:var(--surface);color:var(--accent)}
+.fin-metric-top .fin-metric-label{color:var(--accent-dark)!important;opacity:.92}
+[data-theme="dark"] .fin-metric-top .fin-metric-label{color:var(--accent)!important}
 .fin-metric-hero{
   grid-column:span 4;
   background:linear-gradient(160deg,var(--success-bg),var(--surface2));
@@ -519,11 +530,11 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-metric-hero .margin-track{background:var(--border2)}
 @media(max-width:980px){
   .fin-metric-grid{grid-template-columns:repeat(2,1fr)}
-  .fin-metric-hero{grid-column:span 2}
+  .fin-metric-hero,.fin-metric-top{grid-column:span 2}
 }
 @media(max-width:560px){
   .fin-metric-grid{grid-template-columns:1fr}
-  .fin-metric-hero{grid-column:span 1}
+  .fin-metric-hero,.fin-metric-top{grid-column:span 1}
 }
 
 /* Kop halaman untuk file cetak — tersembunyi di layar, muncul saat print */
@@ -545,7 +556,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .section{display:none!important}
   .section.active{display:block!important}
   .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid}
-  .fin-metric,.fin-metric-hero{break-inside:avoid;box-shadow:none!important}
+  .fin-metric,.fin-metric-hero,.fin-metric-top{break-inside:avoid;box-shadow:none!important}
   .fin-metric-hero{background:#eef6f1!important;border:1.5px solid var(--accent-dark)!important}
   .fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:#3a5147!important}
   .fin-metric-hero .fin-metric-value,.fin-metric-hero span{color:var(--accent-dark)!important}
