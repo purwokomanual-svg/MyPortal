@@ -18,3 +18,7 @@ const TBL_PENGATURAN='pengaturan_toko';
 // 1 pesanan (header, di `pesanan`) bisa punya banyak barang (detail, di `pesanan_item`).
 const TBL_PESANAN='pesanan';
 const TBL_PESANAN_ITEM='pesanan_item';
+// Tabel Inventory (lihat TAMBAH-INVENTORY.sql): pembelian barang dari
+// supplier & penggajian karyawan — dipakai untuk mengurangi Laba Bersih.
+const TBL_PEMBELIAN='pembelian';
+const TBL_PENGGAJIAN='penggajian';
