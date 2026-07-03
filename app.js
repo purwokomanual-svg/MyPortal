@@ -909,6 +909,9 @@ function renderJualTable(){
     const ri=DB.penjualan.indexOf(r);
     const items=r.items||[];
     const laba=hitungLabaOrder(r);
+    const margin=r.total>0?laba/r.total*100:0;
+    const warnaLaba=laba>=0?'var(--success)':'var(--danger)';
+    const warnaMargin=margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)';
     const katUnik=[...new Set(items.map(it=>it.kat||'Lainnya'))];
     const katHTML=katUnik.slice(0,2).map(k=>`<span class="badge badge-gray" style="background:${getKatColor(k)}22;color:${getKatColor(k)}">${k}</span>`).join(' ')+(katUnik.length>2?` <span style="color:var(--text3);font-size:11px">+${katUnik.length-2}</span>`:'');
     const totalQty=hitungQtyItems(items);
@@ -923,12 +926,14 @@ function renderJualTable(){
       <td style="font-weight:600">${fmtRp(r.total)}</td>
       <td style="color:var(--warning)">${fmtRp(r.biayaAdmin!=null?r.biayaAdmin:0)}</td>
       <td style="color:var(--text2)">${fmtRp(r.biayaTambahan!=null?r.biayaTambahan:0)}</td>
+      <td style="font-weight:700;color:${warnaLaba}">${fmtRp(laba)}</td>
+      <td style="font-weight:700;color:${warnaMargin}">${margin.toFixed(1)}%</td>
       <td><span class="badge ${ST_BADGE[r.status]||'badge-gray'}">${r.status}</span></td>
       <td>${actionCellRW(`<div class="action-cell">
         <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditJual(${ri})">✏️</button>
         <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('jual',${ri})">🗑</button>
       </div>`,'jual')}</td>
-    </tr>`}).join(''):`<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
+    </tr>`}).join(''):`<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
   renderPagination('pag-jual',filteredJual.length,pageJual,p=>{pageJual=p;renderJualTable()});
 }
 
@@ -2377,11 +2382,21 @@ function exportCSV(){
     alert('Tidak ada data Penjualan untuk periode "'+label+'"'+(adaFilterTabel?' dengan filter yang sedang aktif':'')+'. Ubah periode atau filter, lalu coba lagi.');
     return;
   }
-  const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan'])+'\n';
+  const h=csvRow(['No. Pesanan','Tanggal','Marketplace','Produk','Varian','Kategori','Qty','Harga Satuan','Subtotal','Status','Biaya Admin','Biaya Tambahan','Laba Bersih','Margin (%)'])+'\n';
   const rows=[];
   data.forEach(r=>{
-    (r.items&&r.items.length?r.items:[{prod:'',varian:'',kat:'',qty:'',harga:'',subtotal:''}]).forEach(it=>{
-      rows.push(csvRow([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,it.subtotal,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):'']));
+    const items=r.items&&r.items.length?r.items:null;
+    // flattenPenjualan() mengalokasikan Biaya Admin/Biaya Tambahan per pesanan
+    // secara proporsional ke tiap barang (sesuai porsi subtotal-nya) — sama
+    // persis dengan perhitungan yang dipakai Laba per Produk & kartu Laba di
+    // form Tambah Pesanan, supaya angka Laba/Margin di CSV ini konsisten
+    // dengan yang tampil di tempat lain.
+    const flat=items?flattenPenjualan([r]):[];
+    (items||[{prod:'',varian:'',kat:'',qty:'',harga:'',subtotal:''}]).forEach((it,i)=>{
+      const f=flat[i];const hl=f?hitungLaba(f):null;
+      const laba=hl?Math.round(hl.laba):'';
+      const margin=hl&&hl.omzet>0?hl.margin.toFixed(1):'';
+      rows.push(csvRow([r.no,r.tanggal,r.mp,it.prod,it.varian||'',it.kat||'',it.qty,it.harga,it.subtotal,r.status,r.biayaAdmin!=null?Math.round(r.biayaAdmin):'',r.biayaTambahan!=null?Math.round(r.biayaTambahan):'',laba,margin]));
     });
   });
   dlFile(h+rows.join('\n'),'penjualan_'+slugPeriode(label)+'_'+today()+'.csv','text/csv');
