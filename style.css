@@ -473,6 +473,13 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 /* =========================================================
    LAPORAN KEUANGAN — kartu metrik "futuristik" & kop cetak
    ========================================================= */
+/* Bar "Periode Data" di level halaman Laporan Keuangan — menegaskan kalau
+   periode ini mengendalikan seluruh konten di bawahnya (Ringkasan, chart,
+   Tren Bulanan), bukan cuma satu kartu saja. */
+.fin-periode-bar{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+  margin-bottom:16px;
+}
 .fin-hero{position:relative;overflow:hidden}
 .fin-metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .fin-metric{position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:20px 20px 18px;overflow:hidden;transition:transform .18s,box-shadow .18s}
