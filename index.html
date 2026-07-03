@@ -652,7 +652,7 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-group"><label>No. Pesanan</label><input class="form-input" id="f-no" placeholder="SPH-001"></div>
       <div class="form-group"><label>Tanggal</label><input class="form-input" type="date" id="f-tgl"></div>
-      <div class="form-group"><label>Marketplace</label><select class="form-input" id="f-mp"></select></div>
+      <div class="form-group"><label>Marketplace</label><select class="form-input" id="f-mp" onchange="updateFormLabaMargin()"></select></div>
       <div class="form-group"><label>Status</label><select class="form-input" id="f-status"><option>Selesai</option><option>Diproses</option><option>Dikirim</option><option>Dibatalkan</option></select></div>
     </div>
     <div class="form-group" style="margin-bottom:8px">
@@ -670,7 +670,7 @@
       <div class="form-group">
         <label>Biaya Admin (Rp)</label>
         <div style="display:flex;gap:6px">
-          <input class="form-input" type="number" id="f-biaya-admin" placeholder="0" min="0" style="flex:1">
+          <input class="form-input" type="number" id="f-biaya-admin" placeholder="0" min="0" style="flex:1" oninput="updateFormLabaMargin()">
           <button type="button" class="btn btn-sm" title="Isi saran otomatis" onclick="saranBiayaAdminPesanan()">↻ Saran</button>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Potongan biaya admin marketplace untuk pesanan ini (nominal Rp, bukan %).</div>
@@ -678,12 +678,23 @@
       <div class="form-group">
         <label>Biaya Tambahan (Rp)</label>
         <div style="display:flex;gap:6px">
-          <input class="form-input" type="number" id="f-biaya-tambahan" placeholder="0" min="0" style="flex:1">
+          <input class="form-input" type="number" id="f-biaya-tambahan" placeholder="0" min="0" style="flex:1" oninput="updateFormLabaMargin()">
           <button type="button" class="btn btn-sm" title="Isi saran otomatis" onclick="saranBiayaTambahanPesanan()">↻ Saran</button>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Ongkir subsidi, packaging, dan biaya lain-lain untuk pesanan ini.</div>
       </div>
     </div>
+    <div class="hpp-grid" style="margin:2px 0 16px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;letter-spacing:.03em">📈 Estimasi Laba</div>
+        <div id="f-laba-display" style="font-size:21px;font-weight:800;margin-top:5px">Rp 0</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;letter-spacing:.03em">📊 Estimasi Margin</div>
+        <div id="f-margin-display" style="font-size:21px;font-weight:800;margin-top:5px">0%</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin:-10px 0 14px">💡 Dihitung otomatis dari HPP produk (Stok Gudang), Biaya Admin, dan Biaya Tambahan di atas — perkiraan, akan diperbarui otomatis saat Anda mengubah barang/biaya.</div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-tambah-jual')">Batal</button>
       <button class="btn btn-primary" id="btn-simpan-jual" onclick="simpanPesanan()">Simpan Pesanan</button>
