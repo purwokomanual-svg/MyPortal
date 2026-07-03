@@ -1991,9 +1991,9 @@ function renderLaporan(){
   renderAsetStokChart();
 
   if(charts.bulanan)charts.bulanan.destroy();
-  const titleEl=document.getElementById('bulanan-title');
-  if(titleEl)titleEl.textContent='Tren Bulanan — '+label;
   const tren=hitungTrenBulanan(start,end);
+  const titleEl=document.getElementById('bulanan-title');
+  if(titleEl)titleEl.textContent='Tren Bulanan — '+tren.rangeLabel;
   charts.bulanan=new Chart(document.getElementById('chartBulanan'),{type:'bar',data:{labels:tren.labels,datasets:MP_LIST.map(m=>({label:m,data:tren.data[m]||tren.labels.map(()=>0),backgroundColor:getMpColor(m),borderRadius:3}))},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{stacked:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
 }
@@ -2242,25 +2242,47 @@ function hitungRingkasPeriode(list){
 // Waktu"), rentang bulan yang ditampilkan otomatis dipersempit mengikuti
 // bulan-bulan yang BENAR-BENAR ada transaksinya di dalam periode itu
 // (bukan dari tahun 2000 sampai 2100), dan dibatasi maksimal 24 bulan.
+// Tren Bulanan MENGIKUTI periode yang dipilih di "Periode Data" (pp-laporan)
+// — tapi supaya tetap terasa sebagai "TREN" (bukan cuma 1 batang tunggal),
+// kalau periode yang dipilih terlalu pendek (kurang dari 2 bulan kalender —
+// mis. "Hari Ini", "7 Hari", "Per Hari") maka rentang bulan otomatis
+// diperluas jadi 6 bulan terakhir dihitung mundur dari akhir periode.
+// Sebaliknya kalau periode sangat panjang (mis. "Semua Waktu"), rentang
+// bulan dipersempit mengikuti bulan-bulan yang benar-benar ada
+// transaksinya, dibatasi maksimal 24 bulan supaya chart tetap terbaca.
 function hitungTrenBulanan(start,end){
-  const inRange=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date&&new Date(r._date)>=start&&new Date(r._date)<=end);
-  let rangeStart=start,rangeEnd=end;
-  if(inRange.length){
-    const times=inRange.map(r=>new Date(r._date).getTime());
-    const minD=new Date(Math.min(...times)),maxD=new Date(Math.max(...times));
-    rangeStart=minD<start?start:minD;
-    rangeEnd=maxD>end?end:maxD;
+  let rangeStart=new Date(start.getFullYear(),start.getMonth(),1);
+  let rangeEnd=new Date(end.getFullYear(),end.getMonth(),1);
+  const spanBulan=(rangeEnd.getFullYear()-rangeStart.getFullYear())*12+(rangeEnd.getMonth()-rangeStart.getMonth())+1;
+
+  if(spanBulan<3){
+    rangeStart=new Date(rangeEnd.getFullYear(),rangeEnd.getMonth()-5,1);
+  }else if(spanBulan>24){
+    const dataDates=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).map(r=>new Date(r._date)).filter(d=>!isNaN(d));
+    if(dataDates.length){
+      const minD=new Date(Math.min(...dataDates.map(d=>d.getTime())));
+      const maxD=new Date(Math.max(...dataDates.map(d=>d.getTime())));
+      const minM=new Date(minD.getFullYear(),minD.getMonth(),1);
+      const maxM=new Date(maxD.getFullYear(),maxD.getMonth(),1);
+      if(minM>rangeStart)rangeStart=minM;
+      if(maxM<rangeEnd)rangeEnd=maxM;
+    }
   }
+
   const bulanKe=[];
-  let cursor=new Date(rangeStart.getFullYear(),rangeStart.getMonth(),1);
-  const endCursor=new Date(rangeEnd.getFullYear(),rangeEnd.getMonth(),1);
-  while(cursor<=endCursor&&bulanKe.length<24){
+  let cursor=new Date(rangeStart);
+  while(cursor<=rangeEnd&&bulanKe.length<24){
     bulanKe.push({key:cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0'),label:cursor.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})});
     cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);
   }
   if(!bulanKe.length){const d=new Date();bulanKe.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})})}
+
   const data={};MP_LIST.forEach(m=>data[m]=bulanKe.map(()=>0));
-  inRange.forEach(r=>{
+  // Bulan-bulan yang ditampilkan bisa lebih luas dari [start,end] asli
+  // (kalau diperluas ke 6 bulan di atas), jadi pencocokan data dilakukan
+  // per KUNCI BULAN terhadap seluruh transaksi, bukan dibatasi ulang ke
+  // [start,end] mentah.
+  DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).forEach(r=>{
     const d=new Date(r._date);if(isNaN(d))return;
     const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     const idx=bulanKe.findIndex(b=>b.key===key);
@@ -2268,7 +2290,8 @@ function hitungTrenBulanan(start,end){
     if(!data[r.mp])data[r.mp]=bulanKe.map(()=>0);
     data[r.mp][idx]+=r.total||0;
   });
-  return{labels:bulanKe.map(b=>b.label),data};
+  const rangeLabel=bulanKe.length>1?bulanKe[0].label+' – '+bulanKe[bulanKe.length-1].label:bulanKe[0].label;
+  return{labels:bulanKe.map(b=>b.label),data,rangeLabel};
 }
 // Format angka Rupiah ringkas untuk sumbu grafik (rb/jt), menyesuaikan skala
 // omzet toko kecil maupun besar (dulu selalu dibulatkan ke "jt" saja).
