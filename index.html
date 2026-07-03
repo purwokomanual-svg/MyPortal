@@ -228,11 +228,43 @@
     <!-- DASHBOARD -->
     <div class="section active" id="sec-dashboard">
       <div id="alert-area" style="margin-bottom:16px"></div>
-      <div class="grid-4">
-        <div class="metric-card m-accent"><div class="metric-icon">💵</div><div class="metric-label">Total Penjualan</div><div class="metric-value" id="m-rev">Rp 0</div><div class="metric-sub green" id="m-rev-sub">–</div></div>
-        <div class="metric-card m-warning"><div class="metric-icon">🧾</div><div class="metric-label">Total Pesanan</div><div class="metric-value" id="m-ord">0</div><div class="metric-sub green" id="m-ord-sub">–</div></div>
-        <div class="metric-card metric-hero" id="m-laba-card"><div class="metric-icon">📈</div><div class="metric-label">Estimasi Laba Bersih</div><div class="metric-value metric-value-lg" id="m-laba">Rp 0</div><div class="metric-sub" id="m-margin">– margin</div></div>
-        <div class="metric-card m-danger"><div class="metric-icon">📦</div><div class="metric-label">Stok Kritis</div><div class="metric-value red" id="m-kritis">0</div><div class="metric-sub" style="color:var(--text3)">varian perlu restock</div></div>
+      <div class="fin-metric-grid mb18">
+        <div class="fin-metric fm-accent">
+          <div class="fin-metric-icon">💵</div>
+          <div class="fin-metric-label">Omzet Penjualan</div>
+          <div class="fin-metric-value" id="m-omzet">Rp 0</div>
+          <div class="fin-metric-sub" id="m-omzet-sub">–</div>
+        </div>
+        <div class="fin-metric fm-danger">
+          <div class="fin-metric-icon">🏭</div>
+          <div class="fin-metric-label">HPP</div>
+          <div class="fin-metric-value" id="m-hpp">Rp 0</div>
+          <div class="fin-metric-sub" id="m-hpp-sub">–</div>
+        </div>
+        <div class="fin-metric fm-danger">
+          <div class="fin-metric-icon">🧾</div>
+          <div class="fin-metric-label">Pengeluaran Operasional</div>
+          <div class="fin-metric-value" id="m-opex">Rp 0</div>
+          <div class="fin-metric-sub" id="m-opex-sub">–</div>
+        </div>
+        <div class="fin-metric fm-warning">
+          <div class="fin-metric-icon">📊</div>
+          <div class="fin-metric-label">Margin</div>
+          <div class="fin-metric-value" id="m-margin-val">0%</div>
+          <div class="fin-metric-sub">Margin bersih dari omzet</div>
+        </div>
+        <div class="fin-metric fm-success">
+          <div class="fin-metric-icon">📈</div>
+          <div class="fin-metric-label">Laba Bersih</div>
+          <div class="fin-metric-value" id="m-laba">Rp 0</div>
+          <div class="fin-metric-sub" id="m-laba-sub">–</div>
+        </div>
+        <div class="fin-metric fm-accent">
+          <div class="fin-metric-icon">🧾</div>
+          <div class="fin-metric-label">Total Pesanan</div>
+          <div class="fin-metric-value" id="m-ord">0</div>
+          <div class="fin-metric-sub" id="m-ord-sub">–</div>
+        </div>
       </div>
       <div class="grid-2 mb18">
         <div class="card"><div class="card-title">Penjualan per Marketplace</div><div id="mp-list-dash"></div></div>
