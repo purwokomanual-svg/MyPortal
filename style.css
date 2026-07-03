@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 /* =========================================================
    TEMA — terinspirasi dashboard fintech mint/hijau tua:
@@ -130,6 +130,7 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .metric-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;background:var(--surface)}
 .metric-label{font-size:11.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
 .metric-value{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px}
+.metric-value-lg{font-size:26px}
 .metric-sub{font-size:11.5px;color:var(--text3);font-weight:600;margin-top:4px}
 .green{color:var(--success)}.red{color:var(--danger)}.orange{color:var(--warning)}
 .metric-card.m-accent{background:linear-gradient(160deg,var(--accent-light),var(--surface2))}
@@ -141,57 +142,36 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .metric-card.m-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
 .metric-card.m-success .metric-value{color:var(--success)}
 
-/* =========================================================
-   KARTU "LABA BERSIH" — satu komponen terpadu, dipakai IDENTIK di
-   Dashboard, Laba per Produk, & Laporan Keuangan lewat class
-   ".laba-hero" & ".laba-hero-negative" (sebelumnya 3 style berbeda:
-   .metric-card.metric-hero & .fin-metric-hero).
-   Sengaja diberi background solid gelap sendiri (bukan gradasi
-   pastel tema, bukan pula ikut pola grid Ruang Kendali di
-   Dashboard) — supaya angka laba bersih selalu tampil sebagai
-   satu "instrumen" yang sama & langsung dikenali di mana pun ia
-   muncul, terlepas dari gaya section di sekitarnya.
-   ========================================================= */
-.laba-hero{
-  position:relative;overflow:hidden;isolation:isolate;
-  background:linear-gradient(155deg,#123626 0%,#0c2419 55%,#081712 100%);
-  border:1px solid rgba(246,185,59,.32);
-  border-radius:18px;
-  padding:18px 18px 16px;
-  box-shadow:0 18px 40px -20px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.03);
-  transition:transform .18s,box-shadow .18s;
+/* Varian "hero" — dipakai untuk metrik laba/profit yang ingin ditonjolkan
+   (mis. "Estimasi Laba Bersih"), PERSIS sama dengan kartu hero di Laporan
+   Keuangan (.fin-metric-hero).
+   REVISI: sebelumnya kartu ini pakai gradasi hijau tua PEKAT + teks putih
+   paksa — kontrasnya keras dan tidak senada dengan kartu-kartu lembut/
+   pastel di sebelahnya (m-accent/m-warning/m-danger/m-success). Sekarang
+   disamakan ke keluarga warna pastel yang sama (accent-light/success-bg →
+   surface2, senada tema mint/hijau), tetap ditonjolkan lewat border warna
+   solid + glow bayangan lembut + teks besar & tebal, bukan lewat blok
+   warna pekat. */
+.metric-card.metric-hero{
+  background:linear-gradient(160deg,var(--success-bg),var(--surface2));
+  border:1.5px solid var(--success);
+  box-shadow:0 12px 28px -16px rgba(47,158,100,.35);
 }
-.laba-hero:hover{transform:translateY(-2px)}
-.laba-hero::before{
-  content:'';position:absolute;top:-45%;right:-12%;width:210px;height:210px;border-radius:50%;
-  background:radial-gradient(circle,rgba(246,185,59,.3),transparent 72%);
-  pointer-events:none;z-index:0;
+.metric-card.metric-hero.metric-hero-danger{
+  background:linear-gradient(160deg,var(--danger-bg),var(--surface2));
+  border:1.5px solid var(--danger);
+  box-shadow:0 12px 28px -16px rgba(226,104,95,.35);
 }
-.laba-hero.laba-hero-negative{
-  background:linear-gradient(155deg,#3a1512 0%,#240d0b 55%,#160807 100%);
-  border-color:rgba(255,97,97,.35);
-}
-.laba-hero.laba-hero-negative::before{background:radial-gradient(circle,rgba(255,97,97,.3),transparent 72%)}
-.laba-hero>*{position:relative;z-index:1}
-.laba-hero .laba-hero-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.laba-hero .laba-hero-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:rgba(246,185,59,.16)}
-.laba-hero.laba-hero-negative .laba-hero-icon{background:rgba(255,97,97,.16)}
-.laba-hero .laba-hero-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#f6c869}
-.laba-hero.laba-hero-negative .laba-hero-label{color:#ff9d98}
-.laba-hero .laba-hero-value{font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:800;letter-spacing:-.5px;line-height:1.15;color:#f6fbf8;text-shadow:0 0 24px rgba(246,185,59,.35);font-variant-numeric:tabular-nums}
-.laba-hero.laba-hero-negative .laba-hero-value{text-shadow:0 0 24px rgba(255,97,97,.35)}
-.laba-hero .laba-hero-sub{margin-top:6px;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#f6c869}
-.laba-hero.laba-hero-negative .laba-hero-sub{color:#ff9d98}
-.laba-hero .laba-hero-bar{margin-top:10px;height:6px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden}
-.laba-hero .laba-hero-bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#f6b93b,#f6d869);box-shadow:0 0 8px -1px rgba(246,185,59,.7)}
-.laba-hero.laba-hero-negative .laba-hero-bar-fill{background:linear-gradient(90deg,#ff6161,#ff9d98);box-shadow:0 0 8px -1px rgba(255,97,97,.7)}
-/* Dalam grid Laporan Keuangan, kartu ini tampil selebar penuh sebagai
-   ringkasan penutup — dipertahankan dari desain sebelumnya. */
-.fin-metric-grid .laba-hero{grid-column:span 4}
-@media(max-width:980px){.fin-metric-grid .laba-hero{grid-column:span 2}}
-@media(max-width:560px){.fin-metric-grid .laba-hero{grid-column:span 1}}
-@media(max-width:980px){.fin-metric-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:560px){.fin-metric-grid{grid-template-columns:1fr}}
+.metric-card.metric-hero .metric-icon{background:var(--surface);color:var(--success)}
+.metric-card.metric-hero.metric-hero-danger .metric-icon{color:var(--danger)}
+.metric-card.metric-hero .metric-label{color:var(--success)!important;opacity:.92}
+.metric-card.metric-hero.metric-hero-danger .metric-label{color:var(--danger)!important}
+.metric-card.metric-hero .metric-value{color:var(--text)!important}
+.metric-card.metric-hero .metric-sub{color:var(--success)!important;font-weight:700}
+.metric-card.metric-hero.metric-hero-danger .metric-sub{color:var(--danger)!important}
+
+/* Kartu hero yang sama juga dipakai di Laporan Keuangan (class fin-metric-hero) —
+   lihat definisi lengkap & alasan revisi warna lembut di bagian bawah file. */
 
 /* ===== Sections ===== */
 .section{display:none}.section.active{display:block}
@@ -504,6 +484,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-metric-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;background:var(--surface)}
 .fin-metric-label{font-size:11.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
 .fin-metric-value{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px}
+.fin-metric-value-lg{font-size:26px}
 .fin-metric-sub{font-size:11.5px;color:var(--text3);font-weight:600;margin-top:4px}
 .fin-metric.fm-accent{background:linear-gradient(160deg,var(--accent-light),var(--surface2))}
 .fin-metric.fm-accent .fin-metric-icon{color:var(--accent)}
@@ -513,115 +494,39 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-metric.fm-danger .fin-metric-value{color:var(--danger)}
 .fin-metric.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
 .fin-metric.fm-success .fin-metric-value{color:var(--success)}
-
-/* =========================================================
-   DASHBOARD — "RUANG KENDALI PENJUALAN"
-   Modul gelap yang sengaja independen dari toggle tema terang/gelap
-   aplikasi (selalu gelap, seperti layar monitor fisik yang ditanam di
-   dalam aplikasi) — memberi Dashboard identitas "command center" yang
-   memantau banyak channel marketplace sekaligus, dibedakan dari
-   halaman form/tabel lain yang tetap bergaya hangat seperti biasa.
-   Semua aturan di sini SENGAJA dilingkupi ".dash-console" supaya
-   tidak bocor ke .card/.metric-card/.prog-row/.mp-row di section lain.
-   ========================================================= */
-.dash-console{
-  --dc-void:#070d0a; --dc-panel:#0e1913; --dc-panel2:#132019;
-  --dc-line:rgba(148,196,177,.14); --dc-hair:rgba(148,196,177,.22);
-  --dc-text:#ecfbf3; --dc-text2:#8fac9d; --dc-text3:#5f7768;
-  --dc-accent:#4caf8c; --dc-gold:#f6b93b; --dc-danger:#ff6161; --dc-cyan:#57e6c8;
-  position:relative;background:var(--dc-void);border-radius:28px;padding:22px 22px 26px;
-  overflow:hidden;isolation:isolate;
-  box-shadow:inset 0 0 0 1px rgba(148,196,177,.1),0 24px 60px -24px rgba(0,0,0,.55);
+/* REVISI: kartu hero ini sebelumnya pakai gradasi hijau tua PEKAT + teks
+   putih paksa (kontras keras, tidak senada kartu pastel di sekitarnya).
+   Disamakan ke keluarga warna pastel yang sama dengan kartu m-success/
+   fm-success (accent-light/success-bg → surface2), tetap ditonjolkan lewat
+   border warna solid + glow bayangan lembut, konsisten dengan kartu hero
+   di Dashboard & Laba per Produk (.metric-card.metric-hero). */
+.fin-metric-hero{
+  grid-column:span 4;
+  background:linear-gradient(160deg,var(--success-bg),var(--surface2));
+  border:1.5px solid var(--success);
+  box-shadow:0 12px 28px -16px rgba(47,158,100,.35);
 }
-.dash-console .dc-grid-bg{
-  position:absolute;inset:0;z-index:0;pointer-events:none;
-  background-image:
-    linear-gradient(var(--dc-line) 1px,transparent 1px),
-    linear-gradient(90deg,var(--dc-line) 1px,transparent 1px),
-    radial-gradient(620px 320px at 85% -10%,rgba(76,175,140,.16),transparent 65%),
-    radial-gradient(500px 260px at 0% 100%,rgba(246,185,59,.08),transparent 60%);
-  background-size:34px 34px,34px 34px,100% 100%,100% 100%;
-  opacity:.55;
-  mask-image:linear-gradient(180deg,rgba(0,0,0,.9),rgba(0,0,0,.35) 70%,transparent);
+.fin-metric-hero.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2));border:1.5px solid var(--success);box-shadow:0 12px 28px -16px rgba(47,158,100,.35)}
+.fin-metric-hero.fm-danger{background:linear-gradient(160deg,var(--danger-bg),var(--surface2));border:1.5px solid var(--danger);box-shadow:0 12px 28px -16px rgba(226,104,95,.35)}
+.fin-metric-hero .fin-metric-icon{background:var(--surface);color:var(--success)}
+.fin-metric-hero.fm-danger .fin-metric-icon{color:var(--danger)}
+.fin-metric-hero .fin-metric-label{color:var(--success)!important;opacity:.92}
+.fin-metric-hero.fm-danger .fin-metric-label{color:var(--danger)!important}
+.fin-metric-hero .fin-metric-value{color:var(--text)!important}
+.fin-metric-hero .fin-metric-sub{color:var(--success)!important}
+.fin-metric-hero.fm-danger .fin-metric-sub{color:var(--danger)!important}
+.fin-metric-hero .margin-track{background:var(--border2)}
+@media(max-width:980px){
+  .fin-metric-grid{grid-template-columns:repeat(2,1fr)}
+  .fin-metric-hero{grid-column:span 2}
 }
-.dash-console > *{position:relative;z-index:1}
-.dash-console *{color:var(--dc-text)}
-
-/* Status bar: pulsa live + judul + jam berjalan */
-.dc-eyebrow{display:flex;align-items:center;gap:9px;margin-bottom:18px;font-family:'JetBrains Mono',monospace}
-.dc-pulse{width:8px;height:8px;border-radius:50%;background:var(--dc-accent);box-shadow:0 0 0 0 rgba(76,175,140,.6);animation:dcPulse 2s infinite}
-@keyframes dcPulse{
-  0%{box-shadow:0 0 0 0 rgba(76,175,140,.55)}
-  70%{box-shadow:0 0 0 8px rgba(76,175,140,0)}
-  100%{box-shadow:0 0 0 0 rgba(76,175,140,0)}
-}
-.dc-eyebrow-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--dc-text2)}
-.dc-eyebrow-sep{color:var(--dc-text3)}
-.dc-eyebrow-clock{font-size:11px;color:var(--dc-accent);letter-spacing:.05em;font-variant-numeric:tabular-nums}
-@media(prefers-reduced-motion:reduce){.dc-pulse{animation:none}}
-
-/* Alert banner gaya konsol */
-.dash-console .alert{background:var(--dc-panel);border:1px solid var(--dc-hair);border-radius:14px;font-family:inherit}
-.dash-console .alert-danger{color:#ffb0ac;border-color:rgba(255,97,97,.35)}
-.dash-console .alert-warning{color:#ffd88a;border-color:rgba(246,185,59,.32)}
-.dash-console .alert strong{color:inherit}
-
-/* Instrumen metrik (grid-4) */
-.dash-console .metric-card{
-  background:linear-gradient(160deg,var(--dc-panel2),var(--dc-panel));
-  border:1px solid var(--dc-hair);border-radius:16px;border-left-width:3px;
-  box-shadow:none;
-}
-.dash-console .metric-card::after{display:none}
-.dash-console .metric-card:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(0,0,0,.6)}
-.dash-console .metric-icon{background:rgba(255,255,255,.05);filter:grayscale(.15)}
-.dash-console .metric-label{color:var(--dc-text2);letter-spacing:.08em}
-.dash-console .metric-value{font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-.dash-console .metric-sub{font-family:'JetBrains Mono',monospace;font-size:11px}
-.dash-console .metric-card.m-accent{border-left-color:var(--dc-accent);background:linear-gradient(160deg,rgba(76,175,140,.14),var(--dc-panel))}
-.dash-console .metric-card.m-accent .metric-value{color:var(--dc-accent);text-shadow:0 0 18px rgba(76,175,140,.4)}
-.dash-console .metric-card.m-warning{border-left-color:var(--dc-cyan);background:linear-gradient(160deg,rgba(87,230,200,.12),var(--dc-panel))}
-.dash-console .metric-card.m-warning .metric-value{color:var(--dc-cyan);text-shadow:0 0 18px rgba(87,230,200,.35)}
-.dash-console .metric-card.m-danger{border-left-color:var(--dc-danger);background:linear-gradient(160deg,rgba(255,97,97,.12),var(--dc-panel))}
-.dash-console .metric-card.m-danger .metric-value{color:var(--dc-danger)!important;text-shadow:0 0 18px rgba(255,97,97,.35)}
-
-/* Panel kaca gelap (grafik & daftar) */
-.dash-console .card{
-  background:var(--dc-panel);border:1px solid var(--dc-hair);box-shadow:none;border-radius:18px;
-}
-.dash-console .card-title{
-  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;text-transform:uppercase;
-  letter-spacing:.1em;color:var(--dc-text2);padding-left:14px;position:relative;
-}
-.dash-console .card-title::before{
-  content:'';position:absolute;left:0;top:50%;translate:0 -50%;width:7px;height:7px;border-radius:50%;
-  background:var(--dc-accent);box-shadow:0 0 8px 1px rgba(76,175,140,.7);
-}
-.dash-console .chart-box canvas{filter:drop-shadow(0 0 7px rgba(76,175,140,.28))}
-
-/* Baris marketplace */
-.dash-console .mp-row{border-bottom-color:var(--dc-hair)}
-.dash-console .mp-name-col{color:var(--dc-text)}
-.dash-console .mp-bar-track{background:rgba(255,255,255,.06)}
-.dash-console .mp-bar-fill{box-shadow:0 0 10px -1px currentColor;filter:saturate(1.15)}
-.dash-console .mp-rev{font-family:'JetBrains Mono',monospace;color:var(--dc-text)}
-.dash-console .mp-orders-txt{color:var(--dc-text3)}
-
-/* Top 5 produk */
-.dash-console .prog-track{background:rgba(255,255,255,.06)}
-.dash-console .prog-fill{background:linear-gradient(90deg,var(--dc-accent),var(--dc-cyan));box-shadow:0 0 10px -1px rgba(76,175,140,.6)}
-.dash-console .prog-label{color:var(--dc-text)}
-.dash-console .prog-val{font-family:'JetBrains Mono',monospace;color:var(--dc-text2)}
-
-/* Status stok: legend & total aset */
-.dash-console #pie-legend span{color:var(--dc-text2)!important;font-family:'JetBrains Mono',monospace}
-.dash-console [style*="border-top"]{border-top-color:var(--dc-hair)!important}
-
-@media(max-width:900px){
-  .dash-console{padding:16px 14px 20px;border-radius:22px}
+@media(max-width:560px){
+  .fin-metric-grid{grid-template-columns:1fr}
+  .fin-metric-hero{grid-column:span 1}
 }
 
-
+/* Kop halaman untuk file cetak — tersembunyi di layar, muncul saat print */
+.fin-print-header{display:none}
 
 /* =========================================================
    MODE CETAK — dipicu tombol "🖨 Cetak Laporan" (window.print()).
@@ -639,12 +544,10 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .section{display:none!important}
   .section.active{display:block!important}
   .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid}
-  .fin-metric,.laba-hero{break-inside:avoid;box-shadow:none!important}
-  .laba-hero{background:#eef6f1!important;border:1.5px solid var(--accent-dark)!important}
-  .laba-hero::before{display:none!important}
-  .laba-hero .laba-hero-label,.laba-hero .laba-hero-sub{color:#3a5147!important;text-shadow:none!important}
-  .laba-hero .laba-hero-value{color:var(--accent-dark)!important;text-shadow:none!important}
-  .laba-hero .laba-hero-icon{background:rgba(29,74,61,.1)!important}
+  .fin-metric,.fin-metric-hero{break-inside:avoid;box-shadow:none!important}
+  .fin-metric-hero{background:#eef6f1!important;border:1.5px solid var(--accent-dark)!important}
+  .fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:#3a5147!important}
+  .fin-metric-hero .fin-metric-value,.fin-metric-hero span{color:var(--accent-dark)!important}
   .fin-print-header{
     display:flex!important;align-items:center;justify-content:space-between;
     padding-bottom:14px;margin-bottom:16px;border-bottom:2.5px solid var(--accent-dark);
