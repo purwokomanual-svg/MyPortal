@@ -987,9 +987,11 @@ function getSaranBiayaTambahan(){
 function saranBiayaAdminPesanan(){
   const mp=document.getElementById('f-mp').value;const total=formTotalPesanan();
   document.getElementById('f-biaya-admin').value=Math.round(getSaranBiayaAdmin(mp,total));
+  updateFormLabaMargin();
 }
 function saranBiayaTambahanPesanan(){
   document.getElementById('f-biaya-tambahan').value=Math.round(getSaranBiayaTambahan());
+  updateFormLabaMargin();
 }
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function escAttr(s){return esc(s).replace(/`/g,'&#96;')}
@@ -1025,6 +1027,32 @@ function updateBarisItem(i,field,val){
   updateRowDisplay(i,field);
 }
 function formTotalPesanan(){return _formItems.reduce((a,it)=>a+((it.qty||0)*(it.harga||0)),0)}
+// ===== ESTIMASI LABA & MARGIN PER PESANAN (real-time di form Tambah/Edit) =====
+// Dihitung dari data yang SEDANG diketik di form (belum tersimpan), pakai
+// mesin hitung yang SAMA dengan laporan (hitungLaba/hitungLabaOrder) supaya
+// angkanya konsisten dengan yang nanti muncul di Laba per Produk & Laporan
+// Keuangan setelah pesanan ini disimpan. Kalau Biaya Admin/Biaya Tambahan
+// dikosongkan, otomatis pakai estimasi default (sama seperti saat disimpan).
+function hitungLabaFormPesanan(){
+  const mpEl=document.getElementById('f-mp');const mp=mpEl?mpEl.value:'';
+  const adminRaw=(document.getElementById('f-biaya-admin').value||'').trim();
+  const tambahanRaw=(document.getElementById('f-biaya-tambahan').value||'').trim();
+  const items=_formItems.map(it=>({prod:(it.prod||'').trim(),varian:(it.varian||'').trim(),kat:it.kat||'Lainnya',qty:it.qty||1,harga:it.harga||0,subtotal:(it.qty||0)*(it.harga||0)}));
+  const tempOrder={mp,biayaAdmin:adminRaw!==''?(parseFloat(adminRaw)||0):null,biayaTambahan:tambahanRaw!==''?(parseFloat(tambahanRaw)||0):null,items};
+  recalcOrderTotal(tempOrder);
+  const laba=hitungLabaOrder(tempOrder);
+  const margin=tempOrder.total>0?laba/tempOrder.total*100:0;
+  return{laba,margin,omzet:tempOrder.total};
+}
+function updateFormLabaMargin(){
+  const labaEl=document.getElementById('f-laba-display');const marginEl=document.getElementById('f-margin-display');
+  if(!labaEl||!marginEl)return;
+  const{laba,margin}=hitungLabaFormPesanan();
+  const warna=laba>=0?'var(--success)':'var(--danger)';
+  const warnaMargin=margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)';
+  labaEl.textContent=fmtRp(laba);labaEl.style.color=warna;
+  marginEl.textContent=margin.toFixed(1)+'%';marginEl.style.color=warnaMargin;
+}
 // Perbarui tampilan 1 baris item TANPA membangun ulang elemen <input>
 // (dipakai saat user sedang mengetik, supaya fokus tidak hilang).
 function updateRowDisplay(i,field){
@@ -1041,6 +1069,7 @@ function updateRowDisplay(i,field){
   }
   const totalEl=document.getElementById('f-total-display');if(totalEl)totalEl.textContent=fmtRp(formTotalPesanan());
   renderFormStokHint();
+  updateFormLabaMargin();
 }
 // Rebuild PENUH — hanya dipakai saat baris ditambah/dihapus/modal dibuka
 // (BUKAN saat mengetik), supaya jumlah elemen <input> sesuai jumlah baris.
@@ -1067,6 +1096,7 @@ function renderFormItems(){
   });
   const totalEl=document.getElementById('f-total-display');if(totalEl)totalEl.textContent=fmtRp(formTotalPesanan());
   renderFormStokHint();
+  updateFormLabaMargin();
 }
 // Cek stok SETIAP barang di pesanan secara real-time (bukan cuma 1 produk seperti dulu)
 function renderFormStokHint(){
