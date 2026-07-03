@@ -744,6 +744,14 @@ function populateKatDropdowns(){
 }
 
 // ===== DASHBOARD =====
+// Jam berjalan di status bar "Ruang Kendali Penjualan" — bukti visual bahwa
+// panel ini benar-benar live, bukan sekadar dekorasi statis.
+function tickDashClock(){
+  const el=document.getElementById('dc-clock');
+  if(!el)return;
+  el.textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+setInterval(tickDashClock,1000);
 function reloadData(){renderDashboard()}
 function renderDashboard(){
   const{start,end}=ppGetRange('pp-dash');
