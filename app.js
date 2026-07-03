@@ -886,6 +886,32 @@ function renderStokPieChart(){
   if(elAset)elAset.textContent=fmtRp(totalAset);
 }
 
+// Chart "Nilai Aset per Kategori" di Laporan Keuangan — breakdown nilai
+// stok gudang (stok x HPP) dikelompokkan per kategori produk, supaya
+// kelihatan kategori mana yang paling banyak "menyimpan" modal.
+function renderAsetStokChart(){
+  const canvas=document.getElementById('chartAsetKategori');if(!canvas)return;
+  const byKat={};DB.stok.forEach(s=>{const k=s.kategori||'Lainnya';byKat[k]=(byKat[k]||0)+(s.stok||0)*(s.hpp||0)});
+  const entries=Object.entries(byKat).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const labels=entries.map(e=>e[0]),vals=entries.map(e=>Math.round(e[1]));
+  const colors=labels.map(k=>getKatColor(k));
+  if(charts.asetKategori)charts.asetKategori.destroy();
+  charts.asetKategori=new Chart(canvas,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:colors,borderWidth:0,borderRadius:5}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}},
+        y:{ticks:{color:'#888',font:{size:11}},grid:{display:false}}}}});
+  const totalAset=DB.stok.reduce((a,s)=>a+(s.stok||0)*(s.hpp||0),0);
+  const totalVarian=DB.stok.length;
+  const totalQty=DB.stok.reduce((a,s)=>a+(s.stok||0),0);
+  const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
+  const kritis=DB.stok.filter(s=>s.stok<=batas).length;
+  const setTxt=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v};
+  setTxt('aset-total-display',fmtRp(totalAset));
+  setTxt('aset-varian',totalVarian.toLocaleString('id-ID'));
+  setTxt('aset-qty',totalQty.toLocaleString('id-ID')+' pcs');
+  setTxt('aset-kritis',kritis.toLocaleString('id-ID'));
+}
+
 // ===== PENJUALAN TABLE =====
 function filterJual(){
   pageJual=1;const q=(document.getElementById('q-jual').value||'').toLowerCase();const mp=document.getElementById('f-mp-jual').value;const st=document.getElementById('f-status-jual').value;
@@ -1961,6 +1987,8 @@ function renderLaporan(){
   if(charts.mpBar)charts.mpBar.destroy();
   const mpRev={};MP_LIST.forEach(m=>mpRev[m]=0);dalamRentang.forEach(r=>mpRev[r.mp]=(mpRev[r.mp]||0)+(r.total||0));
   charts.mpBar=new Chart(document.getElementById('chartMpBar'),{type:'bar',data:{labels:MP_LIST,datasets:[{label:'Revenue',data:MP_LIST.map(m=>Math.round(mpRev[m]/1e6*10)/10),backgroundColor:MP_LIST.map(m=>getMpColor(m)),borderWidth:0,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+v+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
+
+  renderAsetStokChart();
 
   if(charts.bulanan)charts.bulanan.destroy();
   const selBulan=document.getElementById('f-periode-bulanan');
