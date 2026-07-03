@@ -476,66 +476,55 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
    LAPORAN KEUANGAN — kartu metrik "futuristik" & kop cetak
    ========================================================= */
 .fin-hero{position:relative;overflow:hidden}
-.fin-metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-.fin-metric{position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:16px 16px 14px;overflow:hidden;transition:transform .18s,box-shadow .18s}
+.fin-metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.fin-metric{position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:20px 20px 18px;overflow:hidden;transition:transform .18s,box-shadow .18s}
 .fin-metric::after{content:'';position:absolute;inset:0;background:radial-gradient(120px 80px at 100% 0%,rgba(255,255,255,.5),transparent 70%);opacity:0;transition:opacity .18s;pointer-events:none}
 [data-theme="dark"] .fin-metric::after{background:radial-gradient(120px 80px at 100% 0%,rgba(255,255,255,.08),transparent 70%)}
 .fin-metric:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
 .fin-metric:hover::after{opacity:1}
-.fin-metric-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;background:var(--surface)}
-.fin-metric-label{font-size:11.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
-.fin-metric-value{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px}
-.fin-metric-value-lg{font-size:26px}
-.fin-metric-sub{font-size:11.5px;color:var(--text3);font-weight:600;margin-top:4px}
-.fin-metric.fm-accent{background:linear-gradient(160deg,var(--accent-light),var(--surface2))}
+.fin-metric-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;margin-bottom:12px;background:var(--surface)}
+.fin-metric-label{font-size:12.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px}
+.fin-metric-value{font-size:25px;font-weight:800;color:var(--text);letter-spacing:-.4px}
+.fin-metric-value-lg{font-size:30px}
+.fin-metric-sub{font-size:12.5px;color:var(--text3);font-weight:600;margin-top:6px}
+.fin-metric.fm-accent{background:linear-gradient(160deg,var(--accent-light),var(--surface2));border-color:var(--accent)}
 .fin-metric.fm-accent .fin-metric-icon{color:var(--accent)}
+.fin-metric.fm-accent .fin-metric-label{color:var(--accent-dark)!important}
+[data-theme="dark"] .fin-metric.fm-accent .fin-metric-label{color:var(--accent)!important}
 .fin-metric.fm-warning{background:linear-gradient(160deg,var(--warning-bg),var(--surface2))}
 .fin-metric.fm-warning .fin-metric-value{color:var(--warning)}
 .fin-metric.fm-danger{background:linear-gradient(160deg,var(--danger-bg),var(--surface2))}
 .fin-metric.fm-danger .fin-metric-value{color:var(--danger)}
-.fin-metric.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
+.fin-metric.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2));border-color:var(--success)}
 .fin-metric.fm-success .fin-metric-value{color:var(--success)}
+.fin-metric.fm-success .fin-metric-label{color:var(--success)!important}
+@media(max-width:980px){
+  .fin-metric-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:560px){
+  .fin-metric-grid{grid-template-columns:1fr}
+}
 /* REVISI: kartu hero ini sebelumnya pakai gradasi hijau tua PEKAT + teks
    putih paksa (kontras keras, tidak senada kartu pastel di sekitarnya).
    Disamakan ke keluarga warna pastel yang sama dengan kartu m-success/
    fm-success (accent-light/success-bg → surface2), tetap ditonjolkan lewat
    border warna solid + glow bayangan lembut, konsisten dengan kartu hero
    di Dashboard & Laba per Produk (.metric-card.metric-hero). */
-/* Kartu "Total Omzet" — baris paling atas, full-width, jadi titik awal
-   alur baca laporan (Omzet → rincian biaya → Laba Bersih di bawah).
-   Warna aksen (bukan hijau/merah) supaya beda jelas dari kartu Laba Bersih. */
-.fin-metric-top{
-  grid-column:span 4;
-  background:linear-gradient(160deg,var(--accent-light),var(--surface2));
-  border:1.5px solid var(--accent);
-}
-.fin-metric-top .fin-metric-icon{background:var(--surface);color:var(--accent)}
-.fin-metric-top .fin-metric-label{color:var(--accent-dark)!important;opacity:.92}
-[data-theme="dark"] .fin-metric-top .fin-metric-label{color:var(--accent)!important}
-.fin-metric-hero{
-  grid-column:span 4;
-  background:linear-gradient(160deg,var(--success-bg),var(--surface2));
-  border:1.5px solid var(--success);
-  box-shadow:0 12px 28px -16px rgba(47,158,100,.35);
-}
-.fin-metric-hero.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2));border:1.5px solid var(--success);box-shadow:0 12px 28px -16px rgba(47,158,100,.35)}
-.fin-metric-hero.fm-danger{background:linear-gradient(160deg,var(--danger-bg),var(--surface2));border:1.5px solid var(--danger);box-shadow:0 12px 28px -16px rgba(226,104,95,.35)}
-.fin-metric-hero .fin-metric-icon{background:var(--surface);color:var(--success)}
-.fin-metric-hero.fm-danger .fin-metric-icon{color:var(--danger)}
-.fin-metric-hero .fin-metric-label{color:var(--success)!important;opacity:.92}
-.fin-metric-hero.fm-danger .fin-metric-label{color:var(--danger)!important}
-.fin-metric-hero .fin-metric-value{color:var(--text)!important}
-.fin-metric-hero .fin-metric-sub{color:var(--success)!important}
-.fin-metric-hero.fm-danger .fin-metric-sub{color:var(--danger)!important}
-.fin-metric-hero .margin-track{background:var(--border2)}
+/* CATATAN: kartu "Total Omzet" & "Estimasi Laba Bersih" di Laporan Keuangan
+   TIDAK LAGI pakai kartu "hero" full-width terpisah (class fin-metric-top/
+   fin-metric-hero sudah dihapus) — sekarang keduanya adalah kartu biasa
+   (.fin-metric.fm-accent / .fin-metric.fm-success) yang sejajar rapi 1
+   grid yang sama dengan kartu rincian biaya lainnya, hanya dibedakan lewat
+   warna border+ikon. Ukuran font kartu ini juga sudah diperbesar di atas
+   (.fin-metric-value 25px) supaya tetap mudah dibaca walau tidak lagi
+   dibesarkan lewat ukuran kartu itu sendiri. */
 @media(max-width:980px){
   .fin-metric-grid{grid-template-columns:repeat(2,1fr)}
-  .fin-metric-hero,.fin-metric-top{grid-column:span 2}
 }
 @media(max-width:560px){
   .fin-metric-grid{grid-template-columns:1fr}
-  .fin-metric-hero,.fin-metric-top{grid-column:span 1}
 }
+
 
 /* Kop halaman untuk file cetak — tersembunyi di layar, muncul saat print */
 .fin-print-header{display:none}
@@ -556,10 +545,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .section{display:none!important}
   .section.active{display:block!important}
   .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid}
-  .fin-metric,.fin-metric-hero,.fin-metric-top{break-inside:avoid;box-shadow:none!important}
-  .fin-metric-hero{background:#eef6f1!important;border:1.5px solid var(--accent-dark)!important}
-  .fin-metric-hero .fin-metric-label,.fin-metric-hero .fin-metric-sub{color:#3a5147!important}
-  .fin-metric-hero .fin-metric-value,.fin-metric-hero span{color:var(--accent-dark)!important}
+  .fin-metric{break-inside:avoid;box-shadow:none!important}
   .fin-print-header{
     display:flex!important;align-items:center;justify-content:space-between;
     padding-bottom:14px;margin-bottom:16px;border-bottom:2.5px solid var(--accent-dark);
