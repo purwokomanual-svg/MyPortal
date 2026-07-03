@@ -436,7 +436,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .periode-btn .pp-value{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .periode-btn .pp-cal-icon{margin-left:2px;flex-shrink:0;opacity:.55}
 .periode-panel{
-  position:absolute;top:calc(100% + 8px);left:0;z-index:400;display:flex;
+  position:absolute;top:calc(100% + 8px);right:0;z-index:400;display:flex;
   background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);
   overflow:hidden;min-width:640px
 }
