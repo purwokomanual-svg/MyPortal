@@ -14,7 +14,6 @@
   --success:#2f9e64;--success-bg:#e1f6ea;
   --warning:#c98a1d;--warning-bg:#fdf1da;
   --danger:#e2685f;--danger-bg:#fbe8e6;
-  --info:#2f6f9e;--info-bg:#e1edf6;
   --radius:14px;--radius-lg:22px;
   --shadow:0 14px 34px -14px rgba(20,60,45,.16),0 2px 8px rgba(20,60,45,.05);
   --shadow-sm:0 4px 14px -6px rgba(20,60,45,.14);
@@ -28,7 +27,6 @@
   --success:#4ade80;--success-bg:#0e2f1e;
   --warning:#fbbf24;--warning-bg:#2d2000;
   --danger:#f87171;--danger-bg:#2d0d0d;
-  --info:#60a5fa;--info-bg:#0e2233;
   --shadow:0 14px 34px -14px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.3);
   --shadow-sm:0 4px 14px -6px rgba(0,0,0,.45);
 }
@@ -181,7 +179,6 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .alert-danger{background:var(--danger-bg);color:var(--danger);border:1px solid rgba(226,104,95,.25)}
 .alert-warning{background:var(--warning-bg);color:var(--warning);border:1px solid rgba(201,138,29,.25)}
 .alert-success{background:var(--success-bg);color:var(--success);border:1px solid rgba(47,158,100,.25)}
-.alert-info{background:var(--info-bg);color:var(--info);border:1px solid rgba(47,111,158,.25)}
 
 /* ===== Table ===== */
 .table-wrap{overflow-x:auto}
@@ -439,7 +436,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .periode-btn .pp-value{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .periode-btn .pp-cal-icon{margin-left:2px;flex-shrink:0;opacity:.55}
 .periode-panel{
-  position:absolute;top:calc(100% + 8px);right:0;z-index:400;display:flex;
+  position:absolute;top:calc(100% + 8px);left:0;z-index:400;display:flex;
   background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);
   overflow:hidden;min-width:640px
 }
@@ -476,13 +473,6 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 /* =========================================================
    LAPORAN KEUANGAN — kartu metrik "futuristik" & kop cetak
    ========================================================= */
-/* Bar "Periode Data" di level halaman Laporan Keuangan — menegaskan kalau
-   periode ini mengendalikan seluruh konten di bawahnya (Ringkasan, chart,
-   Tren Bulanan), bukan cuma satu kartu saja. */
-.fin-periode-bar{
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
-  margin-bottom:16px;
-}
 .fin-hero{position:relative;overflow:hidden}
 .fin-metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .fin-metric{position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:20px 20px 18px;overflow:hidden;transition:transform .18s,box-shadow .18s}
@@ -534,9 +524,8 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 }
 
 
-/* Kop & footer halaman untuk file cetak — tersembunyi di layar, muncul saat print */
+/* Kop halaman untuk file cetak — tersembunyi di layar, muncul saat print */
 .fin-print-header{display:none}
-.fin-print-footer{display:none}
 
 /* =========================================================
    MODE CETAK — dipicu tombol "🖨 Cetak Laporan" (window.print()).
@@ -553,7 +542,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .page-content{padding:0!important;max-width:100%!important}
   .section{display:none!important}
   .section.active{display:block!important}
-  .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid;margin-bottom:12px!important}
+  .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid}
   .fin-metric{break-inside:avoid;box-shadow:none!important}
   .fin-print-header{
     display:flex!important;align-items:center;justify-content:space-between;
@@ -564,20 +553,5 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .fin-print-toko{font-size:16px;font-weight:800;color:#111}
   .fin-print-sub{font-size:11px;color:#666;font-weight:600;margin-top:2px}
   .fin-print-meta{text-align:right;font-size:11px;color:#444;font-weight:600;line-height:1.7}
-  /* Grid 2 kolom diubah jadi 1 kolom saat dicetak — chart jauh lebih
-     terbaca di kertas kalau full-width daripada berdempetan 2 kolom sempit. */
-  .grid-2{grid-template-columns:1fr!important;gap:12px!important}
-  .fin-metric-grid{gap:10px!important}
-  .card-title{font-size:13px!important;margin-bottom:10px!important}
-  .chart-box{height:200px!important;break-inside:avoid;page-break-inside:avoid}
-  canvas{max-width:100%!important}
-  /* Footer cetak: disclaimer + kolom tanda tangan, cuma muncul di kertas */
-  .fin-print-footer{
-    display:block!important;margin-top:22px;padding-top:14px;border-top:1px solid #ccc;
-    break-inside:avoid;page-break-inside:avoid;
-  }
-  .fin-print-disclaimer{font-size:10px;color:#777;line-height:1.6;margin-bottom:26px}
-  .fin-print-sign{display:flex;justify-content:space-between;max-width:420px;margin-left:auto;gap:40px}
-  .fin-print-sign-box{flex:1;text-align:center;font-size:11px;color:#444}
-  .fin-print-sign-line{border-top:1px solid #999;margin-bottom:6px;height:46px}
+  .chart-box{height:180px!important}
 }
