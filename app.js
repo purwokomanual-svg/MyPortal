@@ -787,13 +787,20 @@ function renderDashboard(){
   // Laba & HPP estimasi (dihitung per barang, bukan per pesanan, agar
   // pesanan dengan beberapa produk tetap akurat)
   let totalLaba=0,totalHpp=0;flattenPenjualan(recent).forEach(f=>{const h=hitungLaba(f);totalLaba+=h.laba;totalHpp+=h.hpp});
-  // Pengeluaran operasional (Inventory: Pembelian & Penggajian) periode yang
-  // sama dengan periode Dashboard ini, dikurangkan dari laba bersih supaya
-  // angka "Estimasi Laba Bersih" benar-benar bersih, bukan cuma laba kotor
-  // dari penjualan.
+  // Hanya Penggajian yang dikurangkan dari laba bersih di sini — itu biaya
+  // operasional periode berjalan murni. Pembelian (belanja stok ke
+  // supplier) SENGAJA TIDAK dikurangkan lagi di sini: biaya pokok barang
+  // yang terjual sudah terwakili lewat HPP di atas (persen omzet / HPP
+  // manual per produk). Pembelian & HPP sama-sama merepresentasikan biaya
+  // pokok barang tapi dari sumber berbeda — kalau dikurangkan bersamaan,
+  // biaya barang terhitung dua kali (mis. bulan belanja stok besar untuk
+  // dijual bulan depan akan membuat Laba Bersih tampak minus padahal itu
+  // cuma belanja stok yang belum terjual, bukan kerugian). Total Pembelian
+  // tetap terlihat di menu Inventory sebagai info arus kas, hanya tidak
+  // lagi memotong Estimasi Laba Bersih.
   const totalBeliOpex=totalPembelianPeriode(start,end);
   const totalGajiOpex=totalPenggajianPeriode(start,end);
-  const totalOpex=totalBeliOpex+totalGajiOpex;
+  const totalOpex=totalGajiOpex;
   totalLaba-=totalOpex;
   const margin=totalRev>0?totalLaba/totalRev*100:0;
 
@@ -814,7 +821,7 @@ function renderDashboard(){
   document.getElementById('m-hpp').textContent=fmtRp(totalHpp);
   document.getElementById('m-hpp-sub').textContent=totalRev>0?(totalHpp/totalRev*100).toFixed(1)+'% dari omzet':'–';
   document.getElementById('m-opex').textContent=fmtRp(totalOpex);
-  document.getElementById('m-opex-sub').textContent='Pembelian '+fmtRp(totalBeliOpex)+' · Gaji '+fmtRp(totalGajiOpex);
+  document.getElementById('m-opex-sub').textContent='Penggajian periode ini'+(totalBeliOpex>0?' · Pembelian stok '+fmtRp(totalBeliOpex)+' (tidak memotong laba)':'');
   document.getElementById('m-margin-val').textContent=margin.toFixed(1)+'%';
   document.getElementById('m-margin-val').style.color=margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)';
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
@@ -829,7 +836,8 @@ function renderDashboard(){
   let alertHTML='';
   if(habis.length)alertHTML+=`<div class="alert alert-danger">⚠ <strong>${habis.length} varian stok habis</strong> — ${habis.slice(0,3).map(s=>s.prod+' '+s.varian).join(', ')}${habis.length>3?'...':''}</div>`;
   if(rendah.length)alertHTML+=`<div class="alert alert-warning">⚡ <strong>${rendah.length} varian stok rendah</strong> (&lt;${batas} pcs) — perlu segera restock</div>`;
-  if(totalOpex>0)alertHTML+=`<div class="alert alert-warning">🧾 <strong>Pengeluaran operasional periode ini: ${fmtRp(totalOpex)}</strong> (Pembelian ${fmtRp(totalBeliOpex)} + Penggajian ${fmtRp(totalGajiOpex)}) — sudah dikurangkan dari Estimasi Laba Bersih. <a href="javascript:void(0)" onclick="showSection('inventory')" style="color:inherit;text-decoration:underline">Lihat rincian di menu Inventory →</a></div>`;
+  if(totalOpex>0)alertHTML+=`<div class="alert alert-warning">🧾 <strong>Penggajian periode ini: ${fmtRp(totalOpex)}</strong> — sudah dikurangkan dari Estimasi Laba Bersih. <a href="javascript:void(0)" onclick="showSection('inventory')" style="color:inherit;text-decoration:underline">Lihat rincian di menu Inventory →</a></div>`;
+  if(totalBeliOpex>0)alertHTML+=`<div class="alert alert-info">🛒 <strong>Pembelian stok periode ini: ${fmtRp(totalBeliOpex)}</strong> — ini belanja stok ke supplier, tidak memotong Estimasi Laba Bersih (biaya pokok barang yang terjual sudah dihitung lewat HPP). <a href="javascript:void(0)" onclick="showSection('inventory')" style="color:inherit;text-decoration:underline">Lihat rincian di menu Inventory →</a></div>`;
   document.getElementById('alert-area').innerHTML=alertHTML;
 
   // MP breakdown
@@ -1384,6 +1392,16 @@ function hapusData(type,idx){
 function buatKodeInventory(prefix){return prefix+'-'+Date.now().toString(36).toUpperCase()+'-'+rnd(100,999)}
 
 // --- Total dalam rentang tanggal (dipakai Dashboard & Laporan Keuangan) ---
+// CATATAN: nilai dari fungsi ini SENGAJA TIDAK dikurangkan lagi dari
+// "Estimasi Laba Bersih" di Dashboard/Laba per Produk/Laporan Keuangan.
+// Pembelian mencatat belanja stok ke supplier, yang secara akuntansi
+// adalah biaya pokok barang (COGS) — dan biaya pokok barang yang TERJUAL
+// sudah dihitung lewat HPP (persen omzet atau HPP manual per produk di
+// hitungLaba()). Kalau Pembelian ikut dikurangkan juga, biaya barang
+// terhitung dua kali dari dua sumber berbeda (mis. bulan belanja stok
+// besar untuk dijual bulan depan akan membuat Laba Bersih tampak minus
+// besar padahal itu bukan kerugian). Nilainya tetap dihitung & ditampilkan
+// di sini untuk keperluan informasi arus kas di menu Inventory.
 function totalPembelianPeriode(start,end){
   return DB.pembelian.filter(r=>r._date&&(!start||new Date(r._date)>=start)&&(!end||new Date(r._date)<=end)).reduce((a,r)=>a+(Number(r.total)||0),0);
 }
@@ -1406,12 +1424,12 @@ function renderInventorySummary(){
   const{start,end,label}=ppGetRange('pp-inventory');
   const totalBeli=totalPembelianPeriode(start,end);
   const totalGaji=totalPenggajianPeriode(start,end);
-  const totalOpex=totalBeli+totalGaji;
+  const totalOpex=totalGaji; // hanya Penggajian yang mengurangi Laba Bersih — lihat catatan di totalPembelianPeriode()
   const labelEl=document.getElementById('inv-periode-label');if(labelEl)labelEl.textContent=label;
   el.innerHTML=`
-    <div class="metric-card m-warning"><div class="metric-icon">🛒</div><div class="metric-label">Total Pembelian</div><div class="metric-value">${fmtRp(totalBeli)}</div><div class="metric-sub" style="color:var(--text3)">${DB.pembelian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} transaksi</div></div>
+    <div class="metric-card m-warning"><div class="metric-icon">🛒</div><div class="metric-label">Total Pembelian</div><div class="metric-value">${fmtRp(totalBeli)}</div><div class="metric-sub" style="color:var(--text3)">${DB.pembelian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} transaksi · info arus kas, tidak memotong Laba Bersih (sudah terwakili lewat HPP)</div></div>
     <div class="metric-card m-warning"><div class="metric-icon">🧑‍💼</div><div class="metric-label">Total Penggajian</div><div class="metric-value">${fmtRp(totalGaji)}</div><div class="metric-sub" style="color:var(--text3)">${DB.penggajian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} entri</div></div>
-    <div class="metric-card metric-hero metric-hero-danger"><div class="metric-icon">🧾</div><div class="metric-label">Total Pengeluaran Operasional</div><div class="metric-value metric-value-lg">${fmtRp(totalOpex)}</div><div class="metric-sub">Mengurangi Estimasi Laba Bersih di Dashboard &amp; Laporan Keuangan</div></div>`;
+    <div class="metric-card metric-hero metric-hero-danger"><div class="metric-icon">🧾</div><div class="metric-label">Total Pengeluaran Operasional (Opex)</div><div class="metric-value metric-value-lg">${fmtRp(totalOpex)}</div><div class="metric-sub">Penggajian saja — mengurangi Estimasi Laba Bersih di Dashboard &amp; Laporan Keuangan</div></div>`;
 }
 
 // --- PEMBELIAN ---
@@ -1740,10 +1758,12 @@ function renderLabaRingkasan(){
   const all=flattenPenjualan(allOrders);
   let to=0,th=0,tf=0,te=0,tl=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;th+=h.hpp;tf+=h.mpFee;te+=h.extra;tl+=h.laba});
   // Sama seperti Dashboard & Laporan Keuangan: laba bersih di sini juga
-  // sudah dikurangi pengeluaran operasional (Pembelian & Penggajian) —
-  // dihitung sepanjang waktu (tanpa filter periode) karena kartu ini
-  // menampilkan ringkasan keseluruhan, bukan per periode.
-  const totalOpexAll=totalPembelianPeriode(null,null)+totalPenggajianPeriode(null,null);
+  // sudah dikurangi Penggajian — dihitung sepanjang waktu (tanpa filter
+  // periode) karena kartu ini menampilkan ringkasan keseluruhan, bukan per
+  // periode. Pembelian TIDAK dikurangkan di sini (lihat catatan di
+  // totalPembelianPeriode()) supaya biaya pokok barang tidak terhitung dua
+  // kali (sekali lewat HPP di atas, sekali lagi lewat Pembelian).
+  const totalOpexAll=totalPenggajianPeriode(null,null);
   tl-=totalOpexAll;
   const margin=to>0?tl/to*100:0;
   document.getElementById('laba-metrics').innerHTML=`
@@ -1941,12 +1961,17 @@ function renderLaporan(){
 
   const rowsEl=document.getElementById('keuangan-rows');
   const{to,tl:tlKotor,tf,te,th}=hitungRingkasPeriode(dalamRentangFlat);
-  // Pengeluaran operasional (Inventory: Pembelian & Penggajian) di periode
-  // laporan yang sama, dikurangkan dari laba bersih penjualan supaya
-  // "Estimasi Laba Bersih" di Laporan Keuangan konsisten dengan Dashboard.
+  // Pengeluaran operasional (Inventory: Penggajian) di periode laporan yang
+  // sama, dikurangkan dari laba bersih penjualan supaya "Estimasi Laba
+  // Bersih" di Laporan Keuangan konsisten dengan Dashboard. Pembelian (beli
+  // stok ke supplier) SENGAJA TIDAK ikut dikurangkan di sini — biaya pokok
+  // barang yang terjual sudah terwakili lewat HPP (baris "HPP Estimasi" di
+  // atas). Menjumlahkan Pembelian & HPP sekaligus akan menghitung biaya
+  // barang dua kali. Total Pembelian tetap terlihat di menu Inventory
+  // sebagai info arus kas.
   const totalBeliOpex=totalPembelianPeriode(start,end);
   const totalGajiOpex=totalPenggajianPeriode(start,end);
-  const totalOpex=totalBeliOpex+totalGajiOpex;
+  const totalOpex=totalGajiOpex;
   const tl=tlKotor-totalOpex;
   const margin=to>0?tl/to*100:0;
   if(rowsEl){
@@ -1960,7 +1985,7 @@ function renderLaporan(){
       {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),icon:'🏬',cls:'fm-warning',sub:to>0?(tf/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),icon:'📦',cls:'fm-warning',sub:to>0?(te/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'HPP Estimasi',v:'− '+fmtRp(th),icon:'🏭',cls:'fm-danger',sub:to>0?(th/to*100).toFixed(1)+'% dari omzet':'–'},
-      {l:'Pengeluaran Operasional',v:'− '+fmtRp(totalOpex),icon:'🧾',cls:'fm-danger',sub:'Pembelian '+fmtRp(totalBeliOpex)+' · Gaji '+fmtRp(totalGajiOpex)},
+      {l:'Pengeluaran Operasional (Gaji)',v:'− '+fmtRp(totalOpex),icon:'🧾',cls:'fm-danger',sub:totalBeliOpex>0?'Belum termasuk Pembelian stok '+fmtRp(totalBeliOpex)+' (lihat menu Inventory)':'Penggajian periode ini'},
       {l:'Estimasi Laba Bersih',v:fmtRp(tl),icon:tl>=0?'📈':'📉',cls:tl>=0?'fm-success':'fm-danger',sub:margin.toFixed(1)+'% margin bersih'},
     ];
     rowsEl.innerHTML=cards.map(c=>`
@@ -1978,8 +2003,8 @@ function renderLaporan(){
   const pieCanvas=document.getElementById('chartKeuanganPie');
   if(pieCanvas){
     if(charts.keuanganPie)charts.keuanganPie.destroy();
-    charts.keuanganPie=new Chart(pieCanvas,{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Beli+Gaji)'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te),Math.round(totalOpex)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'68%'}});
-    const blabels=['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Beli+Gaji)'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'];const bvals=[th,tf,te,totalOpex];
+    charts.keuanganPie=new Chart(pieCanvas,{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Gaji)'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te),Math.round(totalOpex)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'68%'}});
+    const blabels=['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Gaji)'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'];const bvals=[th,tf,te,totalOpex];
     const legendEl=document.getElementById('keuangan-pie-legend');
     if(legendEl)legendEl.innerHTML=blabels.map((l,i)=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:${bcolors[i]}"></span>${l}: ${to>0?(bvals[i]/to*100).toFixed(1):0}%</span>`).join('');
   }
