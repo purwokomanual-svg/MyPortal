@@ -1991,11 +1991,9 @@ function renderLaporan(){
   renderAsetStokChart();
 
   if(charts.bulanan)charts.bulanan.destroy();
-  const selBulan=document.getElementById('f-periode-bulanan');
-  const bulanCount=selBulan?parseInt(selBulan.value)||6:6;
   const titleEl=document.getElementById('bulanan-title');
-  if(titleEl)titleEl.textContent='Tren Bulanan ('+bulanCount+' Bulan Terakhir)';
-  const tren=hitungTrenBulanan(bulanCount);
+  if(titleEl)titleEl.textContent='Tren Bulanan — '+label;
+  const tren=hitungTrenBulanan(start,end);
   charts.bulanan=new Chart(document.getElementById('chartBulanan'),{type:'bar',data:{labels:tren.labels,datasets:MP_LIST.map(m=>({label:m,data:tren.data[m]||tren.labels.map(()=>0),backgroundColor:getMpColor(m),borderRadius:3}))},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{stacked:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
 }
@@ -2238,15 +2236,31 @@ function hitungRingkasPeriode(list){
 // bulan berjalan (dipakai grafik Tren Bulanan di Laporan Keuangan). Data
 // diambil dari DB.penjualan asli (bukan dummy), dikelompokkan berdasarkan
 // tahun-bulan dari r._date, hanya pesanan yang berstatus aktif.
-function hitungTrenBulanan(bulanCount){
-  const now=new Date();
-  const bulanKe=[];
-  for(let i=bulanCount-1;i>=0;i--){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    bulanKe.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})});
+// Tren Bulanan sekarang MENGIKUTI periode yang dipilih di "Periode Data"
+// (pp-laporan) — bukan lagi dropdown 3/6/12 bulan terpisah. Supaya tetap
+// enak dibaca walau orang memilih periode sangat panjang (mis. "Semua
+// Waktu"), rentang bulan yang ditampilkan otomatis dipersempit mengikuti
+// bulan-bulan yang BENAR-BENAR ada transaksinya di dalam periode itu
+// (bukan dari tahun 2000 sampai 2100), dan dibatasi maksimal 24 bulan.
+function hitungTrenBulanan(start,end){
+  const inRange=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date&&new Date(r._date)>=start&&new Date(r._date)<=end);
+  let rangeStart=start,rangeEnd=end;
+  if(inRange.length){
+    const times=inRange.map(r=>new Date(r._date).getTime());
+    const minD=new Date(Math.min(...times)),maxD=new Date(Math.max(...times));
+    rangeStart=minD<start?start:minD;
+    rangeEnd=maxD>end?end:maxD;
   }
+  const bulanKe=[];
+  let cursor=new Date(rangeStart.getFullYear(),rangeStart.getMonth(),1);
+  const endCursor=new Date(rangeEnd.getFullYear(),rangeEnd.getMonth(),1);
+  while(cursor<=endCursor&&bulanKe.length<24){
+    bulanKe.push({key:cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0'),label:cursor.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})});
+    cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);
+  }
+  if(!bulanKe.length){const d=new Date();bulanKe.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})})}
   const data={};MP_LIST.forEach(m=>data[m]=bulanKe.map(()=>0));
-  DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).forEach(r=>{
+  inRange.forEach(r=>{
     const d=new Date(r._date);if(isNaN(d))return;
     const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     const idx=bulanKe.findIndex(b=>b.key===key);
