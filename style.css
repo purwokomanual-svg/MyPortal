@@ -524,8 +524,9 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 }
 
 
-/* Kop halaman untuk file cetak — tersembunyi di layar, muncul saat print */
+/* Kop & footer halaman untuk file cetak — tersembunyi di layar, muncul saat print */
 .fin-print-header{display:none}
+.fin-print-footer{display:none}
 
 /* =========================================================
    MODE CETAK — dipicu tombol "🖨 Cetak Laporan" (window.print()).
@@ -542,7 +543,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .page-content{padding:0!important;max-width:100%!important}
   .section{display:none!important}
   .section.active{display:block!important}
-  .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid}
+  .card{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid;page-break-inside:avoid;margin-bottom:12px!important}
   .fin-metric{break-inside:avoid;box-shadow:none!important}
   .fin-print-header{
     display:flex!important;align-items:center;justify-content:space-between;
@@ -553,5 +554,20 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   .fin-print-toko{font-size:16px;font-weight:800;color:#111}
   .fin-print-sub{font-size:11px;color:#666;font-weight:600;margin-top:2px}
   .fin-print-meta{text-align:right;font-size:11px;color:#444;font-weight:600;line-height:1.7}
-  .chart-box{height:180px!important}
+  /* Grid 2 kolom diubah jadi 1 kolom saat dicetak — chart jauh lebih
+     terbaca di kertas kalau full-width daripada berdempetan 2 kolom sempit. */
+  .grid-2{grid-template-columns:1fr!important;gap:12px!important}
+  .fin-metric-grid{gap:10px!important}
+  .card-title{font-size:13px!important;margin-bottom:10px!important}
+  .chart-box{height:200px!important;break-inside:avoid;page-break-inside:avoid}
+  canvas{max-width:100%!important}
+  /* Footer cetak: disclaimer + kolom tanda tangan, cuma muncul di kertas */
+  .fin-print-footer{
+    display:block!important;margin-top:22px;padding-top:14px;border-top:1px solid #ccc;
+    break-inside:avoid;page-break-inside:avoid;
+  }
+  .fin-print-disclaimer{font-size:10px;color:#777;line-height:1.6;margin-bottom:26px}
+  .fin-print-sign{display:flex;justify-content:space-between;max-width:420px;margin-left:auto;gap:40px}
+  .fin-print-sign-box{flex:1;text-align:center;font-size:11px;color:#444}
+  .fin-print-sign-line{border-top:1px solid #999;margin-bottom:6px;height:46px}
 }
