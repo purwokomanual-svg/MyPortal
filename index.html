@@ -162,6 +162,10 @@
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       <span>Laba per Produk</span>
     </div>
+    <div class="nav-item" data-menu="inventory" onclick="showSection('inventory',this)">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4H3z"/><path d="M5 7v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+      <span>Inventory</span>
+    </div>
     <div class="nav-item" data-menu="laporan" onclick="showSection('laporan',this)">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       <span>Laporan Keuangan</span>
@@ -429,6 +433,57 @@
       </div>
     </div>
 
+    <!-- INVENTORY: PEMBELIAN & PENGGAJIAN -->
+    <div class="section" id="sec-inventory">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div style="font-size:12px;color:var(--text3)">📅 Menampilkan periode: <strong id="inv-periode-label">–</strong></div>
+        <div class="periode-picker" id="pp-inventory"></div>
+      </div>
+      <div class="info-box">💡 Menu ini mencatat <strong>pengeluaran operasional</strong> toko di luar HPP & biaya admin marketplace — Pembelian barang/bahan dari supplier, dan Penggajian karyawan/staf. Totalnya otomatis <strong>mengurangi Estimasi Laba Bersih</strong> di Dashboard dan Laporan Keuangan.</div>
+      <div class="grid-3 mb18" id="inv-metrics"></div>
+
+      <div class="tab-pills">
+        <div class="tab-pill active" onclick="switchInventoryTab('pembelian',this)">🛒 Pembelian</div>
+        <div class="tab-pill" onclick="switchInventoryTab('penggajian',this)">🧑‍💼 Penggajian</div>
+      </div>
+
+      <!-- PEMBELIAN -->
+      <div class="inv-sub active" id="inv-pembelian">
+        <div class="filter-row">
+          <input class="form-input" style="flex:1;min-width:180px" placeholder="Cari supplier atau item..." id="q-pembelian" oninput="filterPembelian()">
+          <button class="btn btn-sm" onclick="exportPembelianCSV()">📥 Ekspor</button>
+          <button class="btn btn-primary btn-sm" data-need="write" onclick="bukaModalTambahPembelian()">+ Tambah Pembelian</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Tanggal</th><th>Supplier</th><th>Item</th><th style="text-align:center">Qty</th><th>Harga Satuan</th><th>Total</th><th>Catatan</th><th>Aksi</th></tr></thead>
+              <tbody id="tbl-pembelian"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pag-pembelian"></div>
+        </div>
+      </div>
+
+      <!-- PENGGAJIAN -->
+      <div class="inv-sub" id="inv-penggajian">
+        <div class="filter-row">
+          <input class="form-input" style="flex:1;min-width:180px" placeholder="Cari nama atau jabatan..." id="q-penggajian" oninput="filterPenggajian()">
+          <button class="btn btn-sm" onclick="exportPenggajianCSV()">📥 Ekspor</button>
+          <button class="btn btn-primary btn-sm" data-need="write" onclick="bukaModalTambahPenggajian()">+ Tambah Penggajian</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Tanggal</th><th>Nama Karyawan</th><th>Jabatan</th><th>Periode</th><th>Nominal</th><th>Catatan</th><th>Aksi</th></tr></thead>
+              <tbody id="tbl-penggajian"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pag-penggajian"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- LAPORAN KEUANGAN -->
     <div class="section" id="sec-laporan">
       <!-- Header ini hanya tampil saat dicetak (lihat @media print di style.css) —
@@ -675,6 +730,51 @@
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-restock')">Batal</button>
       <button class="btn btn-primary" onclick="simpanRestock()">Simpan Restock</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAMBAH / EDIT PEMBELIAN -->
+<div class="modal-overlay" id="modal-tambah-pembelian">
+  <div class="modal">
+    <h3 id="modal-pembelian-title">🛒 Tambah Pembelian</h3>
+    <input type="hidden" id="edit-pembelian-idx" value="">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label>Tanggal</label><input class="form-input" type="date" id="pb-tgl"></div>
+      <div class="form-group"><label>Supplier</label><input class="form-input" id="pb-supplier" placeholder="Nama supplier/toko"></div>
+    </div>
+    <div class="form-group"><label>Nama Barang / Item</label><input class="form-input" id="pb-item" placeholder="cth: Kain Katun Combed 30s"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="form-group"><label>Qty</label><input class="form-input" type="number" id="pb-qty" value="1" min="0" step="any"></div>
+      <div class="form-group"><label>Satuan</label><input class="form-input" id="pb-satuan" placeholder="pcs / kg / roll" value="pcs"></div>
+      <div class="form-group"><label>Harga Satuan (Rp)</label><input class="form-input" type="number" id="pb-harga" placeholder="0" min="0"></div>
+    </div>
+    <div class="form-group"><label>Catatan</label><textarea class="form-input" id="pb-catatan" placeholder="Opsional..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-tambah-pembelian')">Batal</button>
+      <button class="btn btn-primary" id="btn-simpan-pembelian" onclick="simpanPembelian()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAMBAH / EDIT PENGGAJIAN -->
+<div class="modal-overlay" id="modal-tambah-penggajian">
+  <div class="modal">
+    <h3 id="modal-penggajian-title">🧑‍💼 Tambah Penggajian</h3>
+    <input type="hidden" id="edit-penggajian-idx" value="">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label>Tanggal</label><input class="form-input" type="date" id="pg-tgl"></div>
+      <div class="form-group"><label>Periode Gaji</label><input class="form-input" id="pg-periode" placeholder="cth: Juli 2026"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label>Nama Karyawan</label><input class="form-input" id="pg-nama" placeholder="Nama karyawan/staf"></div>
+      <div class="form-group"><label>Jabatan</label><input class="form-input" id="pg-jabatan" placeholder="cth: Admin, Kasir, Packing"></div>
+    </div>
+    <div class="form-group"><label>Nominal (Rp)</label><input class="form-input" type="number" id="pg-nominal" placeholder="0" min="0"></div>
+    <div class="form-group"><label>Catatan</label><textarea class="form-input" id="pg-catatan" placeholder="Opsional..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-tambah-penggajian')">Batal</button>
+      <button class="btn btn-primary" id="btn-simpan-penggajian" onclick="simpanPenggajian()">Simpan</button>
     </div>
   </div>
 </div>
