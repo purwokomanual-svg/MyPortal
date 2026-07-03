@@ -1885,39 +1885,26 @@ function renderLaporan(){
   const tl=tlKotor-totalOpex;
   const margin=to>0?tl/to*100:0;
   if(rowsEl){
-    // Disusun mengikuti alur laporan laba-rugi yang mudah dibaca:
-    // 1) Omzet (baris atas, full-width)  2) rincian biaya (4 kartu sejajar,
-    // pas 1 baris)  3) Laba Bersih (hero, full-width, paling bawah).
-    const omzetCard=`
-      <div class="fin-metric fin-metric-top fm-accent">
-        <div class="fin-metric-icon">💵</div>
-        <div class="fin-metric-label">Total Omzet</div>
-        <div class="fin-metric-value">${fmtRp(to)}</div>
-        <div class="fin-metric-sub">${dalamRentang.length} pesanan di periode ini</div>
-      </div>`;
+    // Grid seragam 3 kolom x 2 baris — Total Omzet & Estimasi Laba Bersih
+    // sejajar rapi dengan kartu rincian biaya di baris masing-masing
+    // (tidak ada lagi kartu "hero" yang melebar penuh):
+    //   Baris 1: Total Omzet | Biaya Admin Marketplace | Ongkir & Biaya Lain
+    //   Baris 2: HPP Estimasi | Pengeluaran Operasional | Estimasi Laba Bersih
     const cards=[
+      {l:'Total Omzet',v:fmtRp(to),icon:'💵',cls:'fm-accent',sub:dalamRentang.length+' pesanan di periode ini'},
       {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),icon:'🏬',cls:'fm-warning',sub:to>0?(tf/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),icon:'📦',cls:'fm-warning',sub:to>0?(te/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'HPP Estimasi',v:'− '+fmtRp(th),icon:'🏭',cls:'fm-danger',sub:to>0?(th/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'Pengeluaran Operasional',v:'− '+fmtRp(totalOpex),icon:'🧾',cls:'fm-danger',sub:'Pembelian '+fmtRp(totalBeliOpex)+' · Gaji '+fmtRp(totalGajiOpex)},
+      {l:'Estimasi Laba Bersih',v:fmtRp(tl),icon:tl>=0?'📈':'📉',cls:tl>=0?'fm-success':'fm-danger',sub:margin.toFixed(1)+'% margin bersih'},
     ];
-    rowsEl.innerHTML=omzetCard+cards.map(c=>`
+    rowsEl.innerHTML=cards.map(c=>`
       <div class="fin-metric ${c.cls}">
         <div class="fin-metric-icon">${c.icon}</div>
         <div class="fin-metric-label">${c.l}</div>
         <div class="fin-metric-value">${c.v}</div>
         <div class="fin-metric-sub">${c.sub}</div>
-      </div>`).join('')+`
-      <div class="fin-metric fin-metric-hero ${tl>=0?'fm-success':'fm-danger'}">
-        <div class="fin-metric-icon">${tl>=0?'📈':'📉'}</div>
-        <div class="fin-metric-label">Estimasi Laba Bersih</div>
-        <div class="fin-metric-value fin-metric-value-lg">${fmtRp(tl)}</div>
-        <div class="fin-metric-sub">Margin Bersih</div>
-        <div class="margin-bar" style="margin-top:6px">
-          <div class="margin-track" style="width:100%"><div class="margin-fill" style="width:${Math.max(0,Math.min(100,margin))}%;background:${margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)'}"></div></div>
-          <span style="font-weight:800;color:${margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)'}">${margin.toFixed(1)}%</span>
-        </div>
-      </div>`;
+      </div>`).join('');
   }
 
   // Donut komposisi biaya (HPP / Admin MP / Ongkir & Lain) — cerminan dari
