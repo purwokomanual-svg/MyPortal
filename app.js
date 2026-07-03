@@ -10,10 +10,11 @@ const STATUS_ARR=['Selesai','Selesai','Selesai','Selesai','Diproses','Dikirim','
 const DEFAULT_KAT=[{nama:'Atasan',color:'#4f3de8'},{nama:'Bawahan',color:'#ee4d2d'},{nama:'Outer',color:'#00aa5b'},{nama:'Aksesoris',color:'#f59e0b'},{nama:'Lainnya',color:'#888'}];
 const DEFAULT_BIAYA={mp_fee:{Shopee:3.5,Tokopedia:2.5,'TikTok Shop':1.8,Lazada:4.0},extra:{ongkir:3000,packaging:1500,lain:500},hpp_mode:'pct',hpp_pct:45,hpp_per_produk:{}};
 
-let DB={penjualan:[],stok:[],kategori:[...DEFAULT_KAT],marketplace:JSON.parse(JSON.stringify(DEFAULT_MP)),biaya:JSON.parse(JSON.stringify(DEFAULT_BIAYA)),pengaturan:{nama:'Toko Saya',pemilik:'',hp:'',batasStok:10,logo:''},lastUpdate:null};
-let _editJualIdx=-1,_editStokIdx=-1,_editKatIdx=-1,_restockIdx=-1,_editMpIdx=-1;
-let filteredJual=[],filteredStok=[],_labaData=[],_labaFiltered=[];
-let pageJual=1,pageStok=1,pageLaba=1;
+let DB={penjualan:[],stok:[],kategori:[...DEFAULT_KAT],marketplace:JSON.parse(JSON.stringify(DEFAULT_MP)),biaya:JSON.parse(JSON.stringify(DEFAULT_BIAYA)),pengaturan:{nama:'Toko Saya',pemilik:'',hp:'',batasStok:10,logo:''},pembelian:[],penggajian:[],lastUpdate:null};
+let _editJualIdx=-1,_editStokIdx=-1,_editKatIdx=-1,_restockIdx=-1,_editMpIdx=-1,_editPembelianIdx=-1,_editPenggajianIdx=-1;
+let filteredJual=[],filteredStok=[],_labaData=[],_labaFiltered=[],filteredPembelian=[],filteredPenggajian=[];
+let pageJual=1,pageStok=1,pageLaba=1,pagePembelian=1,pagePenggajian=1;
+let _invTab='pembelian';
 const PER_PAGE=20;
 let charts={};
 let _selectedKatColor=KAT_COLORS[0];
@@ -100,7 +101,7 @@ function loadDB(){const r=localStorage.getItem('omniseller_v2');if(r){DB=JSON.pa
 const SYNC_FN={
   kategori:syncKategori_, marketplace:syncMarketplace_, stok:syncStok_,
   penjualan:syncPenjualan_, biaya:syncBiayaPengaturan_, hpp_produk:syncHppProduk_,
-  pengaturan:syncPengaturanToko_
+  pengaturan:syncPengaturanToko_, pembelian:syncPembelian_, penggajian:syncPenggajian_
 };
 let _syncTimeout=null;
 let _pendingTables=new Set();
@@ -251,11 +252,30 @@ async function syncPengaturanToko_(){
   });
   if(error)throw error;
 }
+// ===== INVENTORY: PEMBELIAN & PENGGAJIAN =====
+// Kedua tabel ini tidak punya kolom "alami" yang unik dari sisi bisnis
+// (beda dgn no_pesanan/SKU), jadi tiap baris diberi `kode` unik otomatis
+// saat dibuat (lihat bukaModalTambahPembelian/Penggajian) supaya safeReplace()
+// bisa upsert dengan aman seperti tabel lain.
+async function syncPembelian_(){
+  await safeReplace(TBL_PEMBELIAN, DB.pembelian.map(r=>({
+    kode:r.kode,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),
+    supplier:r.supplier||'',item:r.item||'',qty:r.qty!=null?r.qty:1,satuan:r.satuan||'pcs',
+    harga_satuan:r.hargaSatuan!=null?r.hargaSatuan:0,total:r.total!=null?r.total:0,catatan:r.catatan||''
+  })), 'kode');
+}
+async function syncPenggajian_(){
+  await safeReplace(TBL_PENGGAJIAN, DB.penggajian.map(r=>({
+    kode:r.kode,tanggal:r.tanggal,tgl_iso:r._date||new Date().toISOString(),
+    nama_karyawan:r.namaKaryawan||'',jabatan:r.jabatan||'',periode:r.periode||'',
+    nominal:r.nominal!=null?r.nominal:0,catatan:r.catatan||''
+  })), 'kode');
+}
 
 // Ambil semua data dari tabel relasional & susun ulang jadi struktur DB di memori
 async function loadFromSupabase(){
   try{
-    const[katRes,mpRes,stokRes,pesananRes,itemRes,biayaRes,hppRes,setRes]=await Promise.all([
+    const[katRes,mpRes,stokRes,pesananRes,itemRes,biayaRes,hppRes,setRes,pembelianRes,penggajianRes]=await Promise.all([
       supabaseClient.from(TBL_KATEGORI).select('*').order('id'),
       supabaseClient.from(TBL_MARKETPLACE).select('*').order('id'),
       supabaseClient.from(TBL_STOK).select('*').order('id'),
@@ -264,8 +284,10 @@ async function loadFromSupabase(){
       supabaseClient.from(TBL_BIAYA).select('*').eq('id',1).maybeSingle(),
       supabaseClient.from(TBL_HPP_PRODUK).select('*'),
       supabaseClient.from(TBL_PENGATURAN).select('*').eq('id',1).maybeSingle(),
+      supabaseClient.from(TBL_PEMBELIAN).select('*').order('id'),
+      supabaseClient.from(TBL_PENGGAJIAN).select('*').order('id'),
     ]);
-    const errs=[katRes,mpRes,stokRes,pesananRes,itemRes,biayaRes,hppRes,setRes].map(r=>r.error).filter(Boolean);
+    const errs=[katRes,mpRes,stokRes,pesananRes,itemRes,biayaRes,hppRes,setRes,pembelianRes,penggajianRes].map(r=>r.error).filter(Boolean);
     if(errs.length){console.warn('Gagal memuat dari Supabase:',errs[0].message);updateSyncBadge(false,errs[0].message);return null}
 
     const kategori=(katRes.data||[]).map(k=>({nama:k.nama,color:k.color}));
@@ -307,8 +329,11 @@ async function loadFromSupabase(){
     const s=setRes.data||{};
     const pengaturan={nama:s.nama_toko||'Toko Saya',pemilik:s.pemilik||'',hp:s.hp||'',batasStok:s.batas_stok!=null?s.batas_stok:10,logo:s.logo||''};
 
+    const pembelian=(pembelianRes.data||[]).map(r=>({kode:r.kode,tanggal:r.tanggal,_date:r.tgl_iso,supplier:r.supplier||'',item:r.item||'',qty:r.qty,satuan:r.satuan||'pcs',hargaSatuan:Number(r.harga_satuan)||0,total:Number(r.total)||0,catatan:r.catatan||''}));
+    const penggajian=(penggajianRes.data||[]).map(r=>({kode:r.kode,tanggal:r.tanggal,_date:r.tgl_iso,namaKaryawan:r.nama_karyawan||'',jabatan:r.jabatan||'',periode:r.periode||'',nominal:Number(r.nominal)||0,catatan:r.catatan||''}));
+
     updateSyncBadge(true);
-    return{kategori,marketplace,stok,penjualan,biaya,pengaturan,lastUpdate:new Date().toISOString()};
+    return{kategori,marketplace,stok,penjualan,biaya,pengaturan,pembelian,penggajian,lastUpdate:new Date().toISOString()};
   }catch(e){console.warn('Gagal memuat dari Supabase:',e);updateSyncBadge(false,e.message);return null}
 }
 function updateSyncBadge(ok,msg){
@@ -367,13 +392,18 @@ async function initApp(){
   if(!DB.kategori||DB.kategori.length===0)DB.kategori=[...DEFAULT_KAT];
   if(!DB.marketplace||DB.marketplace.length===0)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));
   if(!DB.biaya)DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
+  if(!DB.pembelian)DB.pembelian=[];
+  if(!DB.penggajian)DB.penggajian=[];
   if(!DB.pengaturan.logo)DB.pengaturan.logo='';
   refreshMpGlobals();
   filteredStok=[...DB.stok];
+  filteredPembelian=[...DB.pembelian];
+  filteredPenggajian=[...DB.penggajian];
   applyPengaturan();
   applyLogo();
   ppInit('pp-dash',{mode:'30_hari'},()=>{renderDashboard();filterJual();});
   ppInit('pp-laporan',{mode:'7_hari'},()=>renderLaporan());
+  ppInit('pp-inventory',{mode:'30_hari'},()=>{filterPembelian();filterPenggajian();renderInventorySummary();});
   renderDashboard();
   filterJual();
   renderStokTable();
@@ -677,7 +707,7 @@ if(typeof supabaseClient!=='undefined'&&supabaseClient){
 }
 
 // ===== SECTIONS =====
-const PAGE_TITLES={dashboard:'Dashboard',penjualan:'Laporan Penjualan',stok:'Stok & Gudang',produk:'Produk & Kategori',laba:'Laba & Biaya Admin per Produk',laporan:'Laporan Keuangan',import:'Import Data',pengaturan:'Pengaturan'};
+const PAGE_TITLES={dashboard:'Dashboard',penjualan:'Laporan Penjualan',stok:'Stok & Gudang',produk:'Produk & Kategori',laba:'Laba & Biaya Admin per Produk',inventory:'Inventory — Pembelian & Penggajian',laporan:'Laporan Keuangan',import:'Import Data',pengaturan:'Pengaturan'};
 const MENU_IDS=Object.keys(PAGE_TITLES);
 let _currentSection=null;
 
@@ -728,6 +758,7 @@ function showSection(id,el){
   if(id==='laporan')renderLaporan();
   if(id==='produk')renderProduk();
   if(id==='laba'){renderLabaSection();renderBiayaInputs();renderHppMode();}
+  if(id==='inventory'){filterPembelian();filterPenggajian();renderInventorySummary();}
   if(id==='pengaturan'){updateInfoPengaturan();if(canManageSettings())renderUserList();}
   applyRolePermissions(); // selalu re-apply setiap ganti section
 }
@@ -756,6 +787,14 @@ function renderDashboard(){
   // Laba estimasi (dihitung per barang, bukan per pesanan, agar pesanan
   // dengan beberapa produk tetap akurat)
   let totalLaba=0;flattenPenjualan(recent).forEach(f=>{totalLaba+=hitungLaba(f).laba});
+  // Pengeluaran operasional (Inventory: Pembelian & Penggajian) periode yang
+  // sama dengan periode Dashboard ini, dikurangkan dari laba bersih supaya
+  // angka "Estimasi Laba Bersih" benar-benar bersih, bukan cuma laba kotor
+  // dari penjualan.
+  const totalBeliOpex=totalPembelianPeriode(start,end);
+  const totalGajiOpex=totalPenggajianPeriode(start,end);
+  const totalOpex=totalBeliOpex+totalGajiOpex;
+  totalLaba-=totalOpex;
   const margin=totalRev>0?totalLaba/totalRev*100:0;
 
   // Perbandingan vs periode SEBELUMNYA (durasi yang sama, persis sebelum
@@ -775,7 +814,7 @@ function renderDashboard(){
   document.getElementById('m-ord').textContent=totalOrd.toLocaleString('id-ID');
   document.getElementById('m-ord-sub').textContent=panahSub(pctOrd);
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
-  document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih';
+  document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih'+(totalOpex>0?' · − '+fmtRp(totalOpex)+' opex':'');
   const labaCard=document.getElementById('m-laba-card');
   if(labaCard)labaCard.classList.toggle('metric-hero-danger',totalLaba<0);
   document.getElementById('m-kritis').textContent=kritis;
@@ -786,6 +825,7 @@ function renderDashboard(){
   let alertHTML='';
   if(habis.length)alertHTML+=`<div class="alert alert-danger">⚠ <strong>${habis.length} varian stok habis</strong> — ${habis.slice(0,3).map(s=>s.prod+' '+s.varian).join(', ')}${habis.length>3?'...':''}</div>`;
   if(rendah.length)alertHTML+=`<div class="alert alert-warning">⚡ <strong>${rendah.length} varian stok rendah</strong> (&lt;${batas} pcs) — perlu segera restock</div>`;
+  if(totalOpex>0)alertHTML+=`<div class="alert alert-warning">🧾 <strong>Pengeluaran operasional periode ini: ${fmtRp(totalOpex)}</strong> (Pembelian ${fmtRp(totalBeliOpex)} + Penggajian ${fmtRp(totalGajiOpex)}) — sudah dikurangkan dari Estimasi Laba Bersih. <a href="javascript:void(0)" onclick="showSection('inventory')" style="color:inherit;text-decoration:underline">Lihat rincian di menu Inventory →</a></div>`;
   document.getElementById('alert-area').innerHTML=alertHTML;
 
   // MP breakdown
@@ -1244,8 +1284,9 @@ function konfirmHapus(type,idx){
   const needSettings=(type==='kat'||type==='mp');
   if(needSettings&&!canManageSettings()){alert("Hanya Owner yang bisa menghapus kategori/marketplace.");return}
   if(type==='jual'&&!canWriteOrders()){alert("Anda tidak punya izin untuk menghapus pesanan.");return}
-  if(!needSettings&&type!=='jual'&&!canWrite()){alert("Anda tidak punya izin untuk menghapus data ini.");return}
-  const msg=type==='jual'?`Hapus pesanan "${DB.penjualan[idx].no}"?`:type==='stok'?`Hapus produk "${DB.stok[idx].prod} ${DB.stok[idx].varian}"?`:type==='mp'?`Hapus marketplace "${DB.marketplace[idx].nama}"? Pesanan lama dengan marketplace ini tidak akan terhapus.`:`Hapus kategori "${DB.kategori[idx].nama}"?`;
+  if((type==='pembelian'||type==='penggajian')&&!canWrite()){alert("Anda tidak punya izin untuk menghapus data ini.");return}
+  if(!needSettings&&type!=='jual'&&type!=='pembelian'&&type!=='penggajian'&&!canWrite()){alert("Anda tidak punya izin untuk menghapus data ini.");return}
+  const msg=type==='jual'?`Hapus pesanan "${DB.penjualan[idx].no}"?`:type==='stok'?`Hapus produk "${DB.stok[idx].prod} ${DB.stok[idx].varian}"?`:type==='mp'?`Hapus marketplace "${DB.marketplace[idx].nama}"? Pesanan lama dengan marketplace ini tidak akan terhapus.`:type==='pembelian'?`Hapus data pembelian "${DB.pembelian[idx].item}"?`:type==='penggajian'?`Hapus data penggajian untuk "${DB.penggajian[idx].namaKaryawan}"?`:`Hapus kategori "${DB.kategori[idx].nama}"?`;
   document.getElementById('konfirm-msg').textContent=msg;
   document.getElementById('btn-konfirm-ya').onclick=function(){hapusData(type,idx);closeModal('modal-konfirm')};
   openModal('modal-konfirm');
@@ -1263,8 +1304,182 @@ function hapusData(type,idx){
     if(DB.marketplace.length<=1){alert('Minimal harus ada 1 marketplace.');return}
     DB.marketplace.splice(idx,1);refreshMpGlobals();populateMpDropdowns();renderMpList();affected=['marketplace'];
   }
+  else if(type==='pembelian'){DB.pembelian.splice(idx,1);filterPembelian();affected=['pembelian']}
+  else if(type==='penggajian'){DB.penggajian.splice(idx,1);filterPenggajian();affected=['penggajian']}
   saveDB(affected);renderDashboard();
 }
+
+// ===== INVENTORY: PEMBELIAN & PENGGAJIAN =====
+// Kedua daftar ini adalah PENGELUARAN OPERASIONAL (di luar HPP/biaya admin
+// marketplace yang sudah dihitung per pesanan) — dipakai untuk mengurangi
+// Estimasi Laba Bersih di Dashboard, Laba per Produk (ringkasan), dan
+// Laporan Keuangan. Sama seperti Stok, hanya Owner/Staff yang boleh
+// menulis (lihat data-need="write" di tombol +Tambah pada index.html);
+// Kasir tidak menyentuh data ini karena bukan bagian tugas input pesanan.
+function buatKodeInventory(prefix){return prefix+'-'+Date.now().toString(36).toUpperCase()+'-'+rnd(100,999)}
+
+// --- Total dalam rentang tanggal (dipakai Dashboard & Laporan Keuangan) ---
+function totalPembelianPeriode(start,end){
+  return DB.pembelian.filter(r=>r._date&&(!start||new Date(r._date)>=start)&&(!end||new Date(r._date)<=end)).reduce((a,r)=>a+(Number(r.total)||0),0);
+}
+function totalPenggajianPeriode(start,end){
+  return DB.penggajian.filter(r=>r._date&&(!start||new Date(r._date)>=start)&&(!end||new Date(r._date)<=end)).reduce((a,r)=>a+(Number(r.nominal)||0),0);
+}
+
+// --- Tab switch (Pembelian / Penggajian) ---
+function switchInventoryTab(tab,el){
+  _invTab=tab;
+  document.querySelectorAll('#sec-inventory .tab-pill').forEach(p=>p.classList.remove('active'));
+  if(el)el.classList.add('active');
+  document.querySelectorAll('#sec-inventory .inv-sub').forEach(s=>s.classList.remove('active'));
+  document.getElementById('inv-'+tab).classList.add('active');
+}
+
+// --- Ringkasan kartu metrik di atas (sesuai periode pp-inventory) ---
+function renderInventorySummary(){
+  const el=document.getElementById('inv-metrics');if(!el)return;
+  const{start,end,label}=ppGetRange('pp-inventory');
+  const totalBeli=totalPembelianPeriode(start,end);
+  const totalGaji=totalPenggajianPeriode(start,end);
+  const totalOpex=totalBeli+totalGaji;
+  const labelEl=document.getElementById('inv-periode-label');if(labelEl)labelEl.textContent=label;
+  el.innerHTML=`
+    <div class="metric-card m-warning"><div class="metric-icon">🛒</div><div class="metric-label">Total Pembelian</div><div class="metric-value">${fmtRp(totalBeli)}</div><div class="metric-sub" style="color:var(--text3)">${DB.pembelian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} transaksi</div></div>
+    <div class="metric-card m-warning"><div class="metric-icon">🧑‍💼</div><div class="metric-label">Total Penggajian</div><div class="metric-value">${fmtRp(totalGaji)}</div><div class="metric-sub" style="color:var(--text3)">${DB.penggajian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} entri</div></div>
+    <div class="metric-card metric-hero metric-hero-danger"><div class="metric-icon">🧾</div><div class="metric-label">Total Pengeluaran Operasional</div><div class="metric-value metric-value-lg">${fmtRp(totalOpex)}</div><div class="metric-sub">Mengurangi Estimasi Laba Bersih di Dashboard &amp; Laporan Keuangan</div></div>`;
+}
+
+// --- PEMBELIAN ---
+function filterPembelian(){
+  pagePembelian=1;const q=(document.getElementById('q-pembelian').value||'').toLowerCase();
+  const{start,end}=ppGetRange('pp-inventory');
+  filteredPembelian=DB.pembelian.filter(r=>(!q||(r.supplier||'').toLowerCase().includes(q)||(r.item||'').toLowerCase().includes(q))&&(!r._date||(new Date(r._date)>=start&&new Date(r._date)<=end)));
+  filteredPembelian.sort((a,b)=>new Date(b._date||0)-new Date(a._date||0));
+  renderPembelianTable();
+  renderInventorySummary();
+}
+function renderPembelianTable(){
+  const start=(pagePembelian-1)*PER_PAGE;const slice=filteredPembelian.slice(start,start+PER_PAGE);
+  document.getElementById('tbl-pembelian').innerHTML=slice.length?slice.map(r=>{
+    const ri=DB.pembelian.indexOf(r);
+    return `<tr>
+      <td>${r.tanggal}</td>
+      <td style="font-weight:600">${esc(r.supplier)}</td>
+      <td>${esc(r.item)}</td>
+      <td style="text-align:center">${r.qty} ${esc(r.satuan||'pcs')}</td>
+      <td>${fmtRp(r.hargaSatuan)}</td>
+      <td style="font-weight:700">${fmtRp(r.total)}</td>
+      <td style="color:var(--text3);font-size:12px">${esc(r.catatan||'–')}</td>
+      <td>${actionCellRW(`<div class="action-cell">
+        <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditPembelian(${ri})">✏️</button>
+        <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('pembelian',${ri})">🗑</button>
+      </div>`)}</td>
+    </tr>`}).join(''):`<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">Belum ada data pembelian di periode ini</td></tr>`;
+  renderPagination('pag-pembelian',filteredPembelian.length,pagePembelian,p=>{pagePembelian=p;renderPembelianTable()});
+}
+function bukaModalTambahPembelian(){
+  _editPembelianIdx=-1;
+  document.getElementById('modal-pembelian-title').textContent='🛒 Tambah Pembelian';
+  document.getElementById('btn-simpan-pembelian').textContent='Simpan';
+  document.getElementById('edit-pembelian-idx').value='';
+  document.getElementById('pb-tgl').value=today();
+  document.getElementById('pb-supplier').value='';document.getElementById('pb-item').value='';
+  document.getElementById('pb-qty').value=1;document.getElementById('pb-satuan').value='pcs';
+  document.getElementById('pb-harga').value=0;document.getElementById('pb-catatan').value='';
+  openModal('modal-tambah-pembelian');
+}
+function bukaEditPembelian(idx){
+  const r=DB.pembelian[idx];_editPembelianIdx=idx;
+  document.getElementById('modal-pembelian-title').textContent='✏️ Edit Pembelian';
+  document.getElementById('btn-simpan-pembelian').textContent='Simpan Perubahan';
+  document.getElementById('edit-pembelian-idx').value=idx;
+  document.getElementById('pb-tgl').value=(r._date||'').split('T')[0]||today();
+  document.getElementById('pb-supplier').value=r.supplier||'';document.getElementById('pb-item').value=r.item||'';
+  document.getElementById('pb-qty').value=r.qty||1;document.getElementById('pb-satuan').value=r.satuan||'pcs';
+  document.getElementById('pb-harga').value=r.hargaSatuan||0;document.getElementById('pb-catatan').value=r.catatan||'';
+  openModal('modal-tambah-pembelian');
+}
+function simpanPembelian(){
+  if(!canWrite()){alert("Anda tidak punya izin untuk menambah/mengubah data pembelian.");return}
+  const idx=document.getElementById('edit-pembelian-idx').value;
+  const tglVal=document.getElementById('pb-tgl').value||today();
+  const qty=parseFloat(document.getElementById('pb-qty').value)||0;
+  const harga=parseFloat(document.getElementById('pb-harga').value)||0;
+  const supplier=document.getElementById('pb-supplier').value.trim();
+  const item=document.getElementById('pb-item').value.trim();
+  if(!item){alert('Nama barang/item wajib diisi');return}
+  const r={tanggal:fmtTgl(new Date(tglVal)),_date:new Date(tglVal).toISOString(),supplier,item,qty,
+    satuan:document.getElementById('pb-satuan').value.trim()||'pcs',hargaSatuan:harga,total:qty*harga,
+    catatan:document.getElementById('pb-catatan').value.trim()};
+  if(idx!==''&&idx>=0){r.kode=DB.pembelian[parseInt(idx)].kode;DB.pembelian[parseInt(idx)]=r}
+  else{r.kode=buatKodeInventory('PB');DB.pembelian.unshift(r)}
+  saveDB(['pembelian']);filterPembelian();renderDashboard();closeModal('modal-tambah-pembelian');
+}
+
+// --- PENGGAJIAN ---
+function filterPenggajian(){
+  pagePenggajian=1;const q=(document.getElementById('q-penggajian').value||'').toLowerCase();
+  const{start,end}=ppGetRange('pp-inventory');
+  filteredPenggajian=DB.penggajian.filter(r=>(!q||(r.namaKaryawan||'').toLowerCase().includes(q)||(r.jabatan||'').toLowerCase().includes(q))&&(!r._date||(new Date(r._date)>=start&&new Date(r._date)<=end)));
+  filteredPenggajian.sort((a,b)=>new Date(b._date||0)-new Date(a._date||0));
+  renderPenggajianTable();
+  renderInventorySummary();
+}
+function renderPenggajianTable(){
+  const start=(pagePenggajian-1)*PER_PAGE;const slice=filteredPenggajian.slice(start,start+PER_PAGE);
+  document.getElementById('tbl-penggajian').innerHTML=slice.length?slice.map(r=>{
+    const ri=DB.penggajian.indexOf(r);
+    return `<tr>
+      <td>${r.tanggal}</td>
+      <td style="font-weight:600">${esc(r.namaKaryawan)}</td>
+      <td>${esc(r.jabatan||'–')}</td>
+      <td>${esc(r.periode||'–')}</td>
+      <td style="font-weight:700">${fmtRp(r.nominal)}</td>
+      <td style="color:var(--text3);font-size:12px">${esc(r.catatan||'–')}</td>
+      <td>${actionCellRW(`<div class="action-cell">
+        <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditPenggajian(${ri})">✏️</button>
+        <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('penggajian',${ri})">🗑</button>
+      </div>`)}</td>
+    </tr>`}).join(''):`<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Belum ada data penggajian di periode ini</td></tr>`;
+  renderPagination('pag-penggajian',filteredPenggajian.length,pagePenggajian,p=>{pagePenggajian=p;renderPenggajianTable()});
+}
+function bukaModalTambahPenggajian(){
+  _editPenggajianIdx=-1;
+  document.getElementById('modal-penggajian-title').textContent='🧑‍💼 Tambah Penggajian';
+  document.getElementById('btn-simpan-penggajian').textContent='Simpan';
+  document.getElementById('edit-penggajian-idx').value='';
+  document.getElementById('pg-tgl').value=today();
+  document.getElementById('pg-nama').value='';document.getElementById('pg-jabatan').value='';
+  document.getElementById('pg-periode').value='';document.getElementById('pg-nominal').value=0;
+  document.getElementById('pg-catatan').value='';
+  openModal('modal-tambah-penggajian');
+}
+function bukaEditPenggajian(idx){
+  const r=DB.penggajian[idx];_editPenggajianIdx=idx;
+  document.getElementById('modal-penggajian-title').textContent='✏️ Edit Penggajian';
+  document.getElementById('btn-simpan-penggajian').textContent='Simpan Perubahan';
+  document.getElementById('edit-penggajian-idx').value=idx;
+  document.getElementById('pg-tgl').value=(r._date||'').split('T')[0]||today();
+  document.getElementById('pg-nama').value=r.namaKaryawan||'';document.getElementById('pg-jabatan').value=r.jabatan||'';
+  document.getElementById('pg-periode').value=r.periode||'';document.getElementById('pg-nominal').value=r.nominal||0;
+  document.getElementById('pg-catatan').value=r.catatan||'';
+  openModal('modal-tambah-penggajian');
+}
+function simpanPenggajian(){
+  if(!canWrite()){alert("Anda tidak punya izin untuk menambah/mengubah data penggajian.");return}
+  const idx=document.getElementById('edit-penggajian-idx').value;
+  const tglVal=document.getElementById('pg-tgl').value||today();
+  const nama=document.getElementById('pg-nama').value.trim();
+  if(!nama){alert('Nama karyawan wajib diisi');return}
+  const r={tanggal:fmtTgl(new Date(tglVal)),_date:new Date(tglVal).toISOString(),namaKaryawan:nama,
+    jabatan:document.getElementById('pg-jabatan').value.trim(),periode:document.getElementById('pg-periode').value.trim(),
+    nominal:parseFloat(document.getElementById('pg-nominal').value)||0,catatan:document.getElementById('pg-catatan').value.trim()};
+  if(idx!==''&&idx>=0){r.kode=DB.penggajian[parseInt(idx)].kode;DB.penggajian[parseInt(idx)]=r}
+  else{r.kode=buatKodeInventory('PG');DB.penggajian.unshift(r)}
+  saveDB(['penggajian']);filterPenggajian();renderDashboard();closeModal('modal-tambah-penggajian');
+}
+function exportPembelianCSV(){const h=csvRow(['Tanggal','Supplier','Item','Qty','Satuan','Harga Satuan','Total','Catatan'])+'\n';dlFile(h+DB.pembelian.map(r=>csvRow([r.tanggal,r.supplier,r.item,r.qty,r.satuan,r.hargaSatuan,r.total,r.catatan||''])).join('\n'),'pembelian_'+today()+'.csv','text/csv')}
+function exportPenggajianCSV(){const h=csvRow(['Tanggal','Nama Karyawan','Jabatan','Periode','Nominal','Catatan'])+'\n';dlFile(h+DB.penggajian.map(r=>csvRow([r.tanggal,r.namaKaryawan,r.jabatan,r.periode,r.nominal,r.catatan||''])).join('\n'),'penggajian_'+today()+'.csv','text/csv')}
 
 // ===== KATEGORI =====
 function renderProduk(){
@@ -1459,12 +1674,18 @@ function renderLabaRingkasan(){
   const allOrders=DB.penjualan.filter(r=>r.status!=='Dibatalkan');
   const all=flattenPenjualan(allOrders);
   let to=0,th=0,tf=0,te=0,tl=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;th+=h.hpp;tf+=h.mpFee;te+=h.extra;tl+=h.laba});
+  // Sama seperti Dashboard & Laporan Keuangan: laba bersih di sini juga
+  // sudah dikurangi pengeluaran operasional (Pembelian & Penggajian) —
+  // dihitung sepanjang waktu (tanpa filter periode) karena kartu ini
+  // menampilkan ringkasan keseluruhan, bukan per periode.
+  const totalOpexAll=totalPembelianPeriode(null,null)+totalPenggajianPeriode(null,null);
+  tl-=totalOpexAll;
   const margin=to>0?tl/to*100:0;
   document.getElementById('laba-metrics').innerHTML=`
     <div class="metric-card m-accent"><div class="metric-icon">💵</div><div class="metric-label">Total Omzet</div><div class="metric-value">${fmtRp(to)}</div><div class="metric-sub" style="color:var(--text3)">${allOrders.length} pesanan · ${all.length} barang</div></div>
     <div class="metric-card m-warning"><div class="metric-icon">🏬</div><div class="metric-label">Total Biaya Admin MP</div><div class="metric-value orange">${fmtRp(tf)}</div><div class="metric-sub orange">${to>0?(tf/to*100).toFixed(1):0}% dari omzet</div></div>
     <div class="metric-card m-danger"><div class="metric-icon">🏭</div><div class="metric-label">Total HPP</div><div class="metric-value red">${fmtRp(th)}</div><div class="metric-sub red">${to>0?(th/to*100).toFixed(1):0}% dari omzet</div></div>
-    <div class="metric-card metric-hero${tl>=0?'':' metric-hero-danger'}"><div class="metric-icon">${tl>=0?'📈':'📉'}</div><div class="metric-label">Laba Bersih</div><div class="metric-value metric-value-lg">${fmtRp(tl)}</div><div class="metric-sub">${margin.toFixed(1)}% margin</div></div>`;
+    <div class="metric-card metric-hero${tl>=0?'':' metric-hero-danger'}"><div class="metric-icon">${tl>=0?'📈':'📉'}</div><div class="metric-label">Laba Bersih</div><div class="metric-value metric-value-lg">${fmtRp(tl)}</div><div class="metric-sub">${margin.toFixed(1)}% margin${totalOpexAll>0?' · sudah dikurangi opex '+fmtRp(totalOpexAll):''}</div></div>`;
 
   const mpData={};MP_LIST.forEach(m=>mpData[m]={laba:0,biaya:0});
   all.forEach(r=>{const h=hitungLaba(r);if(!mpData[r.mp])mpData[r.mp]={laba:0,biaya:0};mpData[r.mp].laba+=h.laba;mpData[r.mp].biaya+=h.omzet-h.laba});
@@ -1654,7 +1875,14 @@ function renderLaporan(){
   }
 
   const rowsEl=document.getElementById('keuangan-rows');
-  const{to,tl,tf,te,th}=hitungRingkasPeriode(dalamRentangFlat);
+  const{to,tl:tlKotor,tf,te,th}=hitungRingkasPeriode(dalamRentangFlat);
+  // Pengeluaran operasional (Inventory: Pembelian & Penggajian) di periode
+  // laporan yang sama, dikurangkan dari laba bersih penjualan supaya
+  // "Estimasi Laba Bersih" di Laporan Keuangan konsisten dengan Dashboard.
+  const totalBeliOpex=totalPembelianPeriode(start,end);
+  const totalGajiOpex=totalPenggajianPeriode(start,end);
+  const totalOpex=totalBeliOpex+totalGajiOpex;
+  const tl=tlKotor-totalOpex;
   const margin=to>0?tl/to*100:0;
   if(rowsEl){
     const cards=[
@@ -1662,6 +1890,7 @@ function renderLaporan(){
       {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),icon:'🏬',cls:'fm-warning',sub:to>0?(tf/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),icon:'📦',cls:'fm-warning',sub:to>0?(te/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'HPP Estimasi',v:'− '+fmtRp(th),icon:'🏭',cls:'fm-danger',sub:to>0?(th/to*100).toFixed(1)+'% dari omzet':'–'},
+      {l:'Pengeluaran Operasional (Pembelian + Gaji)',v:'− '+fmtRp(totalOpex),icon:'🧾',cls:'fm-danger',sub:'Pembelian '+fmtRp(totalBeliOpex)+' · Gaji '+fmtRp(totalGajiOpex)},
     ];
     rowsEl.innerHTML=cards.map(c=>`
       <div class="fin-metric ${c.cls}">
@@ -1688,8 +1917,8 @@ function renderLaporan(){
   const pieCanvas=document.getElementById('chartKeuanganPie');
   if(pieCanvas){
     if(charts.keuanganPie)charts.keuanganPie.destroy();
-    charts.keuanganPie=new Chart(pieCanvas,{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'68%'}});
-    const blabels=['HPP','Admin MP','Ongkir & Biaya Lain'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b'];const bvals=[th,tf,te];
+    charts.keuanganPie=new Chart(pieCanvas,{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Beli+Gaji)'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te),Math.round(totalOpex)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'68%'}});
+    const blabels=['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Beli+Gaji)'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'];const bvals=[th,tf,te,totalOpex];
     const legendEl=document.getElementById('keuangan-pie-legend');
     if(legendEl)legendEl.innerHTML=blabels.map((l,i)=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:${bcolors[i]}"></span>${l}: ${to>0?(bvals[i]/to*100).toFixed(1):0}%</span>`).join('');
   }
@@ -2162,10 +2391,10 @@ function migrasiPenjualanLama(list){
     return{...r,items:r.items||[]};
   });
 }
-function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.penjualan=migrasiPenjualanLama(DB.penjualan);refreshMpGlobals();saveDB();filteredStok=[...DB.stok];applyPengaturan();populateKatDropdowns();populateMpDropdowns();ppSetMode('pp-dash','semua');renderDashboard();filterJual();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid: '+err.message)}};reader.readAsText(e.target.files[0])}
+function restoreData(e){const reader=new FileReader();reader.onload=function(ev){try{DB=JSON.parse(ev.target.result);if(!DB.marketplace||!DB.marketplace.length)DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.penjualan=migrasiPenjualanLama(DB.penjualan);if(!DB.pembelian)DB.pembelian=[];if(!DB.penggajian)DB.penggajian=[];refreshMpGlobals();saveDB();filteredStok=[...DB.stok];filteredPembelian=[...DB.pembelian];filteredPenggajian=[...DB.penggajian];applyPengaturan();populateKatDropdowns();populateMpDropdowns();ppSetMode('pp-dash','semua');renderDashboard();filterJual();renderStokTable();alert('Data dipulihkan! '+DB.penjualan.length+' pesanan, '+DB.stok.length+' varian.')}catch(err){alert('File backup tidak valid: '+err.message)}};reader.readAsText(e.target.files[0])}
 function resetData(){if(!canManageSettings()){alert('Hanya Owner yang bisa reset data.');return}if(confirm('Hapus SEMUA data penjualan & stok? Tindakan ini tidak bisa dibatalkan.')){
-  DB.penjualan=[];DB.stok=[];DB.kategori=[...DEFAULT_KAT];DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));
-  refreshMpGlobals();saveDB();filteredStok=[...DB.stok];populateKatDropdowns();populateMpDropdowns();applyPengaturan();ppSetMode('pp-dash','semua');renderDashboard();filterJual();renderStokTable();
+  DB.penjualan=[];DB.stok=[];DB.kategori=[...DEFAULT_KAT];DB.marketplace=JSON.parse(JSON.stringify(DEFAULT_MP));DB.biaya=JSON.parse(JSON.stringify(DEFAULT_BIAYA));DB.pembelian=[];DB.penggajian=[];
+  refreshMpGlobals();saveDB();filteredStok=[...DB.stok];filteredPembelian=[];filteredPenggajian=[];populateKatDropdowns();populateMpDropdowns();applyPengaturan();ppSetMode('pp-dash','semua');renderDashboard();filterJual();renderStokTable();
   alert('Semua data berhasil dikosongkan. Silakan mulai input data Anda sendiri.');
 }}
 
