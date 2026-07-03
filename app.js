@@ -891,7 +891,7 @@ function renderStokPieChart(){
 // kelihatan kategori mana yang paling banyak "menyimpan" modal.
 function renderAsetStokChart(){
   const canvas=document.getElementById('chartAsetKategori');if(!canvas)return;
-  const byKat={};DB.stok.forEach(s=>{const k=s.kategori||'Lainnya';byKat[k]=(byKat[k]||0)+(s.stok||0)*(s.hpp||0)});
+  const byKat={};DB.stok.forEach(s=>{const k=s.kat||'Lainnya';byKat[k]=(byKat[k]||0)+(s.stok||0)*(s.hpp||0)});
   const entries=Object.entries(byKat).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
   const labels=entries.map(e=>e[0]),vals=entries.map(e=>Math.round(e[1]));
   const colors=labels.map(k=>getKatColor(k));
