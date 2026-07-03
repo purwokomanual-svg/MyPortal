@@ -535,10 +535,18 @@
         </div>
       </div>
 
+      <!-- "Periode Data" dinaikkan ke level halaman (bukan lagi ditempel di
+           dalam kartu Ringkasan Keuangan saja) karena sekarang periode ini
+           mengendalikan SELURUH konten laporan di bawah — termasuk grafik
+           Tren Bulanan yang sebelumnya punya dropdown periode sendiri. -->
+      <div class="fin-periode-bar no-print">
+        <div style="font-size:12px;color:var(--text3)">📅 Seluruh laporan di bawah ini — termasuk Tren Bulanan — mengikuti periode:</div>
+        <div class="periode-picker" id="pp-laporan"></div>
+      </div>
+
       <div class="card mb18 fin-hero">
         <div class="card-title">
           <span id="keuangan-title">Ringkasan Keuangan</span>
-          <div class="periode-picker no-print" id="pp-laporan"></div>
         </div>
         <div class="fin-metric-grid" id="keuangan-rows"></div>
       </div>
@@ -566,7 +574,7 @@
         </div>
         <div class="card"><div class="card-title">Nilai Aset per Kategori</div><div class="chart-box" style="height:210px"><canvas id="chartAsetKategori"></canvas></div></div>
       </div>
-      <div class="card mb18"><div class="card-title"><span id="bulanan-title">Tren Bulanan (6 Bulan Terakhir)</span><select class="form-select no-print" id="f-periode-bulanan" onchange="renderLaporan()" style="font-size:12px;padding:5px 10px"><option value="3">3 Bulan</option><option value="6" selected>6 Bulan</option><option value="12">12 Bulan</option></select></div><div class="chart-box" style="height:250px"><canvas id="chartBulanan"></canvas></div></div>
+      <div class="card mb18"><div class="card-title"><span id="bulanan-title">Tren Bulanan</span></div><div class="chart-box" style="height:250px"><canvas id="chartBulanan"></canvas></div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap" class="no-print">
         <button class="btn" onclick="exportCSV()">📥 Ekspor CSV Penjualan</button>
         <button class="btn" onclick="exportStokCSV()">📦 Ekspor CSV Stok</button>
