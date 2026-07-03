@@ -787,20 +787,13 @@ function renderDashboard(){
   // Laba & HPP estimasi (dihitung per barang, bukan per pesanan, agar
   // pesanan dengan beberapa produk tetap akurat)
   let totalLaba=0,totalHpp=0;flattenPenjualan(recent).forEach(f=>{const h=hitungLaba(f);totalLaba+=h.laba;totalHpp+=h.hpp});
-  // Hanya Penggajian yang dikurangkan dari laba bersih di sini — itu biaya
-  // operasional periode berjalan murni. Pembelian (belanja stok ke
-  // supplier) SENGAJA TIDAK dikurangkan lagi di sini: biaya pokok barang
-  // yang terjual sudah terwakili lewat HPP di atas (persen omzet / HPP
-  // manual per produk). Pembelian & HPP sama-sama merepresentasikan biaya
-  // pokok barang tapi dari sumber berbeda — kalau dikurangkan bersamaan,
-  // biaya barang terhitung dua kali (mis. bulan belanja stok besar untuk
-  // dijual bulan depan akan membuat Laba Bersih tampak minus padahal itu
-  // cuma belanja stok yang belum terjual, bukan kerugian). Total Pembelian
-  // tetap terlihat di menu Inventory sebagai info arus kas, hanya tidak
-  // lagi memotong Estimasi Laba Bersih.
+  // Pengeluaran operasional (Inventory: Pembelian & Penggajian) periode yang
+  // sama dengan periode Dashboard ini, dikurangkan dari laba bersih supaya
+  // angka "Estimasi Laba Bersih" benar-benar bersih, bukan cuma laba kotor
+  // dari penjualan.
   const totalBeliOpex=totalPembelianPeriode(start,end);
   const totalGajiOpex=totalPenggajianPeriode(start,end);
-  const totalOpex=totalGajiOpex;
+  const totalOpex=totalBeliOpex+totalGajiOpex;
   totalLaba-=totalOpex;
   const margin=totalRev>0?totalLaba/totalRev*100:0;
 
@@ -821,7 +814,7 @@ function renderDashboard(){
   document.getElementById('m-hpp').textContent=fmtRp(totalHpp);
   document.getElementById('m-hpp-sub').textContent=totalRev>0?(totalHpp/totalRev*100).toFixed(1)+'% dari omzet':'–';
   document.getElementById('m-opex').textContent=fmtRp(totalOpex);
-  document.getElementById('m-opex-sub').textContent='Penggajian periode ini'+(totalBeliOpex>0?' · Pembelian stok '+fmtRp(totalBeliOpex)+' (tidak memotong laba)':'');
+  document.getElementById('m-opex-sub').textContent='Pembelian '+fmtRp(totalBeliOpex)+' · Gaji '+fmtRp(totalGajiOpex);
   document.getElementById('m-margin-val').textContent=margin.toFixed(1)+'%';
   document.getElementById('m-margin-val').style.color=margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)';
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
@@ -836,8 +829,7 @@ function renderDashboard(){
   let alertHTML='';
   if(habis.length)alertHTML+=`<div class="alert alert-danger">⚠ <strong>${habis.length} varian stok habis</strong> — ${habis.slice(0,3).map(s=>s.prod+' '+s.varian).join(', ')}${habis.length>3?'...':''}</div>`;
   if(rendah.length)alertHTML+=`<div class="alert alert-warning">⚡ <strong>${rendah.length} varian stok rendah</strong> (&lt;${batas} pcs) — perlu segera restock</div>`;
-  if(totalOpex>0)alertHTML+=`<div class="alert alert-warning">🧾 <strong>Penggajian periode ini: ${fmtRp(totalOpex)}</strong> — sudah dikurangkan dari Estimasi Laba Bersih. <a href="javascript:void(0)" onclick="showSection('inventory')" style="color:inherit;text-decoration:underline">Lihat rincian di menu Inventory →</a></div>`;
-  if(totalBeliOpex>0)alertHTML+=`<div class="alert alert-info">🛒 <strong>Pembelian stok periode ini: ${fmtRp(totalBeliOpex)}</strong> — ini belanja stok ke supplier, tidak memotong Estimasi Laba Bersih (biaya pokok barang yang terjual sudah dihitung lewat HPP). <a href="javascript:void(0)" onclick="showSection('inventory')" style="color:inherit;text-decoration:underline">Lihat rincian di menu Inventory →</a></div>`;
+  if(totalOpex>0)alertHTML+=`<div class="alert alert-warning">🧾 <strong>Pengeluaran operasional periode ini: ${fmtRp(totalOpex)}</strong> (Pembelian ${fmtRp(totalBeliOpex)} + Penggajian ${fmtRp(totalGajiOpex)}) — sudah dikurangkan dari Estimasi Laba Bersih. <a href="javascript:void(0)" onclick="showSection('inventory')" style="color:inherit;text-decoration:underline">Lihat rincian di menu Inventory →</a></div>`;
   document.getElementById('alert-area').innerHTML=alertHTML;
 
   // MP breakdown
@@ -892,32 +884,6 @@ function renderStokPieChart(){
   const totalAset=DB.stok.reduce((a,s)=>a+(s.stok||0)*(s.hpp||0),0);
   const elAset=document.getElementById('stok-asset-total');
   if(elAset)elAset.textContent=fmtRp(totalAset);
-}
-
-// Chart "Nilai Aset per Kategori" di Laporan Keuangan — breakdown nilai
-// stok gudang (stok x HPP) dikelompokkan per kategori produk, supaya
-// kelihatan kategori mana yang paling banyak "menyimpan" modal.
-function renderAsetStokChart(){
-  const canvas=document.getElementById('chartAsetKategori');if(!canvas)return;
-  const byKat={};DB.stok.forEach(s=>{const k=s.kat||'Lainnya';byKat[k]=(byKat[k]||0)+(s.stok||0)*(s.hpp||0)});
-  const entries=Object.entries(byKat).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
-  const labels=entries.map(e=>e[0]),vals=entries.map(e=>Math.round(e[1]));
-  const colors=labels.map(k=>getKatColor(k));
-  if(charts.asetKategori)charts.asetKategori.destroy();
-  charts.asetKategori=new Chart(canvas,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:colors,borderWidth:0,borderRadius:5}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}},
-        y:{ticks:{color:'#888',font:{size:11}},grid:{display:false}}}}});
-  const totalAset=DB.stok.reduce((a,s)=>a+(s.stok||0)*(s.hpp||0),0);
-  const totalVarian=DB.stok.length;
-  const totalQty=DB.stok.reduce((a,s)=>a+(s.stok||0),0);
-  const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
-  const kritis=DB.stok.filter(s=>s.stok<=batas).length;
-  const setTxt=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v};
-  setTxt('aset-total-display',fmtRp(totalAset));
-  setTxt('aset-varian',totalVarian.toLocaleString('id-ID'));
-  setTxt('aset-qty',totalQty.toLocaleString('id-ID')+' pcs');
-  setTxt('aset-kritis',kritis.toLocaleString('id-ID'));
 }
 
 // ===== PENJUALAN TABLE =====
@@ -1392,16 +1358,6 @@ function hapusData(type,idx){
 function buatKodeInventory(prefix){return prefix+'-'+Date.now().toString(36).toUpperCase()+'-'+rnd(100,999)}
 
 // --- Total dalam rentang tanggal (dipakai Dashboard & Laporan Keuangan) ---
-// CATATAN: nilai dari fungsi ini SENGAJA TIDAK dikurangkan lagi dari
-// "Estimasi Laba Bersih" di Dashboard/Laba per Produk/Laporan Keuangan.
-// Pembelian mencatat belanja stok ke supplier, yang secara akuntansi
-// adalah biaya pokok barang (COGS) — dan biaya pokok barang yang TERJUAL
-// sudah dihitung lewat HPP (persen omzet atau HPP manual per produk di
-// hitungLaba()). Kalau Pembelian ikut dikurangkan juga, biaya barang
-// terhitung dua kali dari dua sumber berbeda (mis. bulan belanja stok
-// besar untuk dijual bulan depan akan membuat Laba Bersih tampak minus
-// besar padahal itu bukan kerugian). Nilainya tetap dihitung & ditampilkan
-// di sini untuk keperluan informasi arus kas di menu Inventory.
 function totalPembelianPeriode(start,end){
   return DB.pembelian.filter(r=>r._date&&(!start||new Date(r._date)>=start)&&(!end||new Date(r._date)<=end)).reduce((a,r)=>a+(Number(r.total)||0),0);
 }
@@ -1424,12 +1380,12 @@ function renderInventorySummary(){
   const{start,end,label}=ppGetRange('pp-inventory');
   const totalBeli=totalPembelianPeriode(start,end);
   const totalGaji=totalPenggajianPeriode(start,end);
-  const totalOpex=totalGaji; // hanya Penggajian yang mengurangi Laba Bersih — lihat catatan di totalPembelianPeriode()
+  const totalOpex=totalBeli+totalGaji;
   const labelEl=document.getElementById('inv-periode-label');if(labelEl)labelEl.textContent=label;
   el.innerHTML=`
-    <div class="metric-card m-warning"><div class="metric-icon">🛒</div><div class="metric-label">Total Pembelian</div><div class="metric-value">${fmtRp(totalBeli)}</div><div class="metric-sub" style="color:var(--text3)">${DB.pembelian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} transaksi · info arus kas, tidak memotong Laba Bersih (sudah terwakili lewat HPP)</div></div>
+    <div class="metric-card m-warning"><div class="metric-icon">🛒</div><div class="metric-label">Total Pembelian</div><div class="metric-value">${fmtRp(totalBeli)}</div><div class="metric-sub" style="color:var(--text3)">${DB.pembelian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} transaksi</div></div>
     <div class="metric-card m-warning"><div class="metric-icon">🧑‍💼</div><div class="metric-label">Total Penggajian</div><div class="metric-value">${fmtRp(totalGaji)}</div><div class="metric-sub" style="color:var(--text3)">${DB.penggajian.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end).length} entri</div></div>
-    <div class="metric-card metric-hero metric-hero-danger"><div class="metric-icon">🧾</div><div class="metric-label">Total Pengeluaran Operasional (Opex)</div><div class="metric-value metric-value-lg">${fmtRp(totalOpex)}</div><div class="metric-sub">Penggajian saja — mengurangi Estimasi Laba Bersih di Dashboard &amp; Laporan Keuangan</div></div>`;
+    <div class="metric-card metric-hero metric-hero-danger"><div class="metric-icon">🧾</div><div class="metric-label">Total Pengeluaran Operasional</div><div class="metric-value metric-value-lg">${fmtRp(totalOpex)}</div><div class="metric-sub">Mengurangi Estimasi Laba Bersih di Dashboard &amp; Laporan Keuangan</div></div>`;
 }
 
 // --- PEMBELIAN ---
@@ -1758,12 +1714,10 @@ function renderLabaRingkasan(){
   const all=flattenPenjualan(allOrders);
   let to=0,th=0,tf=0,te=0,tl=0;all.forEach(r=>{const h=hitungLaba(r);to+=h.omzet;th+=h.hpp;tf+=h.mpFee;te+=h.extra;tl+=h.laba});
   // Sama seperti Dashboard & Laporan Keuangan: laba bersih di sini juga
-  // sudah dikurangi Penggajian — dihitung sepanjang waktu (tanpa filter
-  // periode) karena kartu ini menampilkan ringkasan keseluruhan, bukan per
-  // periode. Pembelian TIDAK dikurangkan di sini (lihat catatan di
-  // totalPembelianPeriode()) supaya biaya pokok barang tidak terhitung dua
-  // kali (sekali lewat HPP di atas, sekali lagi lewat Pembelian).
-  const totalOpexAll=totalPenggajianPeriode(null,null);
+  // sudah dikurangi pengeluaran operasional (Pembelian & Penggajian) —
+  // dihitung sepanjang waktu (tanpa filter periode) karena kartu ini
+  // menampilkan ringkasan keseluruhan, bukan per periode.
+  const totalOpexAll=totalPembelianPeriode(null,null)+totalPenggajianPeriode(null,null);
   tl-=totalOpexAll;
   const margin=to>0?tl/to*100:0;
   document.getElementById('laba-metrics').innerHTML=`
@@ -1961,17 +1915,12 @@ function renderLaporan(){
 
   const rowsEl=document.getElementById('keuangan-rows');
   const{to,tl:tlKotor,tf,te,th}=hitungRingkasPeriode(dalamRentangFlat);
-  // Pengeluaran operasional (Inventory: Penggajian) di periode laporan yang
-  // sama, dikurangkan dari laba bersih penjualan supaya "Estimasi Laba
-  // Bersih" di Laporan Keuangan konsisten dengan Dashboard. Pembelian (beli
-  // stok ke supplier) SENGAJA TIDAK ikut dikurangkan di sini — biaya pokok
-  // barang yang terjual sudah terwakili lewat HPP (baris "HPP Estimasi" di
-  // atas). Menjumlahkan Pembelian & HPP sekaligus akan menghitung biaya
-  // barang dua kali. Total Pembelian tetap terlihat di menu Inventory
-  // sebagai info arus kas.
+  // Pengeluaran operasional (Inventory: Pembelian & Penggajian) di periode
+  // laporan yang sama, dikurangkan dari laba bersih penjualan supaya
+  // "Estimasi Laba Bersih" di Laporan Keuangan konsisten dengan Dashboard.
   const totalBeliOpex=totalPembelianPeriode(start,end);
   const totalGajiOpex=totalPenggajianPeriode(start,end);
-  const totalOpex=totalGajiOpex;
+  const totalOpex=totalBeliOpex+totalGajiOpex;
   const tl=tlKotor-totalOpex;
   const margin=to>0?tl/to*100:0;
   if(rowsEl){
@@ -1985,7 +1934,7 @@ function renderLaporan(){
       {l:'Biaya Admin Marketplace',v:'− '+fmtRp(tf),icon:'🏬',cls:'fm-warning',sub:to>0?(tf/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'Ongkir & Biaya Lain-lain',v:'− '+fmtRp(te),icon:'📦',cls:'fm-warning',sub:to>0?(te/to*100).toFixed(1)+'% dari omzet':'–'},
       {l:'HPP Estimasi',v:'− '+fmtRp(th),icon:'🏭',cls:'fm-danger',sub:to>0?(th/to*100).toFixed(1)+'% dari omzet':'–'},
-      {l:'Pengeluaran Operasional (Gaji)',v:'− '+fmtRp(totalOpex),icon:'🧾',cls:'fm-danger',sub:totalBeliOpex>0?'Belum termasuk Pembelian stok '+fmtRp(totalBeliOpex)+' (lihat menu Inventory)':'Penggajian periode ini'},
+      {l:'Pengeluaran Operasional',v:'− '+fmtRp(totalOpex),icon:'🧾',cls:'fm-danger',sub:'Pembelian '+fmtRp(totalBeliOpex)+' · Gaji '+fmtRp(totalGajiOpex)},
       {l:'Estimasi Laba Bersih',v:fmtRp(tl),icon:tl>=0?'📈':'📉',cls:tl>=0?'fm-success':'fm-danger',sub:margin.toFixed(1)+'% margin bersih'},
     ];
     rowsEl.innerHTML=cards.map(c=>`
@@ -2003,8 +1952,8 @@ function renderLaporan(){
   const pieCanvas=document.getElementById('chartKeuanganPie');
   if(pieCanvas){
     if(charts.keuanganPie)charts.keuanganPie.destroy();
-    charts.keuanganPie=new Chart(pieCanvas,{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Gaji)'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te),Math.round(totalOpex)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'68%'}});
-    const blabels=['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Gaji)'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'];const bvals=[th,tf,te,totalOpex];
+    charts.keuanganPie=new Chart(pieCanvas,{type:'doughnut',data:{labels:['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Beli+Gaji)'],datasets:[{data:[Math.round(th),Math.round(tf),Math.round(te),Math.round(totalOpex)],backgroundColor:['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'68%'}});
+    const blabels=['HPP','Admin MP','Ongkir & Biaya Lain','Operasional (Beli+Gaji)'];const bcolors=['#5b5ea6','#ee4d2d','#f59e0b','#ef4444'];const bvals=[th,tf,te,totalOpex];
     const legendEl=document.getElementById('keuangan-pie-legend');
     if(legendEl)legendEl.innerHTML=blabels.map((l,i)=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:${bcolors[i]}"></span>${l}: ${to>0?(bvals[i]/to*100).toFixed(1):0}%</span>`).join('');
   }
@@ -2013,51 +1962,14 @@ function renderLaporan(){
   const mpRev={};MP_LIST.forEach(m=>mpRev[m]=0);dalamRentang.forEach(r=>mpRev[r.mp]=(mpRev[r.mp]||0)+(r.total||0));
   charts.mpBar=new Chart(document.getElementById('chartMpBar'),{type:'bar',data:{labels:MP_LIST,datasets:[{label:'Revenue',data:MP_LIST.map(m=>Math.round(mpRev[m]/1e6*10)/10),backgroundColor:MP_LIST.map(m=>getMpColor(m)),borderWidth:0,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+v+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
 
-  renderAsetStokChart();
-
   if(charts.bulanan)charts.bulanan.destroy();
-  const tren=hitungTrenBulanan(start,end);
+  const selBulan=document.getElementById('f-periode-bulanan');
+  const bulanCount=selBulan?parseInt(selBulan.value)||6:6;
   const titleEl=document.getElementById('bulanan-title');
-  if(titleEl)titleEl.textContent='Tren Bulanan — '+tren.rangeLabel;
-  charts.bulanan=new Chart(document.getElementById('chartBulanan'),{
-    type:'bar',
-    data:{
-      labels:tren.labels,
-      datasets:MP_LIST.map(m=>({
-        label:m,
-        data:tren.data[m]||tren.labels.map(()=>0),
-        backgroundColor:getMpColor(m),
-        hoverBackgroundColor:getMpColor(m),
-        borderRadius:0, // stacked bar: radius di tiap segmen bikin sudut membulat di TENGAH tumpukan, jadi sengaja 0 (rata) supaya rapi
-        borderSkipped:false,
-        barPercentage:0.6,
-        categoryPercentage:0.66,
-        maxBarThickness:42
-      }))
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{
-          position:'bottom',align:'center',
-          labels:{font:{size:11.5},boxWidth:8,boxHeight:8,usePointStyle:true,pointStyle:'circle',padding:16}
-        },
-        tooltip:{
-          padding:10,cornerRadius:10,titleFont:{size:12,weight:'700'},bodyFont:{size:12},
-          callbacks:{
-            label:(ctx)=>` ${ctx.dataset.label}: ${fmtRp(ctx.parsed.y||0)}`,
-            footer:(items)=>{const total=items.reduce((a,it)=>a+(it.parsed.y||0),0);return 'Total: '+fmtRp(total)}
-          },
-          footerFont:{size:11.5,weight:'700'}
-        }
-      },
-      scales:{
-        x:{stacked:true,ticks:{color:'#888',font:{size:11},maxRotation:0,autoSkip:true},grid:{display:false},border:{display:false}},
-        y:{stacked:true,beginAtZero:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v),maxTicksLimit:6},grid:{color:'rgba(128,128,128,.08)'},border:{display:false}}
-      }
-    }
-  });
+  if(titleEl)titleEl.textContent='Tren Bulanan ('+bulanCount+' Bulan Terakhir)';
+  const tren=hitungTrenBulanan(bulanCount);
+  charts.bulanan=new Chart(document.getElementById('chartBulanan'),{type:'bar',data:{labels:tren.labels,datasets:MP_LIST.map(m=>({label:m,data:tren.data[m]||tren.labels.map(()=>0),backgroundColor:getMpColor(m),borderRadius:3}))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{stacked:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
 }
 // Pilih satuan waktu (day/week/month/year) otomatis dari lebar rentang
 // [start,end] — dipakai grafik Tren Penjualan di Dashboard supaya tetap
@@ -2298,52 +2210,14 @@ function hitungRingkasPeriode(list){
 // bulan berjalan (dipakai grafik Tren Bulanan di Laporan Keuangan). Data
 // diambil dari DB.penjualan asli (bukan dummy), dikelompokkan berdasarkan
 // tahun-bulan dari r._date, hanya pesanan yang berstatus aktif.
-// Tren Bulanan sekarang MENGIKUTI periode yang dipilih di "Periode Data"
-// (pp-laporan) — bukan lagi dropdown 3/6/12 bulan terpisah. Supaya tetap
-// enak dibaca walau orang memilih periode sangat panjang (mis. "Semua
-// Waktu"), rentang bulan yang ditampilkan otomatis dipersempit mengikuti
-// bulan-bulan yang BENAR-BENAR ada transaksinya di dalam periode itu
-// (bukan dari tahun 2000 sampai 2100), dan dibatasi maksimal 24 bulan.
-// Tren Bulanan MENGIKUTI periode yang dipilih di "Periode Data" (pp-laporan)
-// — tapi supaya tetap terasa sebagai "TREN" (bukan cuma 1 batang tunggal),
-// kalau periode yang dipilih terlalu pendek (kurang dari 2 bulan kalender —
-// mis. "Hari Ini", "7 Hari", "Per Hari") maka rentang bulan otomatis
-// diperluas jadi 6 bulan terakhir dihitung mundur dari akhir periode.
-// Sebaliknya kalau periode sangat panjang (mis. "Semua Waktu"), rentang
-// bulan dipersempit mengikuti bulan-bulan yang benar-benar ada
-// transaksinya, dibatasi maksimal 24 bulan supaya chart tetap terbaca.
-function hitungTrenBulanan(start,end){
-  let rangeStart=new Date(start.getFullYear(),start.getMonth(),1);
-  let rangeEnd=new Date(end.getFullYear(),end.getMonth(),1);
-  const spanBulan=(rangeEnd.getFullYear()-rangeStart.getFullYear())*12+(rangeEnd.getMonth()-rangeStart.getMonth())+1;
-
-  if(spanBulan<3){
-    rangeStart=new Date(rangeEnd.getFullYear(),rangeEnd.getMonth()-5,1);
-  }else if(spanBulan>24){
-    const dataDates=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).map(r=>new Date(r._date)).filter(d=>!isNaN(d));
-    if(dataDates.length){
-      const minD=new Date(Math.min(...dataDates.map(d=>d.getTime())));
-      const maxD=new Date(Math.max(...dataDates.map(d=>d.getTime())));
-      const minM=new Date(minD.getFullYear(),minD.getMonth(),1);
-      const maxM=new Date(maxD.getFullYear(),maxD.getMonth(),1);
-      if(minM>rangeStart)rangeStart=minM;
-      if(maxM<rangeEnd)rangeEnd=maxM;
-    }
-  }
-
+function hitungTrenBulanan(bulanCount){
+  const now=new Date();
   const bulanKe=[];
-  let cursor=new Date(rangeStart);
-  while(cursor<=rangeEnd&&bulanKe.length<24){
-    bulanKe.push({key:cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0'),label:cursor.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})});
-    cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);
+  for(let i=bulanCount-1;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    bulanKe.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})});
   }
-  if(!bulanKe.length){const d=new Date();bulanKe.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})})}
-
   const data={};MP_LIST.forEach(m=>data[m]=bulanKe.map(()=>0));
-  // Bulan-bulan yang ditampilkan bisa lebih luas dari [start,end] asli
-  // (kalau diperluas ke 6 bulan di atas), jadi pencocokan data dilakukan
-  // per KUNCI BULAN terhadap seluruh transaksi, bukan dibatasi ulang ke
-  // [start,end] mentah.
   DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).forEach(r=>{
     const d=new Date(r._date);if(isNaN(d))return;
     const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
@@ -2352,8 +2226,7 @@ function hitungTrenBulanan(start,end){
     if(!data[r.mp])data[r.mp]=bulanKe.map(()=>0);
     data[r.mp][idx]+=r.total||0;
   });
-  const rangeLabel=bulanKe.length>1?bulanKe[0].label+' – '+bulanKe[bulanKe.length-1].label:bulanKe[0].label;
-  return{labels:bulanKe.map(b=>b.label),data,rangeLabel};
+  return{labels:bulanKe.map(b=>b.label),data};
 }
 // Format angka Rupiah ringkas untuk sumbu grafik (rb/jt), menyesuaikan skala
 // omzet toko kecil maupun besar (dulu selalu dibulatkan ke "jt" saja).
