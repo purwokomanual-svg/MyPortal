@@ -784,9 +784,9 @@ function renderDashboard(){
   const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
   const kritis=DB.stok.filter(s=>s.stok<=batas).length;
 
-  // Laba estimasi (dihitung per barang, bukan per pesanan, agar pesanan
-  // dengan beberapa produk tetap akurat)
-  let totalLaba=0;flattenPenjualan(recent).forEach(f=>{totalLaba+=hitungLaba(f).laba});
+  // Laba & HPP estimasi (dihitung per barang, bukan per pesanan, agar
+  // pesanan dengan beberapa produk tetap akurat)
+  let totalLaba=0,totalHpp=0;flattenPenjualan(recent).forEach(f=>{const h=hitungLaba(f);totalLaba+=h.laba;totalHpp+=h.hpp});
   // Pengeluaran operasional (Inventory: Pembelian & Penggajian) periode yang
   // sama dengan periode Dashboard ini, dikurangkan dari laba bersih supaya
   // angka "Estimasi Laba Bersih" benar-benar bersih, bukan cuma laba kotor
@@ -809,15 +809,19 @@ function renderDashboard(){
   const pctOrd=prevOrd>0?((totalOrd-prevOrd)/prevOrd*100):(totalOrd>0?100:0);
   const panahSub=(pct)=>(pct>=0?'▲ ':'▼ ')+Math.abs(pct).toFixed(1)+'% vs periode lalu';
 
-  document.getElementById('m-rev').textContent=fmtRp(totalRev);
-  document.getElementById('m-rev-sub').textContent=panahSub(pctRev);
+  document.getElementById('m-omzet').textContent=fmtRp(totalRev);
+  document.getElementById('m-omzet-sub').textContent=panahSub(pctRev);
+  document.getElementById('m-hpp').textContent=fmtRp(totalHpp);
+  document.getElementById('m-hpp-sub').textContent=totalRev>0?(totalHpp/totalRev*100).toFixed(1)+'% dari omzet':'–';
+  document.getElementById('m-opex').textContent=fmtRp(totalOpex);
+  document.getElementById('m-opex-sub').textContent='Pembelian '+fmtRp(totalBeliOpex)+' · Gaji '+fmtRp(totalGajiOpex);
+  document.getElementById('m-margin-val').textContent=margin.toFixed(1)+'%';
+  document.getElementById('m-margin-val').style.color=margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)';
+  document.getElementById('m-laba').textContent=fmtRp(totalLaba);
+  document.getElementById('m-laba').style.color=totalLaba>=0?'var(--success)':'var(--danger)';
+  document.getElementById('m-laba-sub').textContent=totalLaba>=0?'📈 Untung':'📉 Rugi';
   document.getElementById('m-ord').textContent=totalOrd.toLocaleString('id-ID');
   document.getElementById('m-ord-sub').textContent=panahSub(pctOrd);
-  document.getElementById('m-laba').textContent=fmtRp(totalLaba);
-  document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih'+(totalOpex>0?' · − '+fmtRp(totalOpex)+' opex':'');
-  const labaCard=document.getElementById('m-laba-card');
-  if(labaCard)labaCard.classList.toggle('metric-hero-danger',totalLaba<0);
-  document.getElementById('m-kritis').textContent=kritis;
   document.getElementById('nb-stok').textContent=kritis;
 
   // Alerts
