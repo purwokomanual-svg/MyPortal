@@ -744,14 +744,6 @@ function populateKatDropdowns(){
 }
 
 // ===== DASHBOARD =====
-// Jam berjalan di status bar "Ruang Kendali Penjualan" — bukti visual bahwa
-// panel ini benar-benar live, bukan sekadar dekorasi statis.
-function tickDashClock(){
-  const el=document.getElementById('dc-clock');
-  if(!el)return;
-  el.textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-}
-setInterval(tickDashClock,1000);
 function reloadData(){renderDashboard()}
 function renderDashboard(){
   const{start,end}=ppGetRange('pp-dash');
@@ -785,11 +777,7 @@ function renderDashboard(){
   document.getElementById('m-laba').textContent=fmtRp(totalLaba);
   document.getElementById('m-margin').textContent=margin.toFixed(1)+'% margin bersih';
   const labaCard=document.getElementById('m-laba-card');
-  if(labaCard){
-    labaCard.classList.toggle('laba-hero-negative',totalLaba<0);
-    const icon=labaCard.querySelector('.laba-hero-icon');
-    if(icon)icon.textContent=totalLaba<0?'📉':'📈';
-  }
+  if(labaCard)labaCard.classList.toggle('metric-hero-danger',totalLaba<0);
   document.getElementById('m-kritis').textContent=kritis;
   document.getElementById('nb-stok').textContent=kritis;
 
@@ -1476,11 +1464,7 @@ function renderLabaRingkasan(){
     <div class="metric-card m-accent"><div class="metric-icon">💵</div><div class="metric-label">Total Omzet</div><div class="metric-value">${fmtRp(to)}</div><div class="metric-sub" style="color:var(--text3)">${allOrders.length} pesanan · ${all.length} barang</div></div>
     <div class="metric-card m-warning"><div class="metric-icon">🏬</div><div class="metric-label">Total Biaya Admin MP</div><div class="metric-value orange">${fmtRp(tf)}</div><div class="metric-sub orange">${to>0?(tf/to*100).toFixed(1):0}% dari omzet</div></div>
     <div class="metric-card m-danger"><div class="metric-icon">🏭</div><div class="metric-label">Total HPP</div><div class="metric-value red">${fmtRp(th)}</div><div class="metric-sub red">${to>0?(th/to*100).toFixed(1):0}% dari omzet</div></div>
-    <div class="laba-hero${tl>=0?'':' laba-hero-negative'}">
-      <div class="laba-hero-top"><div class="laba-hero-icon">${tl>=0?'📈':'📉'}</div><div class="laba-hero-label">Laba Bersih</div></div>
-      <div class="laba-hero-value">${fmtRp(tl)}</div>
-      <div class="laba-hero-sub">${margin.toFixed(1)}% margin</div>
-    </div>`;
+    <div class="metric-card metric-hero${tl>=0?'':' metric-hero-danger'}"><div class="metric-icon">${tl>=0?'📈':'📉'}</div><div class="metric-label">Laba Bersih</div><div class="metric-value metric-value-lg">${fmtRp(tl)}</div><div class="metric-sub">${margin.toFixed(1)}% margin</div></div>`;
 
   const mpData={};MP_LIST.forEach(m=>mpData[m]={laba:0,biaya:0});
   all.forEach(r=>{const h=hitungLaba(r);if(!mpData[r.mp])mpData[r.mp]={laba:0,biaya:0};mpData[r.mp].laba+=h.laba;mpData[r.mp].biaya+=h.omzet-h.laba});
@@ -1686,11 +1670,15 @@ function renderLaporan(){
         <div class="fin-metric-value">${c.v}</div>
         <div class="fin-metric-sub">${c.sub}</div>
       </div>`).join('')+`
-      <div class="laba-hero${tl>=0?'':' laba-hero-negative'}">
-        <div class="laba-hero-top"><div class="laba-hero-icon">${tl>=0?'📈':'📉'}</div><div class="laba-hero-label">Estimasi Laba Bersih</div></div>
-        <div class="laba-hero-value">${fmtRp(tl)}</div>
-        <div class="laba-hero-sub">Margin Bersih ${margin.toFixed(1)}%</div>
-        <div class="laba-hero-bar"><div class="laba-hero-bar-fill" style="width:${Math.max(0,Math.min(100,margin))}%"></div></div>
+      <div class="fin-metric fin-metric-hero ${tl>=0?'fm-success':'fm-danger'}">
+        <div class="fin-metric-icon">${tl>=0?'📈':'📉'}</div>
+        <div class="fin-metric-label">Estimasi Laba Bersih</div>
+        <div class="fin-metric-value fin-metric-value-lg">${fmtRp(tl)}</div>
+        <div class="fin-metric-sub">Margin Bersih</div>
+        <div class="margin-bar" style="margin-top:6px">
+          <div class="margin-track" style="width:100%"><div class="margin-fill" style="width:${Math.max(0,Math.min(100,margin))}%;background:${margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)'}"></div></div>
+          <span style="font-weight:800;color:${margin>=20?'var(--success)':margin>=0?'var(--warning)':'var(--danger)'}">${margin.toFixed(1)}%</span>
+        </div>
       </div>`;
   }
 
