@@ -1994,8 +1994,45 @@ function renderLaporan(){
   const tren=hitungTrenBulanan(start,end);
   const titleEl=document.getElementById('bulanan-title');
   if(titleEl)titleEl.textContent='Tren Bulanan — '+tren.rangeLabel;
-  charts.bulanan=new Chart(document.getElementById('chartBulanan'),{type:'bar',data:{labels:tren.labels,datasets:MP_LIST.map(m=>({label:m,data:tren.data[m]||tren.labels.map(()=>0),backgroundColor:getMpColor(m),borderRadius:3}))},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{stacked:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
+  charts.bulanan=new Chart(document.getElementById('chartBulanan'),{
+    type:'bar',
+    data:{
+      labels:tren.labels,
+      datasets:MP_LIST.map(m=>({
+        label:m,
+        data:tren.data[m]||tren.labels.map(()=>0),
+        backgroundColor:getMpColor(m),
+        hoverBackgroundColor:getMpColor(m),
+        borderRadius:0, // stacked bar: radius di tiap segmen bikin sudut membulat di TENGAH tumpukan, jadi sengaja 0 (rata) supaya rapi
+        borderSkipped:false,
+        barPercentage:0.6,
+        categoryPercentage:0.66,
+        maxBarThickness:42
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{
+          position:'bottom',align:'center',
+          labels:{font:{size:11.5},boxWidth:8,boxHeight:8,usePointStyle:true,pointStyle:'circle',padding:16}
+        },
+        tooltip:{
+          padding:10,cornerRadius:10,titleFont:{size:12,weight:'700'},bodyFont:{size:12},
+          callbacks:{
+            label:(ctx)=>` ${ctx.dataset.label}: ${fmtRp(ctx.parsed.y||0)}`,
+            footer:(items)=>{const total=items.reduce((a,it)=>a+(it.parsed.y||0),0);return 'Total: '+fmtRp(total)}
+          },
+          footerFont:{size:11.5,weight:'700'}
+        }
+      },
+      scales:{
+        x:{stacked:true,ticks:{color:'#888',font:{size:11},maxRotation:0,autoSkip:true},grid:{display:false},border:{display:false}},
+        y:{stacked:true,beginAtZero:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v),maxTicksLimit:6},grid:{color:'rgba(128,128,128,.08)'},border:{display:false}}
+      }
+    }
+  });
 }
 // Pilih satuan waktu (day/week/month/year) otomatis dari lebar rentang
 // [start,end] — dipakai grafik Tren Penjualan di Dashboard supaya tetap
