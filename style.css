@@ -480,24 +480,22 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
   display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
   margin-bottom:16px;
 }
-/* Kartu "Tren Omzet"/"Tren Penjualan" — kesan futuristik lewat cincin
-   gradasi neon tipis di sekeliling kartu (dibuat dari 2 pseudo-element,
-   BUKAN teknik background-clip ganda — teknik itu ternyata tidak konsisten
-   dirender di semua browser dan memunculkan garis mirip grid). Warna isi
-   kartu tetap var(--surface) supaya konsisten dengan tema terang/gelap. */
-.fin-glow-card{position:relative;isolation:isolate}
+/* Kartu "Tren Omzet" — kesan futuristik lewat border gradasi neon tipis +
+   glow lembut di sudut, tapi tetap memakai var(--surface) supaya konsisten
+   dengan tema terang/gelap aplikasi (bukan background gelap paksa). */
+.fin-glow-card{
+  position:relative;overflow:hidden;border:1px solid transparent;border-radius:var(--radius-lg);
+  background-image:linear-gradient(var(--surface),var(--surface)),linear-gradient(120deg,#7f5af0,#2cb1bc,#e63986,#7f5af0);
+  background-origin:border-box;background-clip:padding-box,border-box;
+  background-size:100% 100%,300% 300%;
+  animation:finGlowShift 10s ease infinite;
+}
 .fin-glow-card::before{
-  content:'';position:absolute;inset:-2px;border-radius:inherit;z-index:-2;
-  background:linear-gradient(120deg,#7f5af0,#2cb1bc,#e63986,#7f5af0);
-  background-size:300% 300%;animation:finGlowShift 10s ease infinite;
+  content:'';position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle,rgba(127,90,240,.20),transparent 70%);pointer-events:none;
 }
-.fin-glow-card::after{
-  content:'';position:absolute;inset:1px;border-radius:inherit;z-index:-1;
-  background:var(--surface);
-}
-.fin-glow-card>*{position:relative;z-index:1}
-@keyframes finGlowShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-@media print{.fin-glow-card::before,.fin-glow-card::after{display:none}.fin-glow-card{border:1px solid #ddd}}
+@keyframes finGlowShift{0%{background-position:0 0,0% 50%}50%{background-position:0 0,100% 50%}100%{background-position:0 0,0% 50%}}
+@media print{.fin-glow-card{animation:none;background-image:none;border:1px solid #ddd}.fin-glow-card::before{display:none}}
 .fin-hero{position:relative;overflow:hidden}
 .fin-metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .fin-metric{position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:20px 20px 18px;overflow:hidden;transition:transform .18s,box-shadow .18s}
