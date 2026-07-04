@@ -268,7 +268,7 @@
       </div>
       <div class="grid-2 mb18">
         <div class="card"><div class="card-title">Penjualan per Marketplace</div><div id="mp-list-dash"></div></div>
-        <div class="card"><div class="card-title">Tren Penjualan Harian</div><div class="chart-box" style="height:210px"><canvas id="chartTrend"></canvas></div></div>
+        <div class="card fin-glow-card"><div class="card-title">✨ Tren Penjualan Harian</div><div class="chart-box" style="height:210px"><canvas id="chartTrend"></canvas></div></div>
       </div>
       <div class="grid-2 mb18">
         <div class="card"><div class="card-title">Top 5 Produk Terlaris</div><div id="top5-bars"></div></div>
@@ -304,7 +304,7 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>No. Pesanan</th><th>Tanggal</th><th>Marketplace</th><th>Produk</th><th>Jml. Barang</th><th>Kategori</th><th style="text-align:center">Qty</th><th>Total</th><th>Biaya Admin</th><th>Biaya Tambahan</th><th>Laba</th><th>Margin</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>No. Pesanan</th><th>Tanggal</th><th>Marketplace</th><th>Produk</th><th>Jml. Barang</th><th>Kategori</th><th style="text-align:center">Qty</th><th>Total</th><th>Biaya Admin</th><th>Biaya Tambahan</th><th class="sensitive-col">Laba</th><th class="sensitive-col">Margin</th><th>Status</th><th>Aksi</th></tr></thead>
             <tbody id="tbl-jual"></tbody>
           </table>
         </div>
@@ -754,7 +754,7 @@
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Ongkir subsidi, packaging, dan biaya lain-lain untuk pesanan ini.</div>
       </div>
     </div>
-    <div class="hpp-grid" style="margin:2px 0 16px">
+    <div class="hpp-grid sensitive-col" style="margin:2px 0 16px">
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;letter-spacing:.03em">📈 Estimasi Laba</div>
         <div id="f-laba-display" style="font-size:21px;font-weight:800;margin-top:5px">Rp 0</div>
@@ -764,7 +764,7 @@
         <div id="f-margin-display" style="font-size:21px;font-weight:800;margin-top:5px">0%</div>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin:-10px 0 14px">💡 Dihitung otomatis dari HPP produk (Stok Gudang), Biaya Admin, dan Biaya Tambahan di atas — perkiraan, akan diperbarui otomatis saat Anda mengubah barang/biaya.</div>
+    <div class="sensitive-col" style="font-size:11px;color:var(--text3);margin:-10px 0 14px">💡 Dihitung otomatis dari HPP produk (Stok Gudang), Biaya Admin, dan Biaya Tambahan di atas — perkiraan, akan diperbarui otomatis saat Anda mengubah barang/biaya.</div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-tambah-jual')">Batal</button>
       <button class="btn btn-primary" id="btn-simpan-jual" onclick="simpanPesanan()">Simpan Pesanan</button>
