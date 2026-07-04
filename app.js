@@ -432,6 +432,44 @@ function showAppScreen(){
   document.getElementById('pending-screen').style.display='none';
   document.getElementById('app-wrap').style.display='';
 }
+// Daftar menu yang boleh diakses berdasarkan ROLE yang sedang login.
+// null artinya tidak dibatasi (Owner & Staff — semua menu boleh).
+function menusAllowedForRole(){
+  const role=_currentAdminRole;
+  if(role==='kasir')return['penjualan','stok'];
+  if(role==='viewer')return['dashboard','penjualan','stok','produk','laba','inventory','laporan'];
+  return null;
+}
+function applyNavVisibility(){
+  const allowed=menusAllowedForRole();
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    const m=el.getAttribute('data-menu');
+    el.style.display=(!allowed||allowed.includes(m))?'':'none';
+  });
+  // Judul grup sidebar ("Analitik","Data") ikut disembunyikan kalau SEMUA
+  // menu di bawahnya tidak ada yang boleh diakses role ini.
+  document.querySelectorAll('.nav-section').forEach(sec=>{
+    if(!allowed){sec.style.display='';return}
+    let next=sec.nextElementSibling,adaYangTampil=false;
+    while(next&&!next.classList.contains('nav-section')){
+      if(next.classList.contains('nav-item')&&allowed.includes(next.getAttribute('data-menu')))adaYangTampil=true;
+      next=next.nextElementSibling;
+    }
+    sec.style.display=adaYangTampil?'':'none';
+  });
+}
+// Halaman kasir.html (path terpisah dari index.html) — sidebar dipangkas
+// cuma menyisakan Penjualan & Stok Gudang, TERLEPAS dari role yang login
+// (cocok untuk komputer/terminal kasir bersama). Ini pelengkap
+// applyNavVisibility() di atas yang berbasis role.
+function applyKasirPageMode(){
+  if(!window.OMNI_KASIR_PAGE)return;
+  document.querySelectorAll('.nav-section').forEach(el=>el.style.display='none');
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    const m=el.getAttribute('data-menu');
+    el.style.display=(m==='penjualan'||m==='stok')?'':'none';
+  });
+}
 // Dipanggil setiap kali ada user berhasil login/signup/sesi ditemukan.
 // Mengecek role di tabel admin_users, lalu memutuskan layar mana yang tampil.
 async function proceedAfterAuth(user){
@@ -466,8 +504,10 @@ async function proceedAfterAuth(user){
     _currentAdminNama=data.nama||'';
     showAppScreen();
     await initApp();             // render semua section
+    applyKasirPageMode();        // pangkas sidebar kalau ini kasir.html
     handleHashRoute();           // buka menu sesuai path di URL (#/stok, dst) — bukan selalu Dashboard
-    applyRolePermissions();      // terapkan permission SETELAH render selesai
+    applyNavVisibility();        // pangkas sidebar sesuai ROLE (berlaku di index.html juga)
+    applyRolePermissions();      // terapkan permission tombol SETELAH render selesai
     updateAdminInfo();
   }catch(e){
     console.warn('Gagal cek role:',e);
@@ -595,7 +635,8 @@ async function simpanPasswordBaru(){
 // ===== HAK AKSES (ROLE PERMISSIONS) =====
 function isOwner(){return _currentAdminRole==='owner'}
 function canWrite(){return _currentAdminRole==='owner'||_currentAdminRole==='staff'} // boleh tambah/edit/hapus STOK, kategori, marketplace
-function canWriteOrders(){return _currentAdminRole==='owner'||_currentAdminRole==='staff'||_currentAdminRole==='kasir'} // boleh tambah/edit/hapus PESANAN saja
+function canWriteOrders(){return _currentAdminRole==='owner'||_currentAdminRole==='staff'||_currentAdminRole==='kasir'} // boleh tambah/edit PESANAN
+function canDeleteOrders(){return _currentAdminRole==='owner'||_currentAdminRole==='staff'} // HAPUS pesanan dikecualikan dari Kasir — kasir cuma boleh input & edit
 function canManageSettings(){return _currentAdminRole==='owner'} // boleh ubah biaya/pengaturan toko/marketplace/kategori/user
 // Sembunyikan/disable elemen UI sesuai role. Dipanggil setelah login & setiap render ulang halaman besar.
 function applyRolePermissions(){
@@ -725,7 +766,7 @@ function handleHashRoute(){
   if(document.getElementById('app-wrap').style.display==='none')return; // belum login, jangan pindah section dulu
   const id=menuIdFromHash();
   if(id&&id!==_currentSection)showSection(id);
-  else if(!id)showSection('dashboard'); // hash kosong/tidak dikenal -> default ke dashboard
+  else if(!id)showSection(window.OMNI_KASIR_PAGE?'penjualan':'dashboard'); // hash kosong -> default (Penjualan khusus utk kasir.html)
 }
 // Set #/menu di address bar. `replace=true` dipakai untuk navigasi awal
 // (biar tidak menambah entri baru di history browser tiap kali app dibuka).
@@ -741,6 +782,16 @@ window.addEventListener('hashchange',()=>{if(!_routingInternal)handleHashRoute()
 
 function showSection(id,el){
   if(!MENU_IDS.includes(id))id='dashboard';
+  // Halaman kasir.html (window.OMNI_KASIR_PAGE) hanya boleh menampilkan
+  // Penjualan & Stok Gudang — kalau ada yang coba akses menu lain lewat
+  // hash URL manual (mis. kasir.html#/pengaturan), paksa balik ke Penjualan.
+  if(window.OMNI_KASIR_PAGE&&id!=='penjualan'&&id!=='stok')id='penjualan';
+  // Guard berbasis ROLE — berlaku di halaman mana pun (termasuk index.html
+  // biasa). Kalau role sedang login tidak diizinkan mengakses menu `id`
+  // (mis. Kasir coba buka #/laporan lewat hash manual), alihkan ke menu
+  // pertama yang memang diizinkan untuk role tersebut.
+  const allowed=menusAllowedForRole();
+  if(allowed&&!allowed.includes(id))id=allowed[0];
   _currentSection=id;
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -862,16 +913,36 @@ function renderTrendChart(start,end){
   const buckets=buatBucketLaporan(start,end,unit);
   const aktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date);
   const labels=buckets.map(b=>b.label);
-  const datasets=MP_LIST.map(m=>({
-    label:m,
-    data:buckets.map(b=>aktif.filter(r=>r.mp===m&&new Date(r._date)>=b.start&&new Date(r._date)<=b.end).reduce((a,r)=>a+(r.total||0),0)),
-    borderColor:getMpColor(m),tension:.4,pointRadius:0,borderWidth:1.5,fill:false
-  }));
+  const canvas=document.getElementById('chartTrend');
+  const ctx=canvas.getContext('2d');
+  const datasets=MP_LIST.map(m=>{
+    const color=getMpColor(m);
+    const grad=ctx.createLinearGradient(0,0,0,210);
+    grad.addColorStop(0,color+'55');
+    grad.addColorStop(1,color+'00');
+    return{
+      label:m,
+      data:buckets.map(b=>aktif.filter(r=>r.mp===m&&new Date(r._date)>=b.start&&new Date(r._date)<=b.end).reduce((a,r)=>a+(r.total||0),0)),
+      borderColor:color,backgroundColor:grad,fill:true,tension:.42,borderWidth:2.25,
+      pointRadius:0,pointHoverRadius:5,pointBackgroundColor:color,pointBorderColor:'#fff',pointBorderWidth:1.5,
+      pointHoverBackgroundColor:'#fff',pointHoverBorderColor:color,pointHoverBorderWidth:2.25
+    };
+  });
   if(charts.trend)charts.trend.destroy();
-  charts.trend=new Chart(document.getElementById('chartTrend'),{type:'line',data:{labels,datasets},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#888',font:{size:10},maxTicksLimit:8,autoSkip:true},grid:{color:'rgba(128,128,128,.1)'}},
-        y:{ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
+  charts.trend=new Chart(canvas,{type:'line',data:{labels,datasets},
+    plugins:[finGlowPlugin],
+    options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'bottom',align:'center',labels:{font:{size:11},boxWidth:8,boxHeight:8,usePointStyle:true,pointStyle:'circle',padding:14}},
+        tooltip:{padding:9,cornerRadius:10,titleFont:{size:11.5,weight:'700'},bodyFont:{size:11.5},
+          callbacks:{
+            label:(c)=>` ${c.dataset.label}: ${fmtRp(c.parsed.y||0)}`,
+            footer:(items)=>{const total=items.reduce((a,it)=>a+(it.parsed.y||0),0);return 'Total: '+fmtRp(total)}
+          },footerFont:{size:11,weight:'700'}}
+      },
+      scales:{x:{ticks:{color:'#888',font:{size:10},maxTicksLimit:8,autoSkip:true},grid:{display:false},border:{display:false}},
+        y:{beginAtZero:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v),maxTicksLimit:5},grid:{color:'rgba(128,128,128,.08)'},border:{display:false}}}}});
 }
 
 function renderStokPieChart(){
@@ -959,10 +1030,10 @@ function renderJualTable(){
       <td style="font-weight:700;color:${warnaLaba}">${fmtRp(laba)}</td>
       <td style="font-weight:700;color:${warnaMargin}">${margin.toFixed(1)}%</td>
       <td><span class="badge ${ST_BADGE[r.status]||'badge-gray'}">${r.status}</span></td>
-      <td>${actionCellRW(`<div class="action-cell">
+      <td>${canWriteOrders()?`<div class="action-cell">
         <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditJual(${ri})">✏️</button>
-        <button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('jual',${ri})">🗑</button>
-      </div>`,'jual')}</td>
+        ${canDeleteOrders()?`<button class="btn btn-sm btn-icon btn-danger" title="Hapus" onclick="konfirmHapus('jual',${ri})">🗑</button>`:''}
+      </div>`:''}</td>
     </tr>`}).join(''):`<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--text3)">Tidak ada data pesanan</td></tr>`;
   renderPagination('pag-jual',filteredJual.length,pageJual,p=>{pageJual=p;renderJualTable()});
 }
@@ -1348,7 +1419,7 @@ function simpanRestock(){
 function konfirmHapus(type,idx){
   const needSettings=(type==='kat'||type==='mp');
   if(needSettings&&!canManageSettings()){alert("Hanya Owner yang bisa menghapus kategori/marketplace.");return}
-  if(type==='jual'&&!canWriteOrders()){alert("Anda tidak punya izin untuk menghapus pesanan.");return}
+  if(type==='jual'&&!canDeleteOrders()){alert("Anda tidak punya izin untuk menghapus pesanan. Hubungi Owner/Staff.");return}
   if((type==='pembelian'||type==='penggajian')&&!canWrite()){alert("Anda tidak punya izin untuk menghapus data ini.");return}
   if(!needSettings&&type!=='jual'&&type!=='pembelian'&&type!=='penggajian'&&!canWrite()){alert("Anda tidak punya izin untuk menghapus data ini.");return}
   const msg=type==='jual'?`Hapus pesanan "${DB.penjualan[idx].no}"?`:type==='stok'?`Hapus produk "${DB.stok[idx].prod} ${DB.stok[idx].varian}"?`:type==='mp'?`Hapus marketplace "${DB.marketplace[idx].nama}"? Pesanan lama dengan marketplace ini tidak akan terhapus.`:type==='pembelian'?`Hapus data pembelian "${DB.pembelian[idx].item}"?`:type==='penggajian'?`Hapus data penggajian untuk "${DB.penggajian[idx].namaKaryawan}"?`:`Hapus kategori "${DB.kategori[idx].nama}"?`;
@@ -2396,8 +2467,15 @@ function parseCSVLine(line){
   out.push(cur);
   return out;
 }
-function handleDrop(e,type){e.preventDefault();const f=e.dataTransfer.files[0];if(f)processCSV(f,type)}
-function importFile(e,type){if(e.target.files[0])processCSV(e.target.files[0],type)}
+function handleDrop(e,type){
+  e.preventDefault();
+  if(!canWrite()){alert("Anda tidak punya izin untuk mengimpor data. Hubungi Owner/Staff.");return}
+  const f=e.dataTransfer.files[0];if(f)processCSV(f,type);
+}
+function importFile(e,type){
+  if(!canWrite()){alert("Anda tidak punya izin untuk mengimpor data. Hubungi Owner/Staff.");e.target.value='';return}
+  if(e.target.files[0])processCSV(e.target.files[0],type);
+}
 function processCSV(file,type){
   const reader=new FileReader();
   reader.onload=function(e){
