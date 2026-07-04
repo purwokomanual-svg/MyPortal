@@ -442,6 +442,10 @@ function menusAllowedForRole(){
 }
 function applyNavVisibility(){
   const allowed=menusAllowedForRole();
+  // Data Laba/Margin di menu Penjualan (tabel & modal Tambah Pesanan)
+  // disembunyikan khusus untuk Kasir — mereka boleh input/edit pesanan,
+  // tapi angka laba/margin adalah data sensitif yang bukan urusan mereka.
+  document.body.classList.toggle('hide-sensitive-laba',_currentAdminRole==='kasir');
   document.querySelectorAll('.nav-item').forEach(el=>{
     const m=el.getAttribute('data-menu');
     el.style.display=(!allowed||allowed.includes(m))?'':'none';
@@ -1027,8 +1031,8 @@ function renderJualTable(){
       <td style="font-weight:600">${fmtRp(r.total)}</td>
       <td style="color:var(--warning)">${fmtRp(r.biayaAdmin!=null?r.biayaAdmin:0)}</td>
       <td style="color:var(--text2)">${fmtRp(r.biayaTambahan!=null?r.biayaTambahan:0)}</td>
-      <td style="font-weight:700;color:${warnaLaba}">${fmtRp(laba)}</td>
-      <td style="font-weight:700;color:${warnaMargin}">${margin.toFixed(1)}%</td>
+      <td class="sensitive-col" style="font-weight:700;color:${warnaLaba}">${fmtRp(laba)}</td>
+      <td class="sensitive-col" style="font-weight:700;color:${warnaMargin}">${margin.toFixed(1)}%</td>
       <td><span class="badge ${ST_BADGE[r.status]||'badge-gray'}">${r.status}</span></td>
       <td>${canWriteOrders()?`<div class="action-cell">
         <button class="btn btn-sm btn-icon" title="Edit" onclick="bukaEditJual(${ri})">✏️</button>
