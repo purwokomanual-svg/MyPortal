@@ -862,16 +862,36 @@ function renderTrendChart(start,end){
   const buckets=buatBucketLaporan(start,end,unit);
   const aktif=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date);
   const labels=buckets.map(b=>b.label);
-  const datasets=MP_LIST.map(m=>({
-    label:m,
-    data:buckets.map(b=>aktif.filter(r=>r.mp===m&&new Date(r._date)>=b.start&&new Date(r._date)<=b.end).reduce((a,r)=>a+(r.total||0),0)),
-    borderColor:getMpColor(m),tension:.4,pointRadius:0,borderWidth:1.5,fill:false
-  }));
+  const canvas=document.getElementById('chartTrend');
+  const ctx=canvas.getContext('2d');
+  const datasets=MP_LIST.map(m=>{
+    const color=getMpColor(m);
+    const grad=ctx.createLinearGradient(0,0,0,210);
+    grad.addColorStop(0,color+'55');
+    grad.addColorStop(1,color+'00');
+    return{
+      label:m,
+      data:buckets.map(b=>aktif.filter(r=>r.mp===m&&new Date(r._date)>=b.start&&new Date(r._date)<=b.end).reduce((a,r)=>a+(r.total||0),0)),
+      borderColor:color,backgroundColor:grad,fill:true,tension:.42,borderWidth:2.25,
+      pointRadius:0,pointHoverRadius:5,pointBackgroundColor:color,pointBorderColor:'#fff',pointBorderWidth:1.5,
+      pointHoverBackgroundColor:'#fff',pointHoverBorderColor:color,pointHoverBorderWidth:2.25
+    };
+  });
   if(charts.trend)charts.trend.destroy();
-  charts.trend=new Chart(document.getElementById('chartTrend'),{type:'line',data:{labels,datasets},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#888',font:{size:10},maxTicksLimit:8,autoSkip:true},grid:{color:'rgba(128,128,128,.1)'}},
-        y:{ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v)},grid:{color:'rgba(128,128,128,.1)'}}}}});
+  charts.trend=new Chart(canvas,{type:'line',data:{labels,datasets},
+    plugins:[finGlowPlugin],
+    options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'bottom',align:'center',labels:{font:{size:11},boxWidth:8,boxHeight:8,usePointStyle:true,pointStyle:'circle',padding:14}},
+        tooltip:{padding:9,cornerRadius:10,titleFont:{size:11.5,weight:'700'},bodyFont:{size:11.5},
+          callbacks:{
+            label:(c)=>` ${c.dataset.label}: ${fmtRp(c.parsed.y||0)}`,
+            footer:(items)=>{const total=items.reduce((a,it)=>a+(it.parsed.y||0),0);return 'Total: '+fmtRp(total)}
+          },footerFont:{size:11,weight:'700'}}
+      },
+      scales:{x:{ticks:{color:'#888',font:{size:10},maxTicksLimit:8,autoSkip:true},grid:{display:false},border:{display:false}},
+        y:{beginAtZero:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v),maxTicksLimit:5},grid:{color:'rgba(128,128,128,.08)'},border:{display:false}}}}});
 }
 
 function renderStokPieChart(){
