@@ -1989,6 +1989,118 @@ function renderLaporan(){
   charts.mpBar=new Chart(document.getElementById('chartMpBar'),{type:'bar',data:{labels:MP_LIST,datasets:[{label:'Revenue',data:MP_LIST.map(m=>Math.round(mpRev[m]/1e6*10)/10),backgroundColor:MP_LIST.map(m=>getMpColor(m)),borderWidth:0,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#888',font:{size:11}},grid:{display:false}},y:{ticks:{color:'#888',font:{size:10},callback:v=>'Rp'+v+'jt'},grid:{color:'rgba(128,128,128,.1)'}}}}});
 
   renderAsetStokChart();
+  renderTrenOmzetChart(start,end);
+}
+
+// Bucket bulan yang akan ditampilkan grafik "Tren Omzet" — mengikuti
+// Periode Data, tapi kalau periodenya terlalu pendek (<3 bulan kalender)
+// otomatis diperluas ke 6 bulan terakhir supaya tetap terasa sebagai TREN
+// (bukan cuma 1-2 titik). Periode sangat panjang (mis. "Semua Waktu")
+// dipersempit ke rentang transaksi yang benar-benar ada, maks 24 bulan.
+function hitungBucketBulan(start,end){
+  let rangeStart=new Date(start.getFullYear(),start.getMonth(),1);
+  let rangeEnd=new Date(end.getFullYear(),end.getMonth(),1);
+  const spanBulan=(rangeEnd.getFullYear()-rangeStart.getFullYear())*12+(rangeEnd.getMonth()-rangeStart.getMonth())+1;
+  if(spanBulan<3){
+    rangeStart=new Date(rangeEnd.getFullYear(),rangeEnd.getMonth()-5,1);
+  }else if(spanBulan>24){
+    const dataDates=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).map(r=>new Date(r._date)).filter(d=>!isNaN(d));
+    if(dataDates.length){
+      const minD=new Date(Math.min(...dataDates.map(d=>d.getTime())));
+      const maxD=new Date(Math.max(...dataDates.map(d=>d.getTime())));
+      const minM=new Date(minD.getFullYear(),minD.getMonth(),1);
+      const maxM=new Date(maxD.getFullYear(),maxD.getMonth(),1);
+      if(minM>rangeStart)rangeStart=minM;
+      if(maxM<rangeEnd)rangeEnd=maxM;
+    }
+  }
+  const bulanKe=[];
+  let cursor=new Date(rangeStart);
+  while(cursor<=rangeEnd&&bulanKe.length<24){
+    bulanKe.push({key:cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0'),label:cursor.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})});
+    cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);
+  }
+  if(!bulanKe.length){const d=new Date();bulanKe.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})})}
+  return bulanKe;
+}
+
+// Plugin Chart.js kecil untuk efek "glow" (cahaya neon) di sekeliling garis
+// line chart — menambahkan shadow pada canvas context sebelum tiap dataset
+// digambar, lalu mengembalikannya seperti semula setelahnya.
+const finGlowPlugin={
+  id:'finGlow',
+  beforeDatasetDraw(chart,args){
+    const ds=chart.data.datasets[args.index];
+    const ctx=chart.ctx;
+    ctx.save();
+    ctx.shadowColor=ds.borderColor;
+    ctx.shadowBlur=12;
+    ctx.shadowOffsetX=0;
+    ctx.shadowOffsetY=0;
+  },
+  afterDatasetDraw(chart){chart.ctx.restore()}
+};
+
+// Grafik "Tren Omzet" — line chart bergaya futuristik: garis bercahaya
+// (glow), area di bawah garis diberi gradasi memudar, kurva halus (tension),
+// dan titik data dengan cincin putih supaya menonjol dari latar.
+function renderTrenOmzetChart(start,end){
+  const canvas=document.getElementById('chartTrenOmzet');if(!canvas)return;
+  const bulanKe=hitungBucketBulan(start,end);
+  const rangeLabel=bulanKe.length>1?bulanKe[0].label+' – '+bulanKe[bulanKe.length-1].label:bulanKe[0].label;
+  const titleEl=document.getElementById('tren-omzet-title');
+  if(titleEl)titleEl.textContent='✨ Tren Omzet — '+rangeLabel;
+
+  const dataPerMp={};MP_LIST.forEach(m=>dataPerMp[m]=bulanKe.map(()=>0));
+  DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date).forEach(r=>{
+    const d=new Date(r._date);if(isNaN(d))return;
+    const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    const idx=bulanKe.findIndex(b=>b.key===key);
+    if(idx===-1)return;
+    if(!dataPerMp[r.mp])dataPerMp[r.mp]=bulanKe.map(()=>0);
+    dataPerMp[r.mp][idx]+=r.total||0;
+  });
+
+  const ctx=canvas.getContext('2d');
+  const datasets=MP_LIST.map(m=>{
+    const color=getMpColor(m);
+    const grad=ctx.createLinearGradient(0,0,0,280);
+    grad.addColorStop(0,color+'66');
+    grad.addColorStop(1,color+'00');
+    return{
+      label:m,data:dataPerMp[m]||bulanKe.map(()=>0),
+      borderColor:color,backgroundColor:grad,fill:true,
+      tension:.42,borderWidth:2.5,
+      pointRadius:3,pointHoverRadius:6,
+      pointBackgroundColor:color,pointBorderColor:'#fff',pointBorderWidth:1.5,
+      pointHoverBackgroundColor:'#fff',pointHoverBorderColor:color,pointHoverBorderWidth:2.5
+    };
+  });
+
+  if(charts.trenOmzet)charts.trenOmzet.destroy();
+  charts.trenOmzet=new Chart(canvas,{
+    type:'line',
+    data:{labels:bulanKe.map(b=>b.label),datasets},
+    plugins:[finGlowPlugin],
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'bottom',align:'center',labels:{font:{size:11.5},boxWidth:8,boxHeight:8,usePointStyle:true,pointStyle:'circle',padding:16}},
+        tooltip:{
+          padding:10,cornerRadius:10,titleFont:{size:12,weight:'700'},bodyFont:{size:12},
+          callbacks:{
+            label:(c)=>` ${c.dataset.label}: ${fmtRp(c.parsed.y||0)}`,
+            footer:(items)=>{const total=items.reduce((a,it)=>a+(it.parsed.y||0),0);return 'Total: '+fmtRp(total)}
+          },footerFont:{size:11.5,weight:'700'}
+        }
+      },
+      scales:{
+        x:{ticks:{color:'#888',font:{size:11},maxRotation:0,autoSkip:true},grid:{display:false},border:{display:false}},
+        y:{beginAtZero:true,ticks:{color:'#888',font:{size:10},callback:v=>fmtRingkas(v),maxTicksLimit:6},grid:{color:'rgba(128,128,128,.08)'},border:{display:false}}
+      }
+    }
+  });
 }
 // Pilih satuan waktu (day/week/month/year) otomatis dari lebar rentang
 // [start,end] — dipakai grafik Tren Penjualan di Dashboard supaya tetap
