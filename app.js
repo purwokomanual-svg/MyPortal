@@ -404,6 +404,7 @@ async function initApp(){
   ppInit('pp-dash',{mode:'30_hari'},()=>{renderDashboard();filterJual();});
   ppInit('pp-laporan',{mode:'7_hari'},()=>renderLaporan());
   ppInit('pp-inventory',{mode:'30_hari'},()=>{filterPembelian();filterPenggajian();renderInventorySummary();});
+  ppInit('pp-kasirdash',{mode:'hari_ini'},()=>renderDashboardKasir());
   renderDashboard();
   filterJual();
   renderStokTable();
@@ -436,7 +437,7 @@ function showAppScreen(){
 // null artinya tidak dibatasi (Owner & Staff — semua menu boleh).
 function menusAllowedForRole(){
   const role=_currentAdminRole;
-  if(role==='kasir')return['penjualan','stok'];
+  if(role==='kasir')return['dashboard-kasir','penjualan','stok'];
   if(role==='viewer')return['dashboard','penjualan','stok','produk','laba','inventory','laporan'];
   return null;
 }
@@ -448,6 +449,7 @@ function applyNavVisibility(){
   document.body.classList.toggle('hide-sensitive-laba',_currentAdminRole==='kasir');
   document.querySelectorAll('.nav-item').forEach(el=>{
     const m=el.getAttribute('data-menu');
+    if(m==='dashboard-kasir'){el.style.display=(_currentAdminRole==='kasir')?'':'none';return}
     el.style.display=(!allowed||allowed.includes(m))?'':'none';
   });
   // Judul grup sidebar ("Analitik","Data") ikut disembunyikan kalau SEMUA
@@ -471,7 +473,7 @@ function applyKasirPageMode(){
   document.querySelectorAll('.nav-section').forEach(el=>el.style.display='none');
   document.querySelectorAll('.nav-item').forEach(el=>{
     const m=el.getAttribute('data-menu');
-    el.style.display=(m==='penjualan'||m==='stok')?'':'none';
+    el.style.display=(m==='dashboard-kasir'||m==='penjualan'||m==='stok')?'':'none';
   });
 }
 // Dipanggil setiap kali ada user berhasil login/signup/sesi ditemukan.
@@ -752,7 +754,7 @@ if(typeof supabaseClient!=='undefined'&&supabaseClient){
 }
 
 // ===== SECTIONS =====
-const PAGE_TITLES={dashboard:'Dashboard',penjualan:'Laporan Penjualan',stok:'Stok & Gudang',produk:'Produk & Kategori',laba:'Laba & Biaya Admin per Produk',inventory:'Inventory — Pembelian & Penggajian',laporan:'Laporan Keuangan',import:'Import Data',pengaturan:'Pengaturan'};
+const PAGE_TITLES={dashboard:'Dashboard','dashboard-kasir':'Dashboard Kasir',penjualan:'Laporan Penjualan',stok:'Stok & Gudang',produk:'Produk & Kategori',laba:'Laba & Biaya Admin per Produk',inventory:'Inventory — Pembelian & Penggajian',laporan:'Laporan Keuangan',import:'Import Data',pengaturan:'Pengaturan'};
 const MENU_IDS=Object.keys(PAGE_TITLES);
 let _currentSection=null;
 
@@ -770,7 +772,7 @@ function handleHashRoute(){
   if(document.getElementById('app-wrap').style.display==='none')return; // belum login, jangan pindah section dulu
   const id=menuIdFromHash();
   if(id&&id!==_currentSection)showSection(id);
-  else if(!id)showSection(window.OMNI_KASIR_PAGE?'penjualan':'dashboard'); // hash kosong -> default (Penjualan khusus utk kasir.html)
+  else if(!id)showSection((window.OMNI_KASIR_PAGE||_currentAdminRole==='kasir')?'dashboard-kasir':'dashboard'); // hash kosong -> default (Dashboard Kasir khusus role/halaman kasir)
 }
 // Set #/menu di address bar. `replace=true` dipakai untuk navigasi awal
 // (biar tidak menambah entri baru di history browser tiap kali app dibuka).
@@ -789,7 +791,7 @@ function showSection(id,el){
   // Halaman kasir.html (window.OMNI_KASIR_PAGE) hanya boleh menampilkan
   // Penjualan & Stok Gudang — kalau ada yang coba akses menu lain lewat
   // hash URL manual (mis. kasir.html#/pengaturan), paksa balik ke Penjualan.
-  if(window.OMNI_KASIR_PAGE&&id!=='penjualan'&&id!=='stok')id='penjualan';
+  if(window.OMNI_KASIR_PAGE&&id!=='penjualan'&&id!=='stok'&&id!=='dashboard-kasir')id='dashboard-kasir';
   // Guard berbasis ROLE — berlaku di halaman mana pun (termasuk index.html
   // biasa). Kalau role sedang login tidak diizinkan mengakses menu `id`
   // (mis. Kasir coba buka #/laporan lewat hash manual), alihkan ke menu
@@ -811,6 +813,7 @@ function showSection(id,el){
   const jualTools=document.getElementById('topbar-jual-tools');
   if(jualTools)jualTools.style.display=(id==='dashboard'||id==='penjualan')?'flex':'none';
   if(id==='laporan')renderLaporan();
+  if(id==='dashboard-kasir')renderDashboardKasir();
   if(id==='produk')renderProduk();
   if(id==='laba'){renderLabaSection();renderBiayaInputs();renderHppMode();}
   if(id==='inventory'){filterPembelian();filterPenggajian();renderInventorySummary();}
@@ -831,6 +834,46 @@ function populateKatDropdowns(){
 
 // ===== DASHBOARD =====
 function reloadData(){renderDashboard()}
+// ===== DASHBOARD KASIR =====
+// Ringkasan khusus untuk role Kasir — HANYA status pesanan (Dikirim/
+// Diproses/Selesai/Dibatalkan), TIDAK ADA data omzet/laba/margin yang
+// sensitif (itu tetap di Dashboard biasa, khusus Owner/Staff/Viewer).
+function renderDashboardKasir(){
+  const{start,end,label}=ppGetRange('pp-kasirdash');
+  const labelEl=document.getElementById('kasirdash-periode-label');
+  if(labelEl)labelEl.textContent=label;
+  const dalamPeriode=DB.penjualan.filter(r=>r._date&&new Date(r._date)>=start&&new Date(r._date)<=end);
+  const hitung=st=>dalamPeriode.filter(r=>r.status===st).length;
+  const cards=[
+    {status:'Dikirim',icon:'🚚',cls:'m-accent',val:hitung('Dikirim')},
+    {status:'Diproses',icon:'⏳',cls:'m-warning',val:hitung('Diproses')},
+    {status:'Selesai',icon:'✅',cls:'m-success',val:hitung('Selesai')},
+    {status:'Dibatalkan',icon:'❌',cls:'m-danger',val:hitung('Dibatalkan')},
+  ];
+  const el=document.getElementById('kasirdash-metrics');
+  if(el)el.innerHTML=cards.map(c=>`
+    <div class="metric-card ${c.cls}">
+      <div class="metric-icon">${c.icon}</div>
+      <div class="metric-label">Total Pesanan ${c.status}</div>
+      <div class="metric-value">${c.val.toLocaleString('id-ID')}</div>
+      <div class="metric-sub" style="color:var(--text3)">pesanan di periode ini</div>
+    </div>`).join('');
+
+  const tbl=document.getElementById('kasirdash-tbl');
+  if(tbl){
+    const terbaru=[...dalamPeriode].sort((a,b)=>new Date(b._date||0)-new Date(a._date||0)).slice(0,10);
+    tbl.innerHTML=terbaru.length?terbaru.map(r=>`
+      <tr>
+        <td class="mono">${r.no}</td>
+        <td style="color:var(--text2)">${r.tanggal}</td>
+        <td><span class="mp-tag" style="${mpTagStyle(r.mp)}">${r.mp}</span></td>
+        <td style="font-weight:600">${ringkasProdukPesanan(r)}</td>
+        <td style="text-align:center;font-weight:600">${hitungQtyItems(r.items||[])}</td>
+        <td><span class="badge ${ST_BADGE[r.status]||'badge-gray'}">${r.status}</span></td>
+      </tr>`).join(''):`<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">Belum ada pesanan di periode ini</td></tr>`;
+  }
+}
+
 function renderDashboard(){
   const{start,end}=ppGetRange('pp-dash');
   const recent=DB.penjualan.filter(r=>r.status!=='Dibatalkan'&&r._date&&new Date(r._date)>=start&&new Date(r._date)<=end);
