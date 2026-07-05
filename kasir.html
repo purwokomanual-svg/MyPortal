@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kasir — OmniSeller</title>
+<title>OmniSeller — Dashboard Penjualan & Stok</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -136,7 +136,7 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
       <em>Omni</em>Seller
     </h1>
-    <small id="sidebar-logo-sub">Mode Kasir</small>
+    <small id="sidebar-logo-sub">Multi-Marketplace Dashboard</small>
   </div>
   <nav class="sidebar-nav">
     <div class="nav-section">Utama</div>
@@ -237,6 +237,18 @@
         <div class="periode-picker" id="pp-kasirdash"></div>
       </div>
       <div class="grid-4" id="kasirdash-metrics"></div>
+
+      <div class="grid-2 mb18" style="margin-top:18px">
+        <div class="card">
+          <div class="card-title">⚠️ Stok Habis <span class="badge badge-red" id="kasirdash-habis-count" style="margin-left:6px">0</span></div>
+          <div id="kasirdash-habis-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">⚡ Stok Rendah <span class="badge badge-yellow" id="kasirdash-rendah-count" style="margin-left:6px">0</span></div>
+          <div id="kasirdash-rendah-list"></div>
+        </div>
+      </div>
+
       <div class="card mb18" style="margin-top:18px">
         <div class="card-title">Pesanan Terbaru</div>
         <div class="table-wrap">
@@ -945,13 +957,6 @@
 
   </div>
 
-<script>
-  // Menandai halaman ini sebagai "Halaman Kasir" — path terpisah dari
-  // index.html biasa. app.js membaca flag ini untuk membatasi sidebar
-  // hanya ke menu Dashboard Kasir, Penjualan & Stok Gudang, dan
-  // menjadikan Dashboard Kasir sebagai halaman pertama setelah login.
-  window.OMNI_KASIR_PAGE=true;
-</script>
 <script src="supabase-config.js"></script>
 <script src="app.js"></script>
 </body>
