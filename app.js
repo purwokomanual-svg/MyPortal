@@ -859,6 +859,24 @@ function renderDashboardKasir(){
       <div class="metric-sub" style="color:var(--text3)">pesanan di periode ini</div>
     </div>`).join('');
 
+  // Daftar Stok Habis & Stok Rendah — supaya Kasir bisa langsung tahu
+  // barang apa yang tidak bisa dijual/perlu diinfokan ke pelanggan, tanpa
+  // harus bolak-balik buka menu Stok & Gudang.
+  const batas=(DB.pengaturan.batasStok!=null?DB.pengaturan.batasStok:10);
+  const habis=DB.stok.filter(s=>s.stok===0).sort((a,b)=>a.prod.localeCompare(b.prod));
+  const rendah=DB.stok.filter(s=>s.stok>0&&s.stok<=batas).sort((a,b)=>a.stok-b.stok);
+  const habisCountEl=document.getElementById('kasirdash-habis-count');if(habisCountEl)habisCountEl.textContent=habis.length;
+  const rendahCountEl=document.getElementById('kasirdash-rendah-count');if(rendahCountEl)rendahCountEl.textContent=rendah.length;
+  const renderStokList=(list,kosongMsg,tampilkanQty)=>list.length?list.map(s=>`
+    <div class="prog-row" style="align-items:center">
+      <div class="prog-label" style="flex:1">${esc(s.prod)}${s.varian?' — '+esc(s.varian):''}</div>
+      ${tampilkanQty?`<span class="badge badge-yellow">${s.stok} pcs</span>`:`<span class="badge badge-red">Habis</span>`}
+    </div>`).join(''):`<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px">${kosongMsg}</div>`;
+  const habisListEl=document.getElementById('kasirdash-habis-list');
+  if(habisListEl)habisListEl.innerHTML=renderStokList(habis,'🎉 Tidak ada stok yang habis',false);
+  const rendahListEl=document.getElementById('kasirdash-rendah-list');
+  if(rendahListEl)rendahListEl.innerHTML=renderStokList(rendah,'🎉 Tidak ada stok yang menipis',true);
+
   const tbl=document.getElementById('kasirdash-tbl');
   if(tbl){
     const terbaru=[...dalamPeriode].sort((a,b)=>new Date(b._date||0)-new Date(a._date||0)).slice(0,10);
