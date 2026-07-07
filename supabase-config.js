@@ -22,3 +22,6 @@ const TBL_PESANAN_ITEM='pesanan_item';
 // supplier & penggajian karyawan — dipakai untuk mengurangi Laba Bersih.
 const TBL_PEMBELIAN='pembelian';
 const TBL_PENGGAJIAN='penggajian';
+// Tabel History Aktivitas (lihat SETUP-LENGKAP-OMNISELLER.sql Bagian 7):
+// mencatat semua aktivitas tambah/edit/hapus/login/dst di seluruh aplikasi.
+const TBL_LOG_AKTIVITAS='log_aktivitas';
