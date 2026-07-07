@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kasir — OmniSeller</title>
 <link rel="stylesheet" href="style.css">
+<script>(function(){var t=localStorage.getItem('omni_theme');if(t!=='light')document.documentElement.setAttribute('data-theme','dark');})();</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
@@ -12,120 +13,102 @@
 
 <!-- LOGIN SCREEN -->
 <div id="login-screen" class="auth-screen">
-  <div class="auth-panel-left">
-    <div class="auth-brand-glow"></div>
-    <div class="auth-brand-content">
-      <div class="auth-brand-logo">
-        <img id="login-logo-img" style="display:none">
-        <svg id="login-logo-fallback" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-        <span><em>Omni</em>Seller</span>
-      </div>
-      <h2 class="auth-brand-title">Kelola semua marketplace<br>dalam satu dashboard.</h2>
-      <p class="auth-brand-sub">Pantau penjualan, stok, dan laba dari Shopee, Tokopedia, TikTok Shop, Lazada, dan marketplace lainnya — secara real-time, tersinkron otomatis ke cloud.</p>
-      <div class="auth-brand-stats">
-        <div class="auth-stat"><div class="auth-stat-icon">📊</div><div><div class="auth-stat-label">Dashboard</div><div class="auth-stat-desc">Real-time</div></div></div>
-        <div class="auth-stat"><div class="auth-stat-icon">☁️</div><div><div class="auth-stat-label">Cloud Sync</div><div class="auth-stat-desc">Supabase</div></div></div>
-        <div class="auth-stat"><div class="auth-stat-icon">🔒</div><div><div class="auth-stat-label">Aman</div><div class="auth-stat-desc">Role-based</div></div></div>
-      </div>
-    </div>
-  </div>
-  <div class="auth-panel-right">
+  <div class="auth-card">
     <button class="auth-theme-toggle" onclick="toggleTheme()" title="Ganti tema">◐</button>
-    <div class="auth-form-box">
-      <div class="auth-form-header" id="form-login-header">
-        <h1>Selamat Datang 👋</h1>
-        <p>Masuk untuk mengelola dashboard toko Anda</p>
-      </div>
-      <div class="auth-form-header" id="form-signup-header" style="display:none">
-        <h1>Buat Akun Baru</h1>
-        <p>Daftar sebagai administrator dashboard</p>
-      </div>
-      <div id="login-alert"></div>
 
-      <!-- FORM LOGIN -->
-      <div id="form-login">
-        <div class="auth-field">
-          <label>Email</label>
-          <div class="auth-input-wrap">
-            <svg class="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z" opacity="0"/><path d="M22 6 12 13 2 6"/><path d="M2 6h20v12H2z"/></svg>
-            <input class="auth-input" type="email" id="login-email" placeholder="admin@tokoanda.com">
-          </div>
-        </div>
-        <div class="auth-field">
-          <label>Password</label>
-          <div class="auth-input-wrap">
-            <svg class="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <input class="auth-input" type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')adminLogin()">
-          </div>
-        </div>
-        <button class="auth-btn-primary" id="btn-login" onclick="adminLogin()">Masuk ke Dashboard</button>
-        <div class="auth-switch-text">Belum ada akun? <a href="javascript:void(0)" onclick="toggleAuthForm('signup')">Daftar Administrator Baru</a></div>
-      </div>
+    <div class="auth-avatar">
+      <img id="login-logo-img" style="display:none">
+      <svg id="login-logo-fallback" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>
+    </div>
 
-      <!-- FORM SIGN UP -->
-      <div id="form-signup" style="display:none">
-        <div class="auth-field">
-          <label>Nama Administrator</label>
-          <div class="auth-input-wrap">
-            <svg class="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <input class="auth-input" id="signup-nama" placeholder="Nama Anda">
-          </div>
+    <div class="auth-form-header" id="form-login-header">
+      <h1>Selamat Datang</h1>
+      <p>Masukkan detail akun Anda untuk masuk ke dashboard.</p>
+    </div>
+    <div class="auth-form-header" id="form-signup-header" style="display:none">
+      <h1>Buat Akun Baru</h1>
+      <p>Daftar sebagai administrator dashboard.</p>
+    </div>
+    <div id="login-alert"></div>
+
+    <!-- FORM LOGIN -->
+    <div id="form-login">
+      <div class="auth-field">
+        <label>Email</label>
+        <div class="auth-input-wrap">
+          <input class="auth-input" type="email" id="login-email" placeholder="nama@tokoanda.com">
         </div>
-        <div class="auth-field">
-          <label>Email</label>
-          <div class="auth-input-wrap">
-            <svg class="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 6 12 13 2 6"/><path d="M2 6h20v12H2z"/></svg>
-            <input class="auth-input" type="email" id="signup-email" placeholder="admin-baru@tokoanda.com">
-          </div>
-        </div>
-        <div class="auth-field">
-          <label>Password</label>
-          <div class="auth-input-wrap">
-            <svg class="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <input class="auth-input" type="password" id="signup-password" placeholder="Minimal 6 karakter">
-          </div>
-        </div>
-        <div class="auth-field">
-          <label>Ulangi Password</label>
-          <div class="auth-input-wrap">
-            <svg class="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <input class="auth-input" type="password" id="signup-password2" placeholder="Ulangi password" onkeydown="if(event.key==='Enter')adminSignUp()">
-          </div>
-        </div>
-        <button class="auth-btn-primary" id="btn-signup" onclick="adminSignUp()">Daftar Sebagai Administrator</button>
-        <div class="auth-switch-text">Sudah punya akun? <a href="javascript:void(0)" onclick="toggleAuthForm('login')">Kembali ke Login</a></div>
       </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <div class="auth-input-wrap">
+          <input class="auth-input" type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')adminLogin()">
+        </div>
+      </div>
+      <div class="auth-row-between">
+        <label class="auth-remember" title="Sesi login memang otomatis tersimpan di browser ini"><input type="checkbox" checked disabled> Ingat saya</label>
+        <a href="javascript:void(0)" onclick="lupaKodeAkses()">Lupa password?</a>
+      </div>
+      <button class="auth-btn-primary" id="btn-login" onclick="adminLogin()">
+        Masuk
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </button>
+      <div class="auth-switch-text">Belum punya akun? <a href="javascript:void(0)" onclick="toggleAuthForm('signup')">Buat Akun</a></div>
+    </div>
+
+    <!-- FORM SIGN UP -->
+    <div id="form-signup" style="display:none">
+      <div class="auth-field">
+        <label>Nama Administrator</label>
+        <div class="auth-input-wrap">
+          <input class="auth-input" id="signup-nama" placeholder="Nama Anda">
+        </div>
+      </div>
+      <div class="auth-field">
+        <label>Email</label>
+        <div class="auth-input-wrap">
+          <input class="auth-input" type="email" id="signup-email" placeholder="admin-baru@tokoanda.com">
+        </div>
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <div class="auth-input-wrap">
+          <input class="auth-input" type="password" id="signup-password" placeholder="Minimal 6 karakter">
+        </div>
+      </div>
+      <div class="auth-field">
+        <label>Ulangi Password</label>
+        <div class="auth-input-wrap">
+          <input class="auth-input" type="password" id="signup-password2" placeholder="Ulangi password" onkeydown="if(event.key==='Enter')adminSignUp()">
+        </div>
+      </div>
+      <button class="auth-btn-primary" id="btn-signup" onclick="adminSignUp()">
+        Daftar Sebagai Administrator
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </button>
+      <div class="auth-switch-text">Sudah punya akun? <a href="javascript:void(0)" onclick="toggleAuthForm('login')">Kembali ke Login</a></div>
     </div>
   </div>
 </div>
 
 <!-- PENDING APPROVAL SCREEN -->
 <div id="pending-screen" class="auth-screen" style="display:none">
-  <div class="auth-panel-left">
-    <div class="auth-brand-glow"></div>
-    <div class="auth-brand-content">
-      <div class="auth-brand-logo">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-        <span><em>Omni</em>Seller</span>
-      </div>
-      <h2 class="auth-brand-title">Hampir sampai!</h2>
-      <p class="auth-brand-sub">Akun Anda sudah terdaftar. Tinggal selangkah lagi sebelum Anda bisa mulai mengelola dashboard toko.</p>
-    </div>
-  </div>
-  <div class="auth-panel-right">
-    <div class="auth-form-box" style="text-align:center">
+  <div class="auth-card">
+    <div style="text-align:center">
       <div class="auth-pending-icon">⏳</div>
-      <h1 style="margin-bottom:8px">Menunggu Persetujuan</h1>
-      <p style="color:var(--text2);font-size:13px;line-height:1.7;margin-bottom:6px">
-        Akun <strong id="pending-email"></strong> sudah berhasil terdaftar, tapi
+      <h1 style="margin-bottom:8px;font-size:22px;font-weight:600;letter-spacing:-.3px;color:#f3f7fd">Menunggu Persetujuan</h1>
+      <p style="color:#8ba3c7;font-size:13px;line-height:1.7;margin-bottom:6px">
+        Akun <strong id="pending-email" style="color:#eaf6ff"></strong> sudah berhasil terdaftar, tapi
         hak akses Anda belum diaktifkan oleh Owner/Administrator toko ini.
       </p>
-      <p style="color:var(--text3);font-size:12px;margin-bottom:24px">
+      <p style="color:#5b6a86;font-size:12px;margin-bottom:24px">
         Hubungi Owner untuk mengaktifkan akses Anda dari menu Pengaturan → Manajemen User.
       </p>
-      <button class="auth-btn-primary" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2)" onclick="adminLogout()">Keluar</button>
+      <button class="auth-btn-primary" style="background:rgba(255,255,255,.06);color:#eaf6ff;border:1px solid rgba(255,255,255,.12);box-shadow:none" onclick="adminLogout()">Keluar</button>
     </div>
   </div>
+</div>
+
 </div>
 
 <div id="app-wrap" style="display:none">
@@ -178,6 +161,10 @@
     <div class="nav-item" data-menu="import" onclick="showSection('import',this)">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span>Import Data</span>
+    </div>
+    <div class="nav-item" data-menu="history" onclick="showSection('history',this)">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14.5"/></svg>
+      <span>History</span>
     </div>
     <div class="nav-item" data-menu="pengaturan" onclick="showSection('pengaturan',this)">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -262,11 +249,19 @@
 
     <!-- DASHBOARD -->
     <div class="section active" id="sec-dashboard">
+      <div class="dash-hero">
+        <div>
+          <div class="dash-hero-title">Dashboard Toko</div>
+          <div class="dash-hero-sub">Ringkasan performa penjualan, stok, dan laba — semua marketplace dalam satu tampilan.</div>
+        </div>
+      </div>
       <div id="alert-area" style="margin-bottom:16px"></div>
       <div class="fin-metric-grid mb18">
         <div class="fin-metric fm-accent">
-          <div class="fin-metric-icon">💵</div>
-          <div class="fin-metric-label">Omzet Penjualan</div>
+          <div class="fin-metric-top">
+            <div><div class="fin-metric-icon">💵</div><div class="fin-metric-label">Omzet Penjualan</div></div>
+            <canvas class="fin-spark" id="spark-omzet" width="86" height="32"></canvas>
+          </div>
           <div class="fin-metric-value" id="m-omzet">Rp 0</div>
           <div class="fin-metric-sub" id="m-omzet-sub">–</div>
         </div>
@@ -283,8 +278,10 @@
           <div class="fin-metric-sub" id="m-opex-sub">–</div>
         </div>
         <div class="fin-metric fm-warning">
-          <div class="fin-metric-icon">📊</div>
-          <div class="fin-metric-label">Margin</div>
+          <div class="fin-metric-top">
+            <div><div class="fin-metric-icon">📊</div><div class="fin-metric-label">Margin</div></div>
+            <div class="fin-ring" id="margin-ring" style="--pct:0;--ring-color:var(--warning)"></div>
+          </div>
           <div class="fin-metric-value" id="m-margin-val">0%</div>
           <div class="fin-metric-sub">Margin bersih dari omzet</div>
         </div>
@@ -295,8 +292,10 @@
           <div class="fin-metric-sub" id="m-laba-sub">–</div>
         </div>
         <div class="fin-metric fm-accent">
-          <div class="fin-metric-icon">🧾</div>
-          <div class="fin-metric-label">Total Pesanan</div>
+          <div class="fin-metric-top">
+            <div><div class="fin-metric-icon">🧾</div><div class="fin-metric-label">Total Pesanan</div></div>
+            <canvas class="fin-spark fin-spark-bar" id="spark-ord" width="86" height="32"></canvas>
+          </div>
           <div class="fin-metric-value" id="m-ord">0</div>
           <div class="fin-metric-sub" id="m-ord-sub">–</div>
         </div>
@@ -306,7 +305,7 @@
         <div class="card fin-glow-card"><div class="card-title">✨ Tren Penjualan Harian</div><div class="chart-box" style="height:210px"><canvas id="chartTrend"></canvas></div></div>
       </div>
       <div class="grid-2 mb18">
-        <div class="card"><div class="card-title">Top 5 Produk Terlaris</div><div id="top5-bars"></div></div>
+        <div class="card"><div class="card-title">Top 5 Produk Terlaris</div><div id="top5-bars" class="equalizer"></div></div>
         <div class="card"><div class="card-title">Status Stok</div><div class="chart-box" style="height:170px"><canvas id="chartStokPie"></canvas></div><div id="pie-legend" style="display:flex;gap:14px;justify-content:center;margin-top:10px;font-size:12px;color:var(--text2);flex-wrap:wrap"></div>
           <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--text3)">💰 Total Nilai Aset Stok Gudang</span>
@@ -339,7 +338,7 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>No. Pesanan</th><th>Tanggal</th><th>Marketplace</th><th>Produk</th><th>Jml. Barang</th><th>Kategori</th><th style="text-align:center">Qty</th><th>Total</th><th>Biaya Admin</th><th>Biaya Tambahan</th><th class="sensitive-col">Laba</th><th class="sensitive-col">Margin</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>No. Pesanan</th><th>Tanggal</th><th>Marketplace</th><th>Produk</th><th>Jml. Barang</th><th>Kategori</th><th style="text-align:center">Qty</th><th>Total</th><th>Biaya Admin</th><th>Biaya Tambahan</th><th class="sensitive-col">Laba</th><th class="sensitive-col">Margin</th><th>Diinput Oleh</th><th>Status</th><th>Aksi</th></tr></thead>
             <tbody id="tbl-jual"></tbody>
           </table>
         </div>
@@ -366,7 +365,7 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>SKU</th><th>Produk</th><th>Varian</th><th>Kategori</th><th>Stok</th><th>HPP/pcs</th><th>Terjual (30h)</th><th>Est. Habis</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>SKU</th><th>Produk</th><th>Varian</th><th>Kategori</th><th>Stok</th><th>HPP/pcs</th><th>Terjual (30h)</th><th>Est. Habis</th><th>Update Terakhir</th><th>Status</th><th>Aksi</th></tr></thead>
             <tbody id="tbl-stok"></tbody>
           </table>
         </div>
@@ -405,11 +404,11 @@
     </div>
 
     <!-- LABA PER PRODUK -->
+    <!-- LABA PER PRODUK -->
     <div class="section" id="sec-laba">
       <div class="tab-pills">
         <div class="tab-pill active" onclick="switchLabaTab('ringkasan',this)">📊 Ringkasan Laba</div>
         <div class="tab-pill" onclick="switchLabaTab('pertabel',this)">📋 Detail per Produk</div>
-        <div class="tab-pill" onclick="switchLabaTab('biayaadmin',this)">⚙️ Pengaturan Biaya</div>
       </div>
 
       <!-- Ringkasan -->
@@ -462,40 +461,6 @@
             </table>
           </div>
           <div class="pagination" id="pag-laba"></div>
-        </div>
-      </div>
-
-      <!-- Pengaturan biaya -->
-      <div class="laba-sub" id="laba-biayaadmin">
-        <div class="info-box">💡 Biaya Admin (Rp) dan Biaya Tambahan (Rp) kini diisi langsung per pesanan di menu <strong>Penjualan</strong> (saat tambah/edit pesanan) — lebih akurat karena tiap marketplace & promo bisa beda potongan. Ringkasan rata-rata di bawah ini hanya untuk pemantauan, bukan input.</div>
-        <div class="grid-2 mb18">
-          <div class="card">
-            <div class="card-title">Biaya Admin &amp; Biaya Tambahan (dari data Penjualan)</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.7">Rata-rata biaya admin per marketplace dan rata-rata biaya tambahan per transaksi, dihitung otomatis dari pesanan yang sudah diinput. Untuk mengubahnya, edit langsung di menu Penjualan.</div>
-            <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Rata-rata Biaya Admin per Marketplace</div>
-            <div class="hpp-grid" id="mp-fee-summary"></div>
-            <div style="margin-top:16px">
-              <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Rata-rata Biaya Tambahan per Transaksi</div>
-              <div class="hpp-grid" id="extra-fee-summary"></div>
-            </div>
-            <button class="btn btn-sm" style="margin-top:14px" onclick="showSection('penjualan')">🧾 Buka Menu Penjualan</button>
-          </div>
-          <div class="card">
-            <div class="card-title">HPP (Harga Pokok Produksi)</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.7">Pilih mode perhitungan HPP. Mode % cocok untuk estimasi cepat. Mode per produk kini mengambil HPP otomatis dari data <strong>Stok & Gudang</strong> (diisi saat tambah/edit produk) — lebih akurat & tidak perlu input ulang di sini.</div>
-            <div class="form-group">
-              <label>Mode HPP</label>
-              <select class="form-input" id="hpp-mode" onchange="renderHppMode()">
-                <option value="pct">% Global dari omzet (estimasi)</option>
-                <option value="produk">Nominal Rp per produk (dari Stok Gudang)</option>
-              </select>
-            </div>
-            <div id="hpp-mode-content"></div>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" data-need="settings" onclick="simpanBiaya()">💾 Simpan Pengaturan HPP</button>
-          <button class="btn btn-sm" data-need="settings" onclick="resetBiaya()">↺ Reset Default</button>
         </div>
       </div>
     </div>
@@ -674,6 +639,63 @@
       </div>
     </div>
 
+    <!-- HISTORY AKTIVITAS -->
+    <div class="section" id="sec-history">
+      <div class="dash-hero">
+        <div>
+          <div class="dash-hero-title">History Aktivitas</div>
+          <div class="dash-hero-sub">Rekam jejak semua aktivitas tambah/edit/hapus/login yang dilakukan di aplikasi ini — untuk mengetahui siapa melakukan apa & kapan.</div>
+        </div>
+        <span id="history-count" style="font-size:12px;color:var(--text3)"></span>
+      </div>
+      <div class="filter-row">
+        <input class="form-input" style="flex:1;min-width:180px" placeholder="Cari keterangan atau nama user..." id="q-history" oninput="filterHistory()">
+        <select class="form-select" id="f-aksi-history" onchange="filterHistory()">
+          <option value="">Semua Aktivitas</option>
+          <option value="Tambah">Tambah</option>
+          <option value="Edit">Edit</option>
+          <option value="Hapus">Hapus</option>
+          <option value="Restock">Restock</option>
+          <option value="Rekonsiliasi">Rekonsiliasi</option>
+          <option value="Import">Import</option>
+          <option value="Restore">Restore</option>
+          <option value="Reset">Reset</option>
+          <option value="Login">Login</option>
+          <option value="Logout">Logout</option>
+          <option value="Error">Error (Console JS)</option>
+          <option value="Peringatan">Peringatan (Console JS)</option>
+        </select>
+        <select class="form-select" id="f-entitas-history" onchange="filterHistory()">
+          <option value="">Semua Data</option>
+          <option value="Pesanan">Pesanan</option>
+          <option value="Stok Produk">Stok Produk</option>
+          <option value="Kategori">Kategori</option>
+          <option value="Marketplace">Marketplace</option>
+          <option value="Pembelian">Pembelian</option>
+          <option value="Penggajian">Penggajian</option>
+          <option value="Biaya & HPP">Biaya & HPP</option>
+          <option value="Pengaturan Toko">Pengaturan Toko</option>
+          <option value="User & Akses">User & Akses</option>
+          <option value="Data">Data</option>
+          <option value="Console JS">Console JS</option>
+          <option value="Sistem">Sistem</option>
+        </select>
+        <button class="btn btn-sm" onclick="filterHistory()">🔄 Muat Ulang</button>
+        <button class="btn btn-sm btn-primary" onclick="exportHistoryCSV(this)">⬇️ Export CSV</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Waktu</th><th>Aktivitas</th><th>Data</th><th>Keterangan</th><th>Oleh</th></tr></thead>
+            <tbody id="tbl-history"></tbody>
+          </table>
+        </div>
+        <div style="text-align:center;padding:14px">
+          <button class="btn btn-sm" id="btn-history-more" onclick="muatHistoryLebihBanyak()" style="display:none">⬇️ Muat Lebih Banyak</button>
+        </div>
+      </div>
+    </div>
+
     <!-- PENGATURAN -->
     <div class="section" id="sec-pengaturan">
       <div class="grid-2">
@@ -799,7 +821,7 @@
         <div id="f-margin-display" style="font-size:21px;font-weight:800;margin-top:5px">0%</div>
       </div>
     </div>
-    <div class="sensitive-col" style="font-size:11px;color:var(--text3);margin:-10px 0 14px">💡 Dihitung otomatis dari HPP produk (Stok Gudang), Biaya Admin, dan Biaya Tambahan di atas — perkiraan, akan diperbarui otomatis saat Anda mengubah barang/biaya.</div>
+    <div class="sensitive-col" style="font-size:11px;color:var(--text3);margin:-10px 0 14px">💡 Dihitung dari HPP produk (Stok Gudang), Biaya Admin, dan Biaya Tambahan di atas — perkiraan, akan diperbarui otomatis saat Anda mengubah barang/biaya di pesanan ini. HPP yang dipakai dibekukan per barang saat pesanan dibuat, jadi laba pesanan ini tidak akan berubah lagi walau HPP produk di Stok Gudang naik/turun di kemudian hari.</div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-tambah-jual')">Batal</button>
       <button class="btn btn-primary" id="btn-simpan-jual" onclick="simpanPesanan()">Simpan Pesanan</button>
@@ -825,7 +847,7 @@
     <div class="form-group">
       <label>HPP (Harga Pokok Produksi) — Rp/pcs</label>
       <input class="form-input" type="number" id="s-hpp" placeholder="cth: 45000" value="0" min="0">
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Biaya pokok produksi/modal per pcs untuk produk-varian ini. Dipakai otomatis di laporan Laba & Biaya (mode "Nominal Rp per produk").</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Biaya pokok produksi/modal per pcs untuk produk-varian ini. Dipakai otomatis untuk menghitung Laba per Produk (dibekukan per pesanan saat transaksi dibuat).</div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-tambah-stok')">Batal</button>
