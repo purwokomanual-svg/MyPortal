@@ -1,43 +1,61 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 /* =========================================================
-   TEMA — terinspirasi dashboard fintech mint/hijau tua:
-   sidebar melayang gelap, kartu putih membulat besar, aksen
-   kuning hangat sebagai warna kedua, tombol berbentuk pil.
+   TEMA "AURORA DASHBOARD" — didesain ulang mengikuti referensi
+   dashboard analitik: satu "shell" gelap besar melayang di atas
+   latar biru pucat, sidebar/topbar navy-hitam pekat, kartu datar
+   dengan aksen biru tunggal, dan grafik bergaya monokrom biru +
+   sorotan warna semantik (hijau/merah/amber) secukupnya saja.
    ========================================================= */
 :root{
-  --bg:#eef6f1;--surface:#ffffff;--surface2:#f2f8f4;
-  --border:rgba(20,60,45,.09);--border2:rgba(20,60,45,.18);
-  --text:#16241d;--text2:#5c6d64;--text3:#94a49b;
-  --accent:#2f6f5c;--accent-dark:#1d4a3d;--accent-light:#dcf0e6;
-  --accent2:#f6b93b;--accent2-light:#fdf0d5;
-  --success:#2f9e64;--success-bg:#e1f6ea;
-  --warning:#c98a1d;--warning-bg:#fdf1da;
-  --danger:#e2685f;--danger-bg:#fbe8e6;
-  --radius:14px;--radius-lg:22px;
-  --shadow:0 14px 34px -14px rgba(20,60,45,.16),0 2px 8px rgba(20,60,45,.05);
-  --shadow-sm:0 4px 14px -6px rgba(20,60,45,.14);
+  --outer-bg:#e8eefb;
+  --shell-bg:#12141c;--shell-bg2:#181b26;
+  --bg:#f3f5fa;--surface:#ffffff;--surface2:#eef1f8;
+  --border:rgba(15,23,42,.08);--border2:rgba(15,23,42,.14);
+  --text:#0f1523;--text2:#57607a;--text3:#8993ad;
+  --accent:#3b82f6;--accent-dark:#1d4ed8;--accent-light:#e6efff;
+  --accent2:#0ea5e9;--accent2-light:#e1f4fd;
+  --success:#0ea472;--success-bg:#e3f8f0;
+  --warning:#d97706;--warning-bg:#fdf1de;
+  --danger:#dc2626;--danger-bg:#fbe8e8;
+  --c-cyan:#0891b2;--c-pink:#db2777;--c-violet:#6366f1;--c-gold:#d97706;--c-teal:#0ea472;
+  --radius:14px;--radius-lg:20px;
+  --shadow:0 14px 34px -14px rgba(15,23,42,.16),0 2px 8px rgba(15,23,42,.05);
+  --shadow-sm:0 4px 14px -6px rgba(15,23,42,.1);
 }
 [data-theme="dark"]{
-  --bg:#0e1712;--surface:#17221c;--surface2:#1e2c24;
-  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.16);
-  --text:#eef5f0;--text2:#9fb0a6;--text3:#647169;
-  --accent:#4caf8c;--accent-dark:#0f2e24;--accent-light:#173c30;
-  --accent2:#f6b93b;--accent2-light:#3a2c10;
-  --success:#4ade80;--success-bg:#0e2f1e;
-  --warning:#fbbf24;--warning-bg:#2d2000;
-  --danger:#f87171;--danger-bg:#2d0d0d;
-  --shadow:0 14px 34px -14px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.3);
-  --shadow-sm:0 4px 14px -6px rgba(0,0,0,.45);
+  --outer-bg:#e8eefb;
+  --bg:#0d0f17;--surface:#161922;--surface2:#1c202b;
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.14);
+  --text:#f4f6fc;--text2:#9aa3ba;--text3:#5b6480;
+  --accent:#3b82f6;--accent-dark:#93c5fd;--accent-light:rgba(59,130,246,.16);
+  --accent2:#22d3ee;--accent2-light:rgba(34,211,238,.14);
+  --success:#34d399;--success-bg:rgba(52,211,153,.14);
+  --warning:#fbbf24;--warning-bg:rgba(251,191,36,.14);
+  --danger:#f87171;--danger-bg:rgba(248,113,113,.14);
+  --c-cyan:#22d3ee;--c-pink:#f472b6;--c-violet:#818cf8;--c-gold:#fbbf24;--c-teal:#34d399;
+  --shadow:0 20px 45px -18px rgba(0,0,0,.6),0 4px 14px rgba(0,0,0,.35);
+  --shadow-sm:0 8px 22px -10px rgba(0,0,0,.5);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+html,body{height:100%}
+body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);font-size:14px;line-height:1.5;
+  background:var(--shell-bg2);
+  min-height:100vh;
+}
 
-/* ===== Layout ===== */
-.sidebar{position:fixed;top:14px;left:14px;bottom:14px;width:232px;background:var(--accent-dark);border-radius:26px;display:flex;flex-direction:column;z-index:100;overflow-y:auto;box-shadow:var(--shadow);padding:6px}
-.main{margin-left:262px;min-height:100vh}
-.topbar{background:var(--surface);border-bottom:none;border-radius:20px;margin:14px 18px 0;padding:12px 20px;height:auto;display:flex;align-items:center;justify-content:space-between;position:sticky;top:14px;z-index:50;box-shadow:var(--shadow-sm);gap:12px;flex-wrap:wrap}
-.page-content{padding:20px 18px 28px;max-width:1280px}
+/* ===== Layout: sidebar + main mengisi penuh layar browser (edge-to-edge) ===== */
+#app-wrap{display:flex;width:100%;background:var(--shell-bg2);
+  border-radius:0;overflow:hidden;border:none;box-shadow:none;
+  height:100vh;
+}
+.sidebar{position:static;width:230px;flex-shrink:0;background:linear-gradient(195deg,#0b0d13,#161a24 60%,#1a1e2b);
+  border-radius:0;display:flex;flex-direction:column;overflow-y:auto;box-shadow:none;padding:8px;
+  border-right:1px solid rgba(255,255,255,.06);
+}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg);overflow-y:auto}
+.topbar{background:var(--bg);border-bottom:1px solid var(--border);border-radius:0;margin:0;padding:16px 26px;height:auto;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:none;gap:12px;flex-wrap:wrap}
+.page-content{padding:22px 26px 34px;max-width:1400px}
 
 /* ===== Sidebar ===== */
 .sidebar-logo{padding:16px 14px 16px;border-bottom:1px solid rgba(255,255,255,.12)}
@@ -49,21 +67,15 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .nav-item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:16px;cursor:pointer;color:rgba(255,255,255,.72);font-size:13px;font-weight:500;transition:all .18s;margin-bottom:3px;user-select:none}
 .nav-item svg{flex-shrink:0;opacity:.9}
 .nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
-.nav-item.active{background:var(--surface);color:var(--accent-dark);font-weight:700;box-shadow:0 6px 16px -4px rgba(0,0,0,.35)}
-.nav-item.active svg{color:var(--accent)}
-/* Mode gelap: --surface & --accent-dark sama-sama warna gelap (nyaris tak
-   berbeda), jadi tulisan menu aktif nyaris tak kelihatan. Override khusus
-   dark mode dengan kombinasi kontras tinggi: pil hijau mint terang + teks
-   gelap pekat, supaya tetap senada tema tapi jelas terbaca. */
-[data-theme="dark"] .nav-item.active{background:var(--accent);color:#0c1512;box-shadow:0 6px 16px -4px rgba(0,0,0,.5)}
-[data-theme="dark"] .nav-item.active svg{color:#0c1512}
-.nav-badge{margin-left:auto;background:var(--accent2);color:#3a2c10;font-size:10px;padding:1px 7px;border-radius:20px;font-weight:800}
+.nav-item.active{background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-weight:700;box-shadow:0 8px 20px -6px rgba(59,130,246,.55)}
+.nav-item.active svg{color:#fff}
+.nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;padding:1px 7px;border-radius:20px;font-weight:800}
 
 /* ===== Sidebar user / account widget (menu login) ===== */
 .sidebar-user{position:relative;margin:8px 6px 6px;border-top:1px solid rgba(255,255,255,.12);padding-top:8px;flex-shrink:0}
 .su-trigger{width:100%;display:flex;align-items:center;gap:9px;padding:8px;border-radius:16px;border:none;background:rgba(255,255,255,.06);cursor:pointer;text-align:left;font-family:inherit;transition:background .15s}
 .su-trigger:hover{background:rgba(255,255,255,.12)}
-.su-avatar{flex-shrink:0;width:32px;height:32px;border-radius:50%;background:var(--accent2);color:#3a2c10;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;text-transform:uppercase}
+.su-avatar{flex-shrink:0;width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;text-transform:uppercase}
 .su-info{flex:1;min-width:0}
 .su-name{font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .su-role{font-size:10px;font-weight:700;margin-top:1px;color:rgba(255,255,255,.55)}
@@ -86,7 +98,7 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 /* ===== Buttons ===== */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:30px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;white-space:nowrap}
 .btn:hover{background:var(--surface2);transform:translateY(-1px)}
-.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 6px 16px -6px rgba(47,111,92,.55)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-dark));color:#fff;border-color:transparent;box-shadow:0 6px 16px -6px rgba(59,130,246,.5)}
 .btn-primary:hover{background:var(--accent-dark);opacity:1}
 .btn-sm{padding:6px 13px;font-size:12px}
 .btn-danger{background:var(--danger-bg);color:var(--danger);border-color:transparent}
@@ -127,7 +139,7 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 [data-theme="dark"] .metric-card::after{background:radial-gradient(140px 90px at 100% 0%,rgba(255,255,255,.08),transparent 70%)}
 .metric-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
 .metric-card:hover::after{opacity:1}
-.metric-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;background:var(--surface)}
+.metric-icon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;background:var(--accent-light)}
 .metric-label{font-size:11.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
 .metric-value{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px}
 .metric-value-lg{font-size:26px}
@@ -141,6 +153,13 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 .metric-card.m-danger .metric-value{color:var(--danger)}
 .metric-card.m-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
 .metric-card.m-success .metric-value{color:var(--success)}
+/* Garis aksen di puncak kartu metrik — satu warna biru konsisten (bukan
+   pelangi bergantian), senada gaya monokrom-biru dashboard referensi. */
+.metric-card{border-top:3px solid var(--accent);opacity:1}
+.metric-card.m-warning{border-top-color:var(--warning)}
+.metric-card.m-danger{border-top-color:var(--danger)}
+.metric-card.m-success{border-top-color:var(--success)}
+.metric-card .metric-icon{color:var(--accent)}
 
 /* Varian "hero" — dipakai untuk metrik laba/profit yang ingin ditonjolkan
    (mis. "Estimasi Laba Bersih"), PERSIS sama dengan kartu hero di Laporan
@@ -154,11 +173,11 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
    warna pekat. */
 .metric-card.metric-hero{
   background:linear-gradient(160deg,var(--success-bg),var(--surface2));
-  box-shadow:0 12px 28px -16px rgba(47,158,100,.35);
+  box-shadow:0 12px 28px -16px rgba(45,212,167,.35);
 }
 .metric-card.metric-hero.metric-hero-danger{
   background:linear-gradient(160deg,var(--danger-bg),var(--surface2));
-  box-shadow:0 12px 28px -16px rgba(226,104,95,.35);
+  box-shadow:0 12px 28px -16px rgba(255,93,143,.35);
 }
 .metric-card.metric-hero .metric-icon{background:var(--surface);color:var(--success)}
 .metric-card.metric-hero.metric-hero-danger .metric-icon{color:var(--danger)}
@@ -176,9 +195,9 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 
 /* ===== Alert ===== */
 .alert{display:flex;align-items:flex-start;gap:10px;padding:12px 15px;border-radius:14px;font-size:13px;margin-bottom:10px}
-.alert-danger{background:var(--danger-bg);color:var(--danger);border:1px solid rgba(226,104,95,.25)}
-.alert-warning{background:var(--warning-bg);color:var(--warning);border:1px solid rgba(201,138,29,.25)}
-.alert-success{background:var(--success-bg);color:var(--success);border:1px solid rgba(47,158,100,.25)}
+.alert-danger{background:var(--danger-bg);color:var(--danger);border:1px solid rgba(255,93,143,.25)}
+.alert-warning{background:var(--warning-bg);color:var(--warning);border:1px solid rgba(255,200,87,.3)}
+.alert-success{background:var(--success-bg);color:var(--success);border:1px solid rgba(45,212,167,.25)}
 
 /* ===== Table ===== */
 .table-wrap{overflow-x:auto}
@@ -233,7 +252,7 @@ tr:hover td{background:var(--surface2)}
 .sumrow .label{color:var(--text2);font-weight:500}
 
 /* ===== Modal ===== */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,30,24,.55);z-index:999;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(8,12,20,.6);z-index:999;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)}
 .modal-overlay.open{display:flex}
 .modal{background:var(--surface);border-radius:26px;padding:26px;width:520px;max-width:100%;border:1px solid var(--border);max-height:90vh;overflow-y:auto;box-shadow:var(--shadow)}
 .modal h3{font-size:17px;font-weight:800;margin-bottom:18px;display:flex;align-items:center;gap:8px;color:var(--text)}
@@ -268,7 +287,7 @@ tr:hover td{background:var(--surface2)}
 .margin-bar{display:flex;align-items:center;gap:6px}
 .margin-track{width:56px;height:6px;background:var(--surface2);border-radius:6px;overflow:hidden;flex-shrink:0}
 .margin-fill{height:100%;border-radius:6px}
-.info-box{background:var(--accent-light);border:1px solid rgba(47,111,92,.2);border-radius:14px;padding:13px 15px;font-size:12px;color:var(--accent-dark);margin-bottom:16px;line-height:1.6}
+.info-box{background:var(--accent-light);border:1px solid rgba(59,130,246,.25);border-radius:14px;padding:13px 15px;font-size:12px;color:var(--accent-dark);margin-bottom:16px;line-height:1.6}
 [data-theme="dark"] .info-box{color:var(--accent)}
 .hpp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
 .hpp-item{background:var(--surface2);border-radius:14px;padding:12px 14px}
@@ -288,6 +307,38 @@ tr:hover td{background:var(--surface2)}
 /* ===== Chart ===== */
 .chart-box{position:relative}
 
+/* ===== Dashboard hero header (mirip "My Dashboard" pada referensi) ===== */
+.dash-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.dash-hero-title{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.4px}
+.dash-hero-sub{font-size:12.5px;color:var(--text3);margin-top:4px;max-width:520px}
+
+/* ===== Mini sparkline di kartu metrik (gaya kartu "Revenue"/"Customers"
+   pada referensi) — canvas digambar manual lewat drawSparkline() di app.js,
+   tanpa dependensi Chart.js supaya ringan. ===== */
+.fin-metric-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:2px}
+.fin-spark{flex-shrink:0;opacity:.95}
+
+/* ===== Radial progress ring (gaya "Lead Conversion" pada referensi) —
+   dibuat murni CSS pakai conic-gradient, persentase & warna diatur lewat
+   custom property --pct & --ring-color dari JS (lihat renderDashboard()). */
+.fin-ring{
+  --pct:0;--ring-color:var(--accent);
+  width:44px;height:44px;border-radius:50%;flex-shrink:0;
+  background:conic-gradient(var(--ring-color) calc(var(--pct)*1%),var(--surface2) 0);
+  display:flex;align-items:center;justify-content:center;
+  transition:background .5s;
+}
+.fin-ring::after{content:'';width:30px;height:30px;border-radius:50%;background:var(--surface2)}
+
+/* ===== Equalizer bar chart (gaya kartu "NPS" pada referensi) — dipakai
+   untuk Top 5 Produk Terlaris, tiap bar tinggi & warnanya proporsional
+   terhadap qty terjual, dirender dari JS (lihat renderDashboard()). ===== */
+.equalizer{display:flex;align-items:flex-end;gap:12px;height:172px;padding:10px 4px 0}
+.eq-bar-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.eq-bar-value{font-size:10.5px;font-weight:700;color:var(--text2);margin-bottom:6px;white-space:nowrap}
+.eq-bar{width:100%;max-width:36px;border-radius:10px 10px 5px 5px;transition:height .5s ease}
+.eq-bar-label{font-size:10px;color:var(--text3);margin-top:8px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
 /* ===== Search bar row ===== */
 .filter-row{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
 
@@ -300,10 +351,8 @@ tr:hover td{background:var(--surface2)}
 .action-cell{display:flex;gap:4px;align-items:center}
 
 @media(max-width:900px){
-  .sidebar{width:64px;left:8px;top:8px;bottom:8px;border-radius:22px}
+  .sidebar{width:64px}
   .sidebar-logo h1 em,.sidebar-logo small,.nav-item span,.nav-section{display:none}
-  .main{margin-left:88px}
-  .topbar{margin:8px 12px 0}
   .grid-4{grid-template-columns:repeat(2,1fr)}
   .grid-2,.grid-3{grid-template-columns:1fr}
   .nav-item{justify-content:center;padding:11px}
@@ -352,76 +401,95 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .mp-manage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .mp-manage-actions{display:flex;gap:4px}
 
-/* ===== AUTH SCREEN (Login / Sign Up / Pending) — Modern Split Layout, tema mint/hijau ===== */
-.auth-screen{position:fixed;inset:0;z-index:1000;display:flex;background:var(--bg)}
-
-/* Panel kiri: branding gradient hijau tua -> mint */
-.auth-panel-left{
-  flex:1.1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#1d4a3d 0%,#2f6f5c 55%,#3f8f74 100%);
-  padding:48px;color:#fff;
+/* =========================================================================
+   AUTH SCREEN (Login / Sign Up / Pending) — gaya "kartu kaca" (glassmorphism)
+   minimalis: latar navy gelap dengan tekstur butiran halus & cahaya lembut
+   di atas, kartu tembus pandang buram (frosted glass) dengan garis cahaya
+   tipis di tepi atas, ikon persegi bulat, judul besar tipis "Selamat
+   Datang", dan input berbentuk kotak (label kecil di atas, nilai besar di
+   bawah) — tanpa ornamen HUD/terminal. Font mengikuti font dashboard
+   (Plus Jakarta Sans, diwariskan dari <body>). Selalu gelap karena gaya
+   kartu kaca ini secara desain hanya masuk akal versi gelap.
+   ========================================================================= */
+.auth-screen{
+  position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+  padding:24px;overflow:auto;
+  background:
+    radial-gradient(900px 520px at 50% -8%,rgba(56,189,248,.20),transparent 60%),
+    radial-gradient(700px 500px at 100% 100%,rgba(59,130,246,.08),transparent 60%),
+    #060a14;
 }
-[data-theme="dark"] .auth-panel-left{background:linear-gradient(135deg,#0f2e24 0%,#173c30 50%,#1d4a3d 100%)}
-.auth-brand-glow{
-  position:absolute;width:520px;height:520px;border-radius:50%;
-  background:radial-gradient(circle,rgba(246,185,59,.20) 0%,transparent 70%);
-  top:-120px;right:-120px;pointer-events:none;
+/* Tekstur butiran halus (grain/noise) di seluruh latar, gaya referensi */
+.auth-screen::before{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(rgba(255,255,255,.09) .6px,transparent .6px);
+  background-size:22px 22px;
 }
-.auth-brand-glow::after{
-  content:'';position:absolute;width:380px;height:380px;border-radius:50%;
-  background:radial-gradient(circle,rgba(255,255,255,.12) 0%,transparent 70%);
-  bottom:-260px;left:-180px;
+.auth-card{
+  position:relative;width:100%;max-width:420px;
+  background:rgba(18,26,42,.55);backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);
+  border:1px solid rgba(255,255,255,.09);border-radius:28px;
+  padding:40px 34px 30px;color:#eaf1fb;
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.75),0 0 60px -18px rgba(56,189,248,.18);
+  animation:authFadeIn .4s ease;overflow:hidden;
 }
-.auth-brand-content{position:relative;z-index:2;max-width:440px}
-.auth-brand-logo{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:800;margin-bottom:48px;color:#fff}
-.auth-brand-logo em{font-style:normal;opacity:.85;color:var(--accent2)}
-.auth-brand-logo img{max-width:30px;max-height:30px;border-radius:9px}
-.auth-brand-title{font-size:30px;font-weight:800;line-height:1.3;margin-bottom:16px;letter-spacing:-.5px}
-.auth-brand-sub{font-size:14px;line-height:1.7;color:rgba(255,255,255,.85);margin-bottom:40px}
-.auth-brand-stats{display:flex;gap:14px;flex-wrap:wrap}
-.auth-stat{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:11px 14px;backdrop-filter:blur(6px)}
-.auth-stat-icon{font-size:18px}
-.auth-stat-label{font-size:12px;font-weight:800}
-.auth-stat-desc{font-size:11px;color:rgba(255,255,255,.7)}
-
-/* Panel kanan: form */
-.auth-panel-right{flex:1;display:flex;align-items:center;justify-content:center;position:relative;padding:32px;background:var(--bg)}
-.auth-theme-toggle{position:absolute;top:24px;right:28px;width:38px;height:38px;border-radius:50%;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.auth-theme-toggle:hover{background:var(--surface2);color:var(--text)}
-.auth-form-box{width:100%;max-width:380px;animation:authFadeIn .4s ease}
+/* Garis cahaya tipis melengkung di tepi atas kartu, khas glassmorphism */
+.auth-card::before{
+  content:'';position:absolute;top:0;left:12%;right:12%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(125,211,252,.9),transparent);
+  box-shadow:0 0 20px 2px rgba(125,211,252,.5);
+}
 @keyframes authFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.auth-form-header{margin-bottom:28px}
-.auth-form-header h1{font-size:24px;font-weight:800;color:var(--text);margin-bottom:6px;letter-spacing:-.3px}
-.auth-form-header p{font-size:13px;color:var(--text3)}
-.auth-field{margin-bottom:16px}
-.auth-field label{display:block;font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:6px}
+
+.auth-theme-toggle{position:absolute;top:16px;right:16px;width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#8ba3c7;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.auth-theme-toggle:hover{background:rgba(255,255,255,.09);color:#eaf6ff}
+
+.auth-avatar{width:58px;height:58px;border-radius:18px;background:linear-gradient(160deg,#16233a,#0a1220);display:flex;align-items:center;justify-content:center;margin:2px auto 22px;color:#e6f3ff;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 10px 26px -8px rgba(56,189,248,.5);overflow:hidden}
+.auth-avatar img{width:100%;height:100%;object-fit:cover;border-radius:18px}
+
+.auth-form-header{text-align:center;margin-bottom:26px}
+.auth-form-header h1{font-size:29px;font-weight:600;letter-spacing:-.5px;color:#f3f7fd;margin-bottom:8px}
+.auth-form-header h1 em{font-style:normal;color:#7dd3fc}
+.auth-form-header p{font-size:13px;color:#8695b3}
+
+/* Field bergaya "kotak": label kecil di atas, nilai besar di bawah,
+   semuanya di dalam satu kotak bertepi tipis — meniru kotak "Email" pada
+   referensi (bukan lagi input dengan ikon di kiri). */
+.auth-field{margin-bottom:12px;border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:10px 16px 11px;background:rgba(255,255,255,.025);transition:border-color .15s,background .15s}
+.auth-field:focus-within{border-color:rgba(125,211,252,.5);background:rgba(255,255,255,.04)}
+.auth-field label{display:block;font-size:11.5px;font-weight:500;letter-spacing:.1px;text-transform:none;color:#7d8bab;margin-bottom:2px}
 .auth-input-wrap{position:relative;display:flex;align-items:center}
-.auth-input-icon{position:absolute;left:13px;color:var(--text3);pointer-events:none}
+.auth-input-icon{display:none}
 .auth-input{
-  width:100%;padding:11px 14px 11px 38px;border-radius:14px;border:1.5px solid var(--border2);
-  background:var(--surface2);color:var(--text);font-size:13.5px;font-family:inherit;outline:none;
-  transition:border-color .15s,box-shadow .15s,background .15s;
+  width:100%;padding:0;border:none;border-radius:0;
+  background:transparent;color:#f3f7fd;font-size:15.5px;font-family:inherit;font-weight:500;outline:none;
 }
-.auth-input:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 4px var(--accent-light)}
-.auth-input::placeholder{color:var(--text3)}
+.auth-input::placeholder{color:#4a5c7a;font-weight:400}
+
+.auth-row-between{display:flex;align-items:center;justify-content:space-between;margin:6px 0 20px;font-size:12.5px;flex-wrap:wrap;gap:8px}
+.auth-remember{display:flex;align-items:center;gap:8px;color:#8ba3c7;cursor:default;user-select:none}
+.auth-remember input{accent-color:#38bdf8;width:15px;height:15px;border-radius:5px}
+.auth-row-between a{color:#7dd3fc;text-decoration:none;font-weight:600}
+.auth-row-between a:hover{text-decoration:underline}
+
 .auth-btn-primary{
-  width:100%;padding:13px 16px;border-radius:14px;border:none;
-  background:linear-gradient(135deg,var(--accent),var(--accent-dark));color:#fff;font-size:14px;font-weight:700;
-  cursor:pointer;font-family:inherit;margin-top:6px;transition:transform .12s,box-shadow .12s;
-  box-shadow:0 6px 18px -4px rgba(47,111,92,.45);
+  width:100%;padding:14px 16px;border-radius:14px;border:none;
+  background:linear-gradient(90deg,#22d3ee,#3b82f6);color:#0a1220;font-size:14.5px;font-weight:700;
+  letter-spacing:.1px;text-transform:none;cursor:pointer;font-family:inherit;transition:transform .12s,box-shadow .12s;
+  box-shadow:0 12px 28px -10px rgba(56,189,248,.6);display:flex;align-items:center;justify-content:center;gap:8px;
 }
-.auth-btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px -4px rgba(47,111,92,.55)}
+.auth-btn-primary:hover{transform:translateY(-1px);box-shadow:0 14px 32px -8px rgba(56,189,248,.75)}
 .auth-btn-primary:active{transform:translateY(0)}
-.auth-btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none}
-.auth-switch-text{text-align:center;margin-top:18px;font-size:12.5px;color:var(--text3)}
-.auth-switch-text a{color:var(--accent);font-weight:700;text-decoration:none}
-.auth-switch-text a:hover{text-decoration:underline}
-.auth-pending-icon{font-size:46px;margin-bottom:10px;animation:authPulse 2s ease-in-out infinite}
+.auth-btn-primary:disabled{opacity:.55;cursor:not-allowed;transform:none}
+.auth-switch-text{text-align:center;margin-top:20px;font-size:12.5px;color:#6b7b9c}
+.auth-switch-text a{color:#7dd3fc;font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.auth-switch-text a:hover{color:#a5e4fd}
+.auth-pending-icon{font-size:44px;margin-bottom:10px;animation:authPulse 2s ease-in-out infinite}
 @keyframes authPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 
-@media(max-width:860px){
-  .auth-panel-left{display:none}
-  .auth-panel-right{padding:24px}
+@media(max-width:480px){
+  .auth-card{padding:32px 22px 22px}
+  .auth-form-header h1{font-size:25px}
 }
 
 /* ===== PERIODE PICKER (dropdown periode custom bergaya date-range picker) ===== */
@@ -488,7 +556,7 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-glow-card{position:relative;isolation:isolate}
 .fin-glow-card::before{
   content:'';position:absolute;inset:-2px;border-radius:inherit;z-index:-2;
-  background:linear-gradient(120deg,#7f5af0,#2cb1bc,#e63986,#7f5af0);
+  background:linear-gradient(120deg,#3b82f6,#22d3ee,#3b82f6);
   background-size:300% 300%;animation:finGlowShift 10s ease infinite;
 }
 .fin-glow-card::after{
@@ -505,7 +573,10 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 [data-theme="dark"] .fin-metric::after{background:radial-gradient(120px 80px at 100% 0%,rgba(255,255,255,.08),transparent 70%)}
 .fin-metric:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
 .fin-metric:hover::after{opacity:1}
-.fin-metric-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;margin-bottom:12px;background:var(--surface)}
+.fin-metric-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;margin-bottom:12px;background:var(--accent-light)}
+.fin-metric.fm-warning .fin-metric-icon{background:var(--warning-bg)}
+.fin-metric.fm-danger .fin-metric-icon{background:var(--danger-bg)}
+.fin-metric.fm-success .fin-metric-icon{background:var(--success-bg)}
 .fin-metric-label{font-size:12.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px}
 .fin-metric-value{font-size:25px;font-weight:800;color:var(--text);letter-spacing:-.4px}
 .fin-metric-value-lg{font-size:30px}
@@ -521,6 +592,12 @@ a:focus-visible,button:focus-visible,.btn:focus-visible,.nav-item:focus-visible,
 .fin-metric.fm-success{background:linear-gradient(160deg,var(--success-bg),var(--surface2))}
 .fin-metric.fm-success .fin-metric-value{color:var(--success)}
 .fin-metric.fm-success .fin-metric-label{color:var(--success)!important}
+/* Garis aksen di puncak kartu metrik keuangan — satu warna biru konsisten,
+   mengikuti gaya monokrom-biru dashboard referensi (bukan pelangi lagi). */
+.fin-metric{border-top:3px solid var(--accent)}
+.fin-metric.fm-warning{border-top-color:var(--warning)}
+.fin-metric.fm-danger{border-top-color:var(--danger)}
+.fin-metric.fm-success{border-top-color:var(--success)}
 @media(max-width:980px){
   .fin-metric-grid{grid-template-columns:repeat(2,1fr)}
 }
