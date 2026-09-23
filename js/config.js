@@ -12,4 +12,4 @@
    anon key ini. Jangan pernah menaruh "service_role" key di frontend.
    ========================================================= */
 const SUPABASE_URL = "https://lbwmmppaunqikpollvhg.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxid21tcHBhdW5xaWtwb2xsdmhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NTk3NzAsImV4cCI6MjA5ODAzNTc3MH0.O-tEKALTaAwAgVRnC3CKfDxAFuqq8-f43Mlmr7X6F3s;
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxid21tcHBhdW5xaWtwb2xsdmhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NTk3NzAsImV4cCI6MjA5ODAzNTc3MH0.O-tEKALTaAwAgVRnC3CKfDxAFuqq8-f43Mlmr7X6F3s";
