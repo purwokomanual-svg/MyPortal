@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM AI Enterprise — Professional</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="js/tailwind-config.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-darkBg text-textMain min-h-screen flex grid-bg font-sans antialiased">
+
+<div id="loading-overlay" class="fixed inset-0 bg-darkBg z-[100] flex flex-col items-center justify-center gap-3">
+  <div class="w-10 h-10 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
+  <p class="text-xs text-textMuted">Memeriksa sesi Anda...</p>
+</div>
+
+<!-- === AUTH GATE (Supabase Auth) === -->
+<div id="auth-overlay" class="hidden fixed inset-0 bg-darkBg z-[110] grid-bg flex items-center justify-center p-4">
+  <div class="glass-card ai-floating-card rounded-3xl w-full max-w-sm p-7">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="relative">
+        <div class="absolute -inset-1 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl blur opacity-60"></div>
+        <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-extrabold text-white text-xl border border-white/10">S</div>
+      </div>
+      <div>
+        <p class="text-sm font-extrabold text-white leading-tight">CRM AI Enterprise</p>
+        <p class="text-[10px] text-textMuted">Professional Edition</p>
+      </div>
+    </div>
+    <h2 id="auth-title" class="text-sm font-bold text-white mb-4">Masuk ke workspace Anda</h2>
+    <form id="auth-form" class="space-y-3">
+      <input type="hidden" id="auth-mode" value="signin">
+      <div><label class="text-xs text-textMuted block mb-1">Email</label><input type="email" name="email" required autocomplete="email" class="field-input rounded-xl px-3 py-2.5 text-sm w-full"></div>
+      <div><label class="text-xs text-textMuted block mb-1">Password</label><input type="password" name="password" required minlength="6" autocomplete="current-password" class="field-input rounded-xl px-3 py-2.5 text-sm w-full"></div>
+      <p id="auth-error" class="hidden text-[11px] leading-relaxed"></p>
+      <button id="auth-submit-btn" type="submit" class="w-full bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">Masuk</button>
+    </form>
+    <p class="text-xs text-textMuted text-center mt-4">
+      <span id="auth-toggle-text">Belum punya akun?</span>
+      <a id="auth-toggle-link" href="javascript:void(0)" class="text-purple-400 font-semibold hover:underline">Daftar di sini</a>
+    </p>
+  </div>
+</div>
+
+<div id="toast-root" class="fixed top-5 right-5 z-[95] flex flex-col gap-2 items-end pointer-events-none"></div>
+<div id="modal-root"></div>
+<div id="drawer-root"></div>
+
+<!-- === SIDEBAR === -->
+<aside class="w-20 bg-sidebarBg/90 border-r border-panelBorder/50 flex flex-col justify-between items-center py-6 flex-shrink-0 min-h-screen z-40 backdrop-blur-xl sticky top-0 h-screen">
+  <div class="flex flex-col items-center gap-8 w-full">
+    <div class="relative group cursor-pointer">
+      <div class="absolute -inset-1 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl blur opacity-60 group-hover:opacity-100 transition duration-500"></div>
+      <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-extrabold text-white text-xl border border-white/10">S</div>
+    </div>
+    <nav class="flex flex-col items-center gap-2.5 w-full px-3">
+      <button data-view="dashboard" title="Dashboard" class="nav-btn active w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+      </button>
+      <button data-view="contacts" title="Contacts" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+      </button>
+      <button data-view="companies" title="Companies" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"></path></svg>
+      </button>
+      <button data-view="deals" title="Deals" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+      </button>
+      <button data-view="tasks" title="Tasks" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+      </button>
+      <button data-view="calendar" title="Calendar" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+      </button>
+      <button data-view="reports" title="Reports" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h1a1 1 0 011 1v13M3 19v-6a1 1 0 011-1h1a1 1 0 011 1v6m8 0v-9a1 1 0 011-1h1a1 1 0 011 1v9M3 19h18"></path></svg>
+      </button>
+      <div class="w-8 h-px bg-panelBorder/60 my-1"></div>
+      <button data-view="products" title="Products" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"></path></svg>
+      </button>
+      <button data-view="quotes" title="Quotations" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+      </button>
+      <button data-view="team" title="Team" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-2.13a4 4 0 100-8 4 4 0 000 8zm6 4c.83.6 1.5 1.55 1.5 2.5m-13.5-2.5C4.67 16.6 4 17.55 4 18.5"></path></svg>
+      </button>
+    </nav>
+  </div>
+  <button data-view="settings" title="Settings" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+  </button>
+</aside>
+
+<!-- === WORKSPACE === -->
+<div class="flex-1 flex flex-col min-w-0">
+  <header class="bg-darkBg/60 border-b border-panelBorder/40 px-8 py-4 flex items-center justify-between gap-4 sticky top-0 z-30 backdrop-blur-md">
+    <div class="flex items-center gap-3 flex-shrink-0">
+      <span class="text-xl font-extrabold text-white glow-text tracking-wide" id="page-title">Dashboard</span>
+      <span class="text-[10px] bg-purple-500/10 text-purple-400 font-semibold px-2.5 py-1 rounded-full border border-purple-500/20 hidden sm:inline-block">Enterprise AI</span>
+    </div>
+
+    <div id="search-wrap" class="relative flex-1 max-w-md">
+      <svg class="w-4 h-4 text-textMuted absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+      <input id="global-search" type="text" placeholder="Cari kontak, perusahaan, deal, tugas..." class="field-input rounded-xl pl-9 pr-3 py-2 text-xs w-full">
+      <div id="search-results" class="absolute mt-2 w-full glass-card ai-floating-card rounded-2xl p-2 max-h-80 overflow-y-auto z-50"></div>
+    </div>
+
+    <div class="flex items-center gap-4 text-xs text-textMuted flex-shrink-0">
+      <div class="hidden lg:flex items-center gap-2 bg-panelBg/80 border border-panelBorder/60 px-3 py-1.5 rounded-xl">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="font-mono text-slate-300" id="live-clock">—</span>
+      </div>
+
+      <div id="notif-wrap" class="relative">
+        <button onclick="toggleNotif()" class="relative w-9 h-9 rounded-xl border border-panelBorder/60 bg-panelBg/80 flex items-center justify-center hover:bg-white/5">
+          <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+          <span id="notif-badge" class="hidden absolute -top-1 -right-1 bg-pink-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">0</span>
+        </button>
+        <div id="notif-dropdown" class="absolute right-0 mt-2 w-72 glass-card ai-floating-card rounded-2xl p-3 z-50">
+          <p class="text-xs font-bold text-white mb-2 px-1">Pengingat Tugas</p>
+          <div id="notif-list" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 pl-3 border-l border-panelBorder/60">
+        <img id="profile-avatar" src="https://randomuser.me/api/portraits/men/32.jpg" alt="Profile" class="w-8 h-8 rounded-full ring-2 ring-purple-500/50">
+        <span id="profile-name" class="hidden sm:inline text-slate-300 font-medium">Alex Pratama</span>
+        <button onclick="signOutUser()" title="Keluar" class="w-8 h-8 rounded-xl border border-panelBorder/60 bg-panelBg/80 flex items-center justify-center hover:bg-white/5 text-slate-400 hover:text-red-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="p-8">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section id="view-dashboard" class="view active">
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-5">
+        <div class="glass-card glass-card-hover rounded-3xl p-5">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Total Contacts</p>
+          <p class="text-2xl font-extrabold text-white" id="stat-contacts">0</p>
+        </div>
+        <div class="glass-card glass-card-hover rounded-3xl p-5">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Pipeline Value</p>
+          <p class="text-2xl font-extrabold text-cyan-400" id="stat-pipeline">Rp 0</p>
+        </div>
+        <div class="glass-card glass-card-hover rounded-3xl p-5">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Win Rate</p>
+          <p class="text-2xl font-extrabold text-emerald-400" id="stat-winrate">0%</p>
+        </div>
+        <div class="glass-card glass-card-hover rounded-3xl p-5">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Open Tasks</p>
+          <p class="text-2xl font-extrabold text-pink-400" id="stat-tasks">0</p>
+        </div>
+      </div>
+
+      <div class="glass-card glass-card-hover rounded-3xl p-5 mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold">Target Revenue Bulan Ini</p>
+          <p class="text-xs font-mono text-slate-300" id="target-caption">Rp 0 / Rp 0</p>
+        </div>
+        <div class="w-full bg-slate-800/80 h-2.5 rounded-full overflow-hidden p-0.5 border border-white/5">
+          <div id="target-bar" class="bg-gradient-to-r from-cyan-400 via-purple-400 to-emerald-400 h-full rounded-full transition-all" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div class="xl:col-span-7 space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="glass-card glass-card-hover rounded-3xl p-5">
+              <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Pipeline per Stage</h2>
+              <div class="h-32"><canvas id="pipelineBarChart"></canvas></div>
+            </div>
+            <div class="glass-card glass-card-hover rounded-3xl p-5">
+              <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Deal Baru / Bulan</h2>
+              <div class="h-32"><canvas id="pipelineVerticalChart"></canvas></div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="glass-card glass-card-hover rounded-3xl p-5">
+              <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-4">Priority Tasks</h2>
+              <div id="dash-priority-tasks" class="space-y-2.5 text-xs"></div>
+            </div>
+            <div class="glass-card glass-card-hover rounded-3xl p-5">
+              <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-4">Recent Activity</h2>
+              <div id="dash-recent-activity" class="space-y-3.5 text-xs"></div>
+            </div>
+          </div>
+        </div>
+        <div class="xl:col-span-5 relative">
+          <div id="ai-recommendation-card" class="ai-floating-card rounded-3xl p-6 relative z-20 -mb-16 transform transition duration-500 hover:-translate-y-1"></div>
+          <div class="glass-card rounded-3xl pt-24 pb-6 px-4 flex flex-col items-center justify-center relative z-10 shadow-2xl">
+            <div class="w-full h-[380px] relative"><canvas id="mainRadarChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CONTACTS ============ -->
+    <section id="view-contacts" class="view">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div class="flex flex-wrap gap-2 flex-1 max-w-xl">
+          <input id="contacts-search" type="text" placeholder="Cari nama, perusahaan, atau email..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
+          <select id="contacts-owner-filter" class="field-input rounded-xl px-3 py-2.5 text-xs"></select>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="exportContactsCSV()" class="text-xs font-semibold px-4 py-2.5 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">Ekspor CSV</button>
+          <button onclick="openContactModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Kontak</button>
+        </div>
+      </div>
+      <div id="tag-filter-row" class="flex flex-wrap gap-1.5 mb-4"></div>
+      <div id="contacts-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      <p id="contacts-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada kontak. Klik "+ Tambah Kontak" untuk memulai.</p>
+    </section>
+
+    <!-- ============ COMPANIES ============ -->
+    <section id="view-companies" class="view">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <input id="companies-search" type="text" placeholder="Cari perusahaan..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
+        <button onclick="openCompanyModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Perusahaan</button>
+      </div>
+      <div id="companies-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      <p id="companies-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada perusahaan.</p>
+    </section>
+
+    <!-- ============ DEALS ============ -->
+    <section id="view-deals" class="view">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div class="flex flex-wrap gap-2 flex-1 max-w-xl">
+          <input id="deals-search" type="text" placeholder="Cari nama deal..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
+          <select id="deals-owner-filter" class="field-input rounded-xl px-3 py-2.5 text-xs"></select>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="exportDealsCSV()" class="text-xs font-semibold px-4 py-2.5 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">Ekspor CSV</button>
+          <button onclick="openDealModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Deal</button>
+        </div>
+      </div>
+      <div id="kanban-board" class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4"></div>
+    </section>
+
+    <!-- ============ TASKS ============ -->
+    <section id="view-tasks" class="view">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <h2 class="text-sm text-textMuted">Kelola tugas dan follow-up Anda</h2>
+        <button onclick="openTaskModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Tugas</button>
+      </div>
+      <div id="tasks-list" class="space-y-3 max-w-3xl"></div>
+      <p id="tasks-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada tugas.</p>
+    </section>
+
+    <!-- ============ CALENDAR ============ -->
+    <section id="view-calendar" class="view">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center gap-3">
+          <button onclick="changeMonth(-1)" class="w-8 h-8 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">‹</button>
+          <h2 class="text-sm font-bold text-white" id="calendar-label">—</h2>
+          <button onclick="changeMonth(1)" class="w-8 h-8 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">›</button>
+        </div>
+        <button onclick="changeMonth(0,true)" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Bulan Ini</button>
+      </div>
+      <div class="grid grid-cols-7 gap-2 mb-2 text-[10px] uppercase text-textMuted font-bold text-center">
+        <span>Min</span><span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span>
+      </div>
+      <div id="calendar-grid" class="grid grid-cols-7 gap-2"></div>
+    </section>
+
+    <!-- ============ REPORTS ============ -->
+    <section id="view-reports" class="view">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-6">
+        <div class="glass-card rounded-3xl p-5">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Weighted Forecast</p>
+          <p class="text-xl font-extrabold text-cyan-400" id="report-forecast">Rp 0</p>
+          <p class="text-[10px] text-textMuted mt-1">Nilai × probabilitas, deal aktif</p>
+        </div>
+        <div class="glass-card rounded-3xl p-5">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Revenue Tertutup (Won)</p>
+          <p class="text-xl font-extrabold text-emerald-400" id="report-won-total">Rp 0</p>
+          <p class="text-[10px] text-textMuted mt-1">Total nilai deal yang dimenangkan</p>
+        </div>
+        <div class="glass-card rounded-3xl p-5">
+          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Rata-rata Nilai Deal</p>
+          <p class="text-xl font-extrabold text-purple-400" id="report-avg-deal">Rp 0</p>
+          <p class="text-[10px] text-textMuted mt-1">Seluruh deal aktif & tertutup</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+        <div class="glass-card rounded-3xl p-5">
+          <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Sales Funnel (Jumlah Deal)</h2>
+          <div class="h-52"><canvas id="funnelChart"></canvas></div>
+        </div>
+        <div class="glass-card rounded-3xl p-5">
+          <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Revenue Won per Bulan</h2>
+          <div class="h-52"><canvas id="revenueChart"></canvas></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="glass-card rounded-3xl p-5">
+          <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-4">Top Perusahaan berdasarkan Nilai Deal</h2>
+          <div id="top-companies-list" class="space-y-2 text-xs"></div>
+        </div>
+        <div class="glass-card rounded-3xl p-5">
+          <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-4">Leaderboard Sales (Revenue Won)</h2>
+          <div id="leaderboard-list" class="space-y-2 text-xs"></div>
+        </div>
+      </div>
+      <div class="glass-card rounded-3xl p-5 mt-6">
+        <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-4">Alasan Deal Kalah (Lost Reasons)</h2>
+        <div id="lost-reasons-list" class="space-y-2 text-xs"></div>
+      </div>
+    </section>
+
+    <!-- ============ PRODUCTS ============ -->
+    <section id="view-products" class="view">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <input id="products-search" type="text" placeholder="Cari produk / layanan..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
+        <div class="flex gap-2">
+          <button onclick="exportProductsCSV()" class="text-xs font-semibold px-4 py-2.5 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">Ekspor CSV</button>
+          <button onclick="openProductModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Produk</button>
+        </div>
+      </div>
+      <div id="products-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      <p id="products-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada produk / layanan di price book.</p>
+    </section>
+
+    <!-- ============ QUOTATIONS ============ -->
+    <section id="view-quotes" class="view">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <h2 class="text-sm text-textMuted">Buat & kelola penawaran harga untuk deal Anda</h2>
+        <button onclick="openQuoteModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Buat Quotation</button>
+      </div>
+      <div id="quotes-list" class="space-y-3"></div>
+      <p id="quotes-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada quotation. Klik "+ Buat Quotation" untuk memulai.</p>
+    </section>
+
+    <!-- ============ TEAM ============ -->
+    <section id="view-team" class="view">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <h2 class="text-sm text-textMuted">Kelola anggota tim penjualan & lihat performa mereka</h2>
+        <button onclick="openTeamModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Anggota</button>
+      </div>
+      <div id="team-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      <p id="team-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada anggota tim selain Anda.</p>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="view-settings" class="view">
+      <div class="max-w-2xl space-y-6">
+        <div class="glass-card rounded-3xl p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-bold text-white">Profil</h2>
+            <span class="text-[10px] text-textMuted">Akun: <span id="account-email" class="text-slate-300 font-medium"></span></span>
+          </div>
+          <form id="profile-form" class="space-y-3">
+            <div><label class="text-xs text-textMuted block mb-1">Nama</label><input name="name" class="field-input rounded-xl px-3 py-2 text-sm w-full" required></div>
+            <div><label class="text-xs text-textMuted block mb-1">Peran</label><input name="role" class="field-input rounded-xl px-3 py-2 text-sm w-full" required></div>
+            <div><label class="text-xs text-textMuted block mb-1">URL Avatar</label><input name="avatar" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            <button type="submit" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">Simpan Profil</button>
+          </form>
+        </div>
+
+        <div class="glass-card rounded-3xl p-6">
+          <h2 class="text-sm font-bold text-white mb-1">Profil Perusahaan (Letterhead Quotation)</h2>
+          <p class="text-xs text-textMuted mb-4">Data ini akan tampil otomatis di kop surat & tanda tangan setiap dokumen Quotation yang dicetak.</p>
+          <form id="company-profile-form" class="space-y-3">
+            <div><label class="text-xs text-textMuted block mb-1">Nama Perusahaan</label><input name="name" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="text-xs text-textMuted block mb-1">Label Kantor Pusat</label><input name="headOfficeLabel" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+              <div><label class="text-xs text-textMuted block mb-1">Label Kantor Cabang</label><input name="branchOfficeLabel" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="text-xs text-textMuted block mb-1">Alamat Kantor Pusat</label><textarea name="headOfficeAddress" rows="2" class="field-input rounded-xl px-3 py-2 text-sm w-full"></textarea></div>
+              <div><label class="text-xs text-textMuted block mb-1">Alamat Kantor Cabang</label><textarea name="branchOfficeAddress" rows="2" class="field-input rounded-xl px-3 py-2 text-sm w-full"></textarea></div>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div><label class="text-xs text-textMuted block mb-1">Telepon</label><input name="contactPhone" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+              <div><label class="text-xs text-textMuted block mb-1">Email</label><input name="contactEmail" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+              <div><label class="text-xs text-textMuted block mb-1">Website</label><input name="contactWebsite" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            </div>
+            <div><label class="text-xs text-textMuted block mb-1">Info Rekening Pembayaran</label><input name="bankInfo" class="field-input rounded-xl px-3 py-2 text-sm w-full" placeholder="Pembayaran ke BCA atas nama ... No. ..."></div>
+            <div class="grid grid-cols-3 gap-3">
+              <div><label class="text-xs text-textMuted block mb-1">Nama Penandatangan</label><input name="signerName" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+              <div><label class="text-xs text-textMuted block mb-1">Telp Penandatangan</label><input name="signerPhone" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+              <div><label class="text-xs text-textMuted block mb-1">HP Penandatangan</label><input name="signerMobile" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            </div>
+            <div><label class="text-xs text-textMuted block mb-1">Alamat Footer (untuk bagian bawah dokumen)</label><input name="footerAddress" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="text-xs text-textMuted block mb-1">Telp/Fax Footer</label><input name="footerPhone" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+              <div><label class="text-xs text-textMuted block mb-1">Website Footer</label><input name="footerWebsite" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            </div>
+            <button type="submit" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">Simpan Profil Perusahaan</button>
+          </form>
+        </div>
+
+        <div class="glass-card rounded-3xl p-6">
+          <h2 class="text-sm font-bold text-white mb-1">Target Penjualan</h2>
+          <p class="text-xs text-textMuted mb-4">Atur target revenue bulanan untuk memantau pencapaian tim di Dashboard.</p>
+          <form id="target-form" class="flex gap-3 items-end">
+            <div class="flex-1"><label class="text-xs text-textMuted block mb-1">Target Bulanan (Rp)</label><input type="number" min="0" name="monthlyTarget" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            <button type="submit" class="text-xs font-semibold px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Simpan</button>
+          </form>
+        </div>
+
+        <div class="glass-card rounded-3xl p-6">
+          <h2 class="text-sm font-bold text-white mb-1">Automasi Pipeline</h2>
+          <p class="text-xs text-textMuted mb-4">Otomatiskan pekerjaan berulang agar tidak ada follow-up yang terlewat.</p>
+          <div class="space-y-3">
+            <label class="flex items-center justify-between gap-3 cursor-pointer bg-panelBg/60 border border-white/5 rounded-xl p-3">
+              <span class="text-xs text-slate-300">Buat tugas follow-up otomatis saat deal masuk stage <b class="text-slate-100">Proposal</b> (H+3)</span>
+              <input type="checkbox" id="auto-task-proposal" class="task-check w-4 h-4" onchange="saveAutomationSettings()">
+            </label>
+            <label class="flex items-center justify-between gap-3 cursor-pointer bg-panelBg/60 border border-white/5 rounded-xl p-3">
+              <span class="text-xs text-slate-300">Wajibkan alasan kekalahan saat deal ditandai <b class="text-slate-100">Lost</b></span>
+              <input type="checkbox" id="auto-loss-reason" class="task-check w-4 h-4" onchange="saveAutomationSettings()">
+            </label>
+            <label class="flex items-center justify-between gap-3 cursor-pointer bg-panelBg/60 border border-white/5 rounded-xl p-3">
+              <span class="text-xs text-slate-300">Catat aktivitas otomatis saat quotation dikirim ke klien</span>
+              <input type="checkbox" id="auto-quote-log" class="task-check w-4 h-4" onchange="saveAutomationSettings()">
+            </label>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-3xl p-6">
+          <h2 class="text-sm font-bold text-white mb-2">Impor Data</h2>
+          <p class="text-xs text-textMuted mb-4">Impor kontak dari file CSV (kolom: Nama, Perusahaan, Email, Telepon, Status, Tag).</p>
+          <input type="file" id="import-csv-input" accept=".csv" class="hidden" onchange="importContactsCSV(event)">
+          <button onclick="document.getElementById('import-csv-input').click()" class="text-xs font-semibold px-4 py-2 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5 mb-3">Pilih File CSV Kontak</button>
+          <p class="text-xs text-textMuted mb-2 mt-1">Impor produk/price book dari CSV (kolom: Nama, Model, SKU, Kategori, Satuan, Harga, Deskripsi).</p>
+          <input type="file" id="import-products-csv-input" accept=".csv" class="hidden" onchange="importProductsCSV(event)">
+          <button onclick="document.getElementById('import-products-csv-input').click()" class="text-xs font-semibold px-4 py-2 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">Pilih File CSV Produk</button>
+        </div>
+
+        <div class="glass-card rounded-3xl p-6">
+          <h2 class="text-sm font-bold text-white mb-2">Data</h2>
+          <p class="text-xs text-textMuted mb-4">Semua data tersimpan otomatis di penyimpanan pribadi akun Anda dan akan tetap ada saat Anda kembali.</p>
+          <div class="flex flex-wrap gap-3">
+            <button onclick="resetDemoData()" class="text-xs font-semibold px-4 py-2 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">Muat Ulang Data Demo</button>
+            <button onclick="clearAllData()" class="text-xs font-semibold px-4 py-2 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus Semua Data</button>
+            <button onclick="signOutUser()" class="text-xs font-semibold px-4 py-2 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">Keluar dari Akun</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
