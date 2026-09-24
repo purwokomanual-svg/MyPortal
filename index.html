@@ -110,6 +110,9 @@
     </div>
 
     <div class="flex items-center gap-4 text-xs text-textMuted flex-shrink-0">
+      <div id="realtime-status" onclick="setupRealtime()" class="hidden lg:flex items-center gap-1.5 text-[10px] text-amber-400 font-medium bg-panelBg/80 border border-panelBorder/60 px-2.5 py-1.5 rounded-xl">
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse"></span> Menghubungkan...
+      </div>
       <div class="hidden lg:flex items-center gap-2 bg-panelBg/80 border border-panelBorder/60 px-3 py-1.5 rounded-xl">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <span class="font-mono text-slate-300" id="live-clock">—</span>
