@@ -1,7 +1,6 @@
 /* =========================================================
-   CRM APP — Vanilla JS + window.storage sebagai backend
+   CRM APP — Vanilla JS + Supabase (Postgres relasional + Realtime)
    ========================================================= */
-const KEYS = { contacts:'crm:contacts', deals:'crm:deals', tasks:'crm:tasks', activities:'crm:activities', profile:'crm:profile', companies:'crm:companies', notes:'crm:notes', products:'crm:products', quotes:'crm:quotes', team:'crm:team', settings:'crm:settings' };
 const STAGES = ['New','Qualified','Proposal','Won','Lost'];
 const STAGE_COLOR = { New:'#38bdf8', Qualified:'#818cf8', Proposal:'#c084fc', Won:'#10b981', Lost:'#f87171' };
 const QUOTE_STATUS_COLOR = { Draft:'#64748b', Sent:'#38bdf8', Accepted:'#10b981', Declined:'#f87171' };
@@ -39,29 +38,213 @@ let calState = (()=>{ const n=new Date(); return { year:n.getFullYear(), month:n
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
-/* ---------- storage helpers (Supabase-backed key/value store) ----------
-   Table "crm_store" columns: id uuid, user_id uuid, key text, value jsonb, updated_at timestamptz
-   Row Level Security restricts every row to its own user_id (see supabase/schema.sql) */
-async function storageGet(key){
-  try {
-    const { data, error } = await sbClient
-      .from('crm_store').select('value')
-      .eq('user_id', currentUser.id).eq('key', key).maybeSingle();
-    if (error) throw error;
-    return data ? data.value : null;
-  } catch(e){ console.error('storage get failed', key, e); return null; }
-}
-async function storageSet(key, value){
-  try {
-    const { error } = await sbClient.from('crm_store')
-      .upsert({ user_id: currentUser.id, key, value, updated_at: new Date().toISOString() }, { onConflict: 'user_id,key' });
-    if (error) throw error;
-    return true;
-  } catch(e){ console.error('storage set failed', key, e); return false; }
-}
-async function persist(part){ await storageSet(KEYS[part], state[part]); }
+/* ---------- Relational data layer (Postgres tables, one per entity) ----------
+   Setiap "part" di atas (contacts, deals, dst) punya tabelnya sendiri di
+   Postgres (lihat supabase/schema.sql) — bukan lagi satu blob JSON.
+   `state[part]` tetap array biasa berisi objek camelCase seperti sebelumnya
+   (supaya seluruh kode render/CRUD di file ini TIDAK perlu diubah), tapi
+   setiap kali `persist(part)` dipanggil, fungsi ini membandingkan isi
+   `state[part]` sekarang dengan snapshot terakhir yang berhasil disinkronkan
+   (`lastSynced[part]`), lalu mengirim HANYA baris yang berubah sebagai
+   insert / update / delete ke tabel yang sesuai. Ini membuat penyimpanan
+   data rapi secara relasional di database, tanpa perlu menulis ulang setiap
+   fungsi save/delete yang sudah ada. */
+const LIST_PARTS = ['companies','contacts','deals','tasks','notes','activities','products','quotes','team'];
+let lastSynced = {}; // part -> deep copy of the last array successfully written to DB
 
-function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+const ROW_MAPPERS = {
+  companies: {
+    toRow: c => ({ id:c.id, name:c.name, industry:c.industry||'', website:c.website||'', size:c.size||'', address:c.address||'', created_at:c.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, name:r.name, industry:r.industry||'', website:r.website||'', size:r.size||'', address:r.address||'', createdAt:r.created_at }),
+  },
+  contacts: {
+    toRow: c => ({ id:c.id, name:c.name, company_id:c.companyId||null, email:c.email||'', phone:c.phone||'', status:c.status||'lead', tags:c.tags||[], owner_id:c.ownerId||null, created_at:c.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, name:r.name, companyId:r.company_id, email:r.email||'', phone:r.phone||'', status:r.status||'lead', tags:r.tags||[], ownerId:r.owner_id, createdAt:r.created_at }),
+  },
+  deals: {
+    toRow: d => ({ id:d.id, title:d.title, contact_id:d.contactId||null, value:Number(d.value)||0, stage:d.stage||'New', probability:Number(d.probability)||0, owner_id:d.ownerId||null, loss_reason:d.lossReason||null, items:d.items||[], created_at:d.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, title:r.title, contactId:r.contact_id, value:Number(r.value)||0, stage:r.stage, probability:r.probability, ownerId:r.owner_id, lossReason:r.loss_reason, items:r.items||[], createdAt:r.created_at }),
+  },
+  tasks: {
+    toRow: t => ({ id:t.id, title:t.title, due:t.due||null, priority:t.priority||'medium', done:!!t.done, contact_id:t.contactId||null }),
+    fromRow: r => ({ id:r.id, title:r.title, due:r.due, priority:r.priority||'medium', done:!!r.done, contactId:r.contact_id }),
+  },
+  notes: {
+    toRow: n => ({ id:n.id, entity_type:n.entityType, entity_id:n.entityId, text:n.text, at:n.at||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, entityType:r.entity_type, entityId:r.entity_id, text:r.text, at:r.at }),
+  },
+  activities: {
+    toRow: a => ({ id:a.id, text:a.text, deal_id:a.dealId||null, contact_id:a.contactId||null, at:a.at||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, text:r.text, dealId:r.deal_id, contactId:r.contact_id, at:r.at }),
+  },
+  products: {
+    toRow: p => ({ id:p.id, name:p.name, model:p.model||'', sku:p.sku||'', category:p.category||'', unit:p.unit||'Unit', price:Number(p.price)||0, description:p.description||'' }),
+    fromRow: r => ({ id:r.id, name:r.name, model:r.model||'', sku:r.sku||'', category:r.category||'', unit:r.unit||'Unit', price:Number(r.price)||0, description:r.description||'' }),
+  },
+  quotes: {
+    toRow: q => ({ id:q.id, number:q.number, date:q.date||null, subject:q.subject||'', project_name:q.projectName||'', your_ref:q.yourRef||'', pages:q.pages||'1 Lembar', deal_id:q.dealId||null, contact_id:q.contactId||null, to_name:q.toName||'', to_address:q.toAddress||'', attn_name:q.attnName||'', attn_phone:q.attnPhone||'', attn_fax:q.attnFax||'', attn_email:q.attnEmail||'', sections:q.sections||[], notes_list:q.notesList||[], terms:q.terms||[], status:q.status||'Draft', created_at:q.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, number:r.number, date:r.date, subject:r.subject||'', projectName:r.project_name||'', yourRef:r.your_ref||'', pages:r.pages||'1 Lembar', dealId:r.deal_id, contactId:r.contact_id, toName:r.to_name||'', toAddress:r.to_address||'', attnName:r.attn_name||'', attnPhone:r.attn_phone||'', attnFax:r.attn_fax||'', attnEmail:r.attn_email||'', sections:r.sections||[], notesList:r.notes_list||[], terms:r.terms||[], status:r.status||'Draft', createdAt:r.created_at }),
+  },
+  team: {
+    toRow: m => ({ id:m.id, name:m.name, role:m.role||'', email:m.email||'', avatar:m.avatar||'', created_at:m.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, name:r.name, role:r.role||'', email:r.email||'', avatar:r.avatar||'', createdAt:r.created_at }),
+  },
+};
+const clone = (v) => JSON.parse(JSON.stringify(v));
+
+async function dbListAll(part){
+  const { data, error } = await sbClient.from(part).select('*').eq('user_id', currentUser.id).order('created_at', { ascending:false });
+  if (error){ console.error('load failed', part, error); return []; }
+  return (data||[]).map(ROW_MAPPERS[part].fromRow);
+}
+
+/* Sinkronisasi diff: bandingkan state[part] vs lastSynced[part], kirim
+   hanya insert/update/delete yang benar-benar berubah. Dipakai oleh SEMUA
+   fungsi save/delete yang sudah ada lewat pemanggilan persist(part) —
+   tidak ada perubahan yang diperlukan di fungsi-fungsi tersebut. */
+async function persist(part){
+  if (part === 'settings' || part === 'profile'){ await persistUserSettings(); return; }
+  const mapper = ROW_MAPPERS[part];
+  if (!mapper || !currentUser) return;
+  const prevList = lastSynced[part] || [];
+  const currList = state[part] || [];
+  const prevMap = new Map(prevList.map(x=>[x.id, x]));
+  const currMap = new Map(currList.map(x=>[x.id, x]));
+  const ops = [];
+
+  for (const item of currList){
+    const prev = prevMap.get(item.id);
+    if (!prev){
+      ops.push(sbClient.from(part).insert({ ...mapper.toRow(item), user_id: currentUser.id }));
+    } else if (JSON.stringify(prev) !== JSON.stringify(item)){
+      ops.push(sbClient.from(part).update(mapper.toRow(item)).eq('id', item.id).eq('user_id', currentUser.id));
+    }
+  }
+  for (const prev of prevList){
+    if (!currMap.has(prev.id)){
+      ops.push(sbClient.from(part).delete().eq('id', prev.id).eq('user_id', currentUser.id));
+    }
+  }
+  if (ops.length){
+    const results = await Promise.all(ops);
+    results.forEach(r=>{ if (r && r.error) console.error('sync error on', part, r.error); });
+  }
+  lastSynced[part] = clone(currList);
+}
+async function persistUserSettings(){
+  if (!currentUser) return;
+  try {
+    const payload = {
+      user_id: currentUser.id,
+      monthly_target: Number(state.settings.monthlyTarget)||0,
+      auto_task_proposal: !!state.settings.autoTaskProposal,
+      auto_loss_reason: !!state.settings.autoLossReason,
+      auto_quote_log: !!state.settings.autoQuoteLog,
+      company: state.settings.company || {},
+      profile: state.profile || {},
+    };
+    const { error } = await sbClient.from('user_settings').upsert(payload, { onConflict:'user_id' });
+    if (error) throw error;
+  } catch(e){ console.error('settings/profile persist failed', e); }
+}
+async function loadUserSettings(){
+  const { data, error } = await sbClient.from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
+  if (error){ console.error('load user_settings failed', error); return null; }
+  if (!data) return null;
+  state.settings = Object.assign({}, state.settings, {
+    monthlyTarget: Number(data.monthly_target)||0,
+    autoTaskProposal: !!data.auto_task_proposal,
+    autoLossReason: !!data.auto_loss_reason,
+    autoQuoteLog: !!data.auto_quote_log,
+    company: (data.company && Object.keys(data.company).length) ? data.company : state.settings.company,
+  });
+  if (data.profile && Object.keys(data.profile).length) state.profile = data.profile;
+  return data;
+}
+
+/* ---------- Realtime: sinkron otomatis lintas tab/device untuk user yang sama ---------- */
+let realtimeChannels = [];
+let realtimeStatus = { total: 0, subscribed: 0, error: false };
+function updateRealtimeBadge(){
+  const el = document.getElementById('realtime-status');
+  if (!el) return;
+  if (realtimeStatus.error){
+    el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block"></span> Terputus — klik untuk sambung ulang';
+    el.className = 'flex items-center gap-1.5 text-[10px] text-red-400 font-medium cursor-pointer';
+  } else if (realtimeStatus.total > 0 && realtimeStatus.subscribed >= realtimeStatus.total){
+    el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span> Realtime aktif';
+    el.className = 'flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium';
+  } else {
+    el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse"></span> Menghubungkan...';
+    el.className = 'flex items-center gap-1.5 text-[10px] text-amber-400 font-medium';
+  }
+}
+function teardownRealtime(){
+  realtimeChannels.forEach(ch=>{ try{ sbClient.removeChannel(ch); }catch(e){} });
+  realtimeChannels = [];
+  realtimeStatus = { total: 0, subscribed: 0, error: false };
+  updateRealtimeBadge();
+}
+function applyRemoteRowChange(part, eventType, newRow, oldRow){
+  const mapper = ROW_MAPPERS[part];
+  const arr = state[part];
+  if (eventType === 'DELETE'){
+    const id = oldRow && oldRow.id;
+    const idx = arr.findIndex(x=>x.id===id);
+    if (idx>-1) arr.splice(idx,1);
+  } else {
+    const obj = mapper.fromRow(newRow);
+    const idx = arr.findIndex(x=>x.id===obj.id);
+    if (idx>-1) arr[idx] = obj; else arr.unshift(obj);
+  }
+  lastSynced[part] = clone(arr); // mencegah persist() berikutnya mengira ini perubahan lokal yang perlu di-diff ulang
+}
+function trackChannelStatus(status){
+  if (status === 'SUBSCRIBED'){ realtimeStatus.subscribed++; realtimeStatus.error = false; }
+  else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){ realtimeStatus.error = true; }
+  updateRealtimeBadge();
+}
+function setupRealtime(){
+  teardownRealtime();
+  realtimeStatus.total = LIST_PARTS.length + 1; // + user_settings
+  updateRealtimeBadge();
+  LIST_PARTS.forEach(part=>{
+    const ch = sbClient
+      .channel(`rt:${part}:${currentUser.id}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:part, filter:`user_id=eq.${currentUser.id}` }, (payload)=>{
+        applyRemoteRowChange(part, payload.eventType, payload.new, payload.old);
+        renderAll();
+      })
+      .subscribe(trackChannelStatus);
+    realtimeChannels.push(ch);
+  });
+  const settingsCh = sbClient
+    .channel(`rt:user_settings:${currentUser.id}`)
+    .on('postgres_changes', { event:'*', schema:'public', table:'user_settings', filter:`user_id=eq.${currentUser.id}` }, (payload)=>{
+      if (payload.new){
+        state.settings = Object.assign({}, state.settings, {
+          monthlyTarget: Number(payload.new.monthly_target)||0,
+          autoTaskProposal: !!payload.new.auto_task_proposal,
+          autoLossReason: !!payload.new.auto_loss_reason,
+          autoQuoteLog: !!payload.new.auto_quote_log,
+          company: payload.new.company || state.settings.company,
+        });
+        if (payload.new.profile && Object.keys(payload.new.profile).length) state.profile = payload.new.profile;
+        renderAll();
+      }
+    })
+    .subscribe(trackChannelStatus);
+  realtimeChannels.push(settingsCh);
+}
+
+function uid(){
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  // fallback RFC4122 v4 generator untuk browser lama yang belum punya crypto.randomUUID
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c=>{
+    const r = Math.random()*16|0, v = c==='x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 function money(n){ return 'Rp ' + Number(n||0).toLocaleString('id-ID'); }
 function timeAgo(iso){
   const diff = Math.max(0, Date.now() - new Date(iso).getTime());
@@ -237,36 +420,95 @@ function seedDemoData(){
 }
 
 /* ---------- load / init ---------- */
-const PERSIST_PARTS = ['contacts','deals','tasks','activities','companies','notes','products','quotes','team'];
+const LEGACY_KEY_TO_PART = { 'crm:contacts':'contacts','crm:deals':'deals','crm:tasks':'tasks','crm:activities':'activities','crm:companies':'companies','crm:notes':'notes','crm:products':'products','crm:quotes':'quotes','crm:team':'team' };
+/* Migrasi satu kali dari skema lama (tabel crm_store: satu blob JSON per
+   key, id berupa string base36 -- BUKAN uuid valid) ke skema relasional
+   baru (kolom id bertipe uuid). Setiap id lama diganti uuid baru yang
+   valid, dan semua referensi silang antar entity (companyId, contactId,
+   dealId, ownerId, entityId pada notes) ikut dipetakan ulang supaya
+   keterhubungan data tetap utuh. Aman dipanggil berkali-kali — hanya
+   benar-benar memindahkan data kalau tabel relasional baru masih kosong
+   untuk user tsb (dicek oleh pemanggilnya di loadAll). */
+async function tryMigrateLegacyData(){
+  try {
+    const { data, error } = await sbClient.from('crm_store').select('key,value').eq('user_id', currentUser.id);
+    if (error || !data || !data.length) return false;
+    const map = {};
+    data.forEach(row=>{ map[row.key] = row.value; });
+
+    const hasLegacyList = Object.keys(LEGACY_KEY_TO_PART).some(k => Array.isArray(map[k]) && map[k].length);
+    if (!hasLegacyList) return false;
+
+    // id lama -> id baru (uuid valid), per jenis entity
+    const idMaps = {};
+    Object.entries(LEGACY_KEY_TO_PART).forEach(([key, part])=>{
+      const list = Array.isArray(map[key]) ? map[key] : [];
+      idMaps[part] = {};
+      list.forEach(item=>{ if (item && item.id) idMaps[part][item.id] = uid(); });
+    });
+    const remap = (part, oldId) => (oldId && idMaps[part] && idMaps[part][oldId]) ? idMaps[part][oldId] : null;
+    const remapOwner = (oldOwnerId) => {
+      if (!oldOwnerId || oldOwnerId === 'me') return oldOwnerId || null;
+      return idMaps.team && idMaps.team[oldOwnerId] ? idMaps.team[oldOwnerId] : null;
+    };
+
+    Object.entries(LEGACY_KEY_TO_PART).forEach(([key, part])=>{
+      const list = Array.isArray(map[key]) ? map[key] : [];
+      state[part] = list.map(item=>{
+        const copy = { ...item, id: idMaps[part][item.id] };
+        if ('companyId' in copy) copy.companyId = remap('companies', copy.companyId);
+        if ('contactId' in copy) copy.contactId = remap('contacts', copy.contactId);
+        if ('dealId' in copy) copy.dealId = remap('deals', copy.dealId);
+        if ('ownerId' in copy) copy.ownerId = remapOwner(copy.ownerId);
+        if (part === 'notes' && copy.entityType){
+          copy.entityId = remap(copy.entityType === 'contact' ? 'contacts' : 'deals', copy.entityId);
+        }
+        return copy;
+      }).filter(x => x.id); // buang baris yang id-nya gagal terpetakan
+    });
+
+    if (map['crm:profile']) state.profile = map['crm:profile'];
+    if (map['crm:settings']) state.settings = Object.assign({}, state.settings, map['crm:settings']);
+
+    toast('Data lama dari versi sebelumnya berhasil dimigrasikan', 'info');
+    return true;
+  } catch(e){ console.error('legacy migration check failed', e); return false; }
+}
 async function loadAll(){
-  const [c,d,t,a,p,co,no,pr,qu,tm,se] = await Promise.all([
-    storageGet(KEYS.contacts), storageGet(KEYS.deals), storageGet(KEYS.tasks), storageGet(KEYS.activities),
-    storageGet(KEYS.profile), storageGet(KEYS.companies), storageGet(KEYS.notes),
-    storageGet(KEYS.products), storageGet(KEYS.quotes), storageGet(KEYS.team), storageGet(KEYS.settings)
-  ]);
-  if (c===null && d===null && t===null){
-    seedDemoData();
-    await Promise.all(PERSIST_PARTS.map(persist));
-    await persist('settings');
+  const settingsRow = await loadUserSettings();
+  const isBrandNewUser = settingsRow === null;
+
+  const loaded = {};
+  await Promise.all(LIST_PARTS.map(async part=>{ loaded[part] = await dbListAll(part); }));
+
+  const hasAnyData = LIST_PARTS.some(part => loaded[part].length > 0);
+
+  if (isBrandNewUser && !hasAnyData){
+    const migrated = await tryMigrateLegacyData();
+    if (!migrated) seedDemoData();
+    LIST_PARTS.forEach(part=>{ lastSynced[part] = []; }); // belum ada apa-apa di tabel relasional baru
+    await Promise.all(LIST_PARTS.map(persist));
+    await persistUserSettings();
   } else {
-    state.contacts = c || []; state.deals = d || []; state.tasks = t || []; state.activities = a || [];
-    state.companies = co || []; state.notes = no || [];
-    state.products = pr || []; state.quotes = qu || []; state.team = tm || [];
+    LIST_PARTS.forEach(part=>{
+      state[part] = loaded[part];
+      lastSynced[part] = clone(loaded[part]);
+    });
   }
-  if (p) state.profile = p; else await persist('profile');
-  if (se) state.settings = Object.assign({}, state.settings, se); else await persist('settings');
+  setupRealtime();
 }
 async function resetDemoData(){
   if(!confirm('Ganti data Anda saat ini dengan data demo? Data lama akan hilang.')) return;
   seedDemoData();
-  await Promise.all(PERSIST_PARTS.map(persist));
+  await Promise.all(LIST_PARTS.map(persist));
+  await persistUserSettings();
   renderAll(); toast('Data demo dimuat ulang', 'info');
 }
 async function clearAllData(){
   if(!confirm('Hapus semua data CRM Anda secara permanen?')) return;
   state.contacts=[]; state.deals=[]; state.tasks=[]; state.activities=[]; state.companies=[]; state.notes=[];
   state.products=[]; state.quotes=[]; state.team=[];
-  await Promise.all(PERSIST_PARTS.map(persist));
+  await Promise.all(LIST_PARTS.map(persist));
   renderAll(); toast('Semua data telah dihapus', 'err');
 }
 
@@ -1944,6 +2186,7 @@ document.getElementById('auth-form').addEventListener('submit', async (e)=>{
 });
 async function signOutUser(){
   if (!confirm('Keluar dari workspace ini?')) return;
+  teardownRealtime();
   await sbClient.auth.signOut();
   location.reload();
 }
