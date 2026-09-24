@@ -576,7 +576,7 @@ function openContactModal(id){
       </div>
       <div><label class="text-xs text-textMuted block mb-1">Email</label><input type="email" name="email" class="field-input rounded-xl px-3 py-2 w-full" value="${c?esc(c.email):''}"></div>
       <div><label class="text-xs text-textMuted block mb-1">Telepon</label><input name="phone" class="field-input rounded-xl px-3 py-2 w-full" value="${c?esc(c.phone):''}"></div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Status</label>
           <select name="status" class="field-input rounded-xl px-3 py-2 w-full">
             <option value="lead" ${c&&c.status==='lead'?'selected':''}>Lead</option>
@@ -638,7 +638,7 @@ function openContactDetail(id){
   openDrawer(`
     <div class="flex justify-between items-start mb-1">
       <div>
-        <h3 class="text-lg font-extrabold text-white">${esc(c.name)}</h3>
+        <h3 class="font-display text-lg font-bold text-white">${esc(c.name)}</h3>
         <p class="text-xs text-textMuted">${co?esc(co.name):'Tidak terhubung ke perusahaan'}</p>
       </div>
       <span class="text-[10px] font-bold px-2 py-1 rounded-full border ${scoreColor(score)}">Skor ${score}</span>
@@ -708,7 +708,7 @@ function openCompanyModal(id){
       <div><label class="text-xs text-textMuted block mb-1">Nama Perusahaan</label><input name="name" required class="field-input rounded-xl px-3 py-2 w-full" value="${co?esc(co.name):''}"></div>
       <div><label class="text-xs text-textMuted block mb-1">Industri</label><input name="industry" class="field-input rounded-xl px-3 py-2 w-full" value="${co?esc(co.industry):''}"></div>
       <div><label class="text-xs text-textMuted block mb-1">Website</label><input name="website" class="field-input rounded-xl px-3 py-2 w-full" value="${co?esc(co.website):''}"></div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Jumlah Karyawan</label><input name="size" class="field-input rounded-xl px-3 py-2 w-full" value="${co?esc(co.size):''}"></div>
         <div><label class="text-xs text-textMuted block mb-1">Lokasi</label><input name="address" class="field-input rounded-xl px-3 py-2 w-full" value="${co?esc(co.address):''}"></div>
       </div>
@@ -748,13 +748,13 @@ function openCompanyDetail(id){
   const deals = dealsForCompany(id);
   const total = deals.reduce((s,d)=>s+d.value,0);
   openDrawer(`
-    <h3 class="text-lg font-extrabold text-white">${esc(co.name)}</h3>
+    <h3 class="font-display text-lg font-bold text-white">${esc(co.name)}</h3>
     <p class="text-xs text-textMuted mb-4">${esc(co.industry)||'—'} • ${esc(co.address)||'—'}</p>
     <div class="flex gap-2 mb-5">
       <button onclick="openCompanyModal('${co.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
       <button onclick="deleteCompany('${co.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
     </div>
-    <div class="grid grid-cols-2 gap-3 mb-5 text-xs">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 text-xs">
       <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3"><p class="text-textMuted text-[10px] mb-1">Total Nilai Deal</p><p class="font-mono font-bold text-cyan-400">${money(total)}</p></div>
       <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3"><p class="text-textMuted text-[10px] mb-1">Website</p><p class="text-slate-300">${esc(co.website)||'—'}</p></div>
     </div>
@@ -817,11 +817,11 @@ function openDealModal(id, prefillContactId){
       <div><label class="text-xs text-textMuted block mb-1">Kontak</label>
         <select name="contactId" class="field-input rounded-xl px-3 py-2 w-full"><option value="">— Tanpa kontak —</option>${contactOptions}</select>
       </div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Nilai (Rp)</label><input type="number" min="0" name="value" class="field-input rounded-xl px-3 py-2 w-full" value="${d?d.value:0}"></div>
         <div><label class="text-xs text-textMuted block mb-1">Probabilitas (%)</label><input type="number" min="0" max="100" name="probability" class="field-input rounded-xl px-3 py-2 w-full" value="${d?d.probability:50}"></div>
       </div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Stage</label>
           <select name="stage" class="field-input rounded-xl px-3 py-2 w-full">${STAGES.map(s=>`<option value="${s}" ${d&&d.stage===s?'selected':''}>${s}</option>`).join('')}</select>
         </div>
@@ -901,7 +901,7 @@ function openDealDetail(id){
   const notes = notesFor('deal', id);
   openDrawer(`
     <div class="flex justify-between items-start mb-1">
-      <div><h3 class="text-lg font-extrabold text-white">${esc(d.title)}</h3><p class="text-xs text-textMuted">${contact?esc(contact.name)+' — '+esc(contactCompanyName(contact)):'Tanpa kontak'}</p></div>
+      <div><h3 class="font-display text-lg font-bold text-white">${esc(d.title)}</h3><p class="text-xs text-textMuted">${contact?esc(contact.name)+' — '+esc(contactCompanyName(contact)):'Tanpa kontak'}</p></div>
       <span class="text-[10px] font-bold px-2 py-1 rounded-full border" style="color:${STAGE_COLOR[d.stage]};border-color:${STAGE_COLOR[d.stage]}55">${d.stage}</span>
     </div>
     <div class="flex gap-2 mt-3 mb-4">
@@ -909,7 +909,7 @@ function openDealDetail(id){
       <button onclick="openQuoteModal(null,'${d.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Buat Quotation</button>
       <button onclick="deleteDeal('${d.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
     </div>
-    <div class="grid grid-cols-2 gap-3 mb-3 text-xs">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 text-xs">
       <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3"><p class="text-textMuted text-[10px] mb-1">Nilai</p><p class="font-mono font-bold text-cyan-400">${money(d.value)}</p></div>
       <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3"><p class="text-textMuted text-[10px] mb-1">Probabilitas</p><p class="font-mono font-bold text-emerald-400">${d.probability}%</p></div>
       <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3"><p class="text-textMuted text-[10px] mb-1">Owner</p><p class="text-slate-300">👤 ${esc(ownerName(d.ownerId))}</p></div>
@@ -940,7 +940,7 @@ function openTaskModal(id, prefillDate){
     <form id="task-form" class="space-y-3 text-sm">
       <input type="hidden" name="id" value="${t?t.id:''}">
       <div><label class="text-xs text-textMuted block mb-1">Judul Tugas</label><input name="title" required class="field-input rounded-xl px-3 py-2 w-full" value="${t?esc(t.title):''}"></div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Jatuh Tempo</label><input type="date" name="due" class="field-input rounded-xl px-3 py-2 w-full" value="${dueVal}"></div>
         <div><label class="text-xs text-textMuted block mb-1">Prioritas</label>
           <select name="priority" class="field-input rounded-xl px-3 py-2 w-full">
@@ -1417,11 +1417,11 @@ function openProductModal(id){
     <form id="product-form" class="space-y-3 text-sm">
       <input type="hidden" name="id" value="${p?p.id:''}">
       <div><label class="text-xs text-textMuted block mb-1">Nama Produk / Layanan</label><input name="name" required class="field-input rounded-xl px-3 py-2 w-full" value="${p?esc(p.name):''}"></div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Model / Kode</label><input name="model" placeholder="cth. GST104A" class="field-input rounded-xl px-3 py-2 w-full" value="${p?esc(p.model):''}"></div>
         <div><label class="text-xs text-textMuted block mb-1">SKU (internal)</label><input name="sku" class="field-input rounded-xl px-3 py-2 w-full" value="${p?esc(p.sku):''}"></div>
       </div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Kategori Grup Quotation</label>
           <input name="category" list="product-category-list" placeholder="cth. EQUIPMENT FIRE ALARM" class="field-input rounded-xl px-3 py-2 w-full" value="${p?esc(p.category):''}">
           <datalist id="product-category-list">${productCategoryOptions(p?p.category:'')}</datalist>
@@ -1635,15 +1635,15 @@ function openQuoteModal(id, prefillDealId){
     <h3 class="text-sm font-bold text-white mb-4">${q?'Edit Quotation':'Buat Quotation'}</h3>
     <form id="quote-form" class="space-y-3 text-sm">
       <input type="hidden" name="id" value="${q?q.id:''}">
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">No. Quotation (Ref#)</label><input name="number" required class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.number)}"></div>
         <div><label class="text-xs text-textMuted block mb-1">Tanggal</label><input type="date" name="date" required class="field-input rounded-xl px-3 py-2 w-full" value="${quoteDraft.date}"></div>
       </div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Subject / Sistem</label><input name="subject" placeholder="cth. Fire Alarm System" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.subject)}"></div>
         <div><label class="text-xs text-textMuted block mb-1">Nama Project</label><input name="projectName" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.projectName)}"></div>
       </div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label class="text-xs text-textMuted block mb-1">Deal Terkait (opsional)</label>
           <select name="dealId" class="field-input rounded-xl px-3 py-2 w-full"><option value="">— Tanpa deal —</option>${dealOptions}</select>
         </div>
@@ -1653,16 +1653,16 @@ function openQuoteModal(id, prefillDealId){
       </div>
       <div class="pt-1 border-t border-white/10 mt-2">
         <p class="text-xs text-textMuted mb-2 mt-2 font-semibold">Ditujukan Kepada (blok "To")</p>
-        <div class="grid grid-cols-2 gap-3 mb-2">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
           <div><label class="text-xs text-textMuted block mb-1">Nama Perusahaan / Penerima</label><input name="toName" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.toName)}"></div>
           <div><label class="text-xs text-textMuted block mb-1">Alamat</label><input name="toAddress" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.toAddress)}"></div>
         </div>
-        <div class="grid grid-cols-3 gap-3 mb-2">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
           <div><label class="text-xs text-textMuted block mb-1">Attn (PIC)</label><input name="attnName" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.attnName)}"></div>
           <div><label class="text-xs text-textMuted block mb-1">Telp</label><input name="attnPhone" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.attnPhone)}"></div>
           <div><label class="text-xs text-textMuted block mb-1">Fax</label><input name="attnFax" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.attnFax)}"></div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label class="text-xs text-textMuted block mb-1">Email</label><input name="attnEmail" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.attnEmail)}"></div>
           <div><label class="text-xs text-textMuted block mb-1">Your Ref.</label><input name="yourRef" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(quoteDraft.yourRef)}"></div>
         </div>
@@ -1737,7 +1737,7 @@ function openQuoteDetail(id){
   const total = quoteGrandTotal(q);
   openDrawer(`
     <div class="flex justify-between items-start mb-1">
-      <div><h3 class="text-lg font-extrabold text-white">${esc(q.number)}</h3><p class="text-xs text-textMuted">${esc(q.subject)||''} ${deal?'• '+esc(deal.title):''}</p></div>
+      <div><h3 class="font-display text-lg font-bold text-white">${esc(q.number)}</h3><p class="text-xs text-textMuted">${esc(q.subject)||''} ${deal?'• '+esc(deal.title):''}</p></div>
       <span class="text-[10px] font-bold px-2 py-1 rounded-full border" style="color:${QUOTE_STATUS_COLOR[q.status]};border-color:${QUOTE_STATUS_COLOR[q.status]}55">${q.status}</span>
     </div>
     <div class="flex gap-2 mt-3 mb-4 flex-wrap">
@@ -1945,7 +1945,7 @@ function renderTeam(){
         <img src="${m.avatar||'https://randomuser.me/api/portraits/lego/1.jpg'}" class="w-10 h-10 rounded-full ring-2 ring-purple-500/40">
         <div><p class="font-bold text-white text-sm">${esc(m.name)} ${m.isMe?'<span class=\"text-[9px] text-purple-400\">(Anda)</span>':''}</p><p class="text-xs text-textMuted">${esc(m.role)||'—'}</p></div>
       </div>
-      <div class="grid grid-cols-2 gap-2 text-[11px] mb-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] mb-3">
         <div class="bg-panelBg/60 border border-white/5 rounded-lg p-2"><p class="text-textMuted text-[9px]">Deal Aktif</p><p class="font-bold text-slate-200">${ownedDeals.length}</p></div>
         <div class="bg-panelBg/60 border border-white/5 rounded-lg p-2"><p class="text-textMuted text-[9px]">Revenue Won</p><p class="font-bold text-emerald-400 font-mono">${money(wonValue)}</p></div>
       </div>
