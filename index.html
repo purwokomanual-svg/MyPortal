@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRM AI Enterprise — Professional</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23a855f7'/%3E%3Cstop offset='1' stop-color='%2306b6d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2305070a'/%3E%3Crect x='4' y='4' width='92' height='92' rx='20' fill='none' stroke='url(%23g)' stroke-width='4'/%3E%3Ctext x='50' y='68' font-family='Arial,sans-serif' font-weight='800' font-size='52' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="js/tailwind-config.js"></script>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -23,10 +24,10 @@
     <div class="flex items-center gap-3 mb-6">
       <div class="relative">
         <div class="absolute -inset-1 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl blur opacity-60"></div>
-        <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-extrabold text-white text-xl border border-white/10">S</div>
+        <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-display font-bold text-white text-xl border border-white/10">S</div>
       </div>
       <div>
-        <p class="text-sm font-extrabold text-white leading-tight">CRM AI Enterprise</p>
+        <p class="font-display text-sm font-bold text-white leading-tight tracking-tight">CRM AI Enterprise</p>
         <p class="text-[10px] text-textMuted">Professional Edition</p>
       </div>
     </div>
@@ -49,57 +50,57 @@
 <div id="modal-root"></div>
 <div id="drawer-root"></div>
 
-<!-- === SIDEBAR === -->
+<!-- === SIDEBAR === --><div id="app-shell" class="flex flex-1 min-w-0">
 <aside class="w-20 bg-sidebarBg/90 border-r border-panelBorder/50 flex flex-col justify-between items-center py-6 flex-shrink-0 min-h-screen z-40 backdrop-blur-xl sticky top-0 h-screen">
   <div class="flex flex-col items-center gap-8 w-full">
     <div class="relative group cursor-pointer">
       <div class="absolute -inset-1 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl blur opacity-60 group-hover:opacity-100 transition duration-500"></div>
-      <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-extrabold text-white text-xl border border-white/10">S</div>
+      <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-display font-bold text-white text-xl border border-white/10">S</div>
     </div>
     <nav class="flex flex-col items-center gap-2.5 w-full px-3">
-      <button data-view="dashboard" title="Dashboard" class="nav-btn active w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="dashboard" data-tooltip="Dashboard" title="Dashboard" class="nav-btn active w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
       </button>
-      <button data-view="contacts" title="Contacts" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="contacts" data-tooltip="Contacts" title="Contacts" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
       </button>
-      <button data-view="companies" title="Companies" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="companies" data-tooltip="Companies" title="Companies" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"></path></svg>
       </button>
-      <button data-view="deals" title="Deals" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="deals" data-tooltip="Deals" title="Deals" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
       </button>
-      <button data-view="tasks" title="Tasks" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="tasks" data-tooltip="Tasks" title="Tasks" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
       </button>
-      <button data-view="calendar" title="Calendar" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="calendar" data-tooltip="Calendar" title="Calendar" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
       </button>
-      <button data-view="reports" title="Reports" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="reports" data-tooltip="Reports" title="Reports" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h1a1 1 0 011 1v13M3 19v-6a1 1 0 011-1h1a1 1 0 011 1v6m8 0v-9a1 1 0 011-1h1a1 1 0 011 1v9M3 19h18"></path></svg>
       </button>
       <div class="w-8 h-px bg-panelBorder/60 my-1"></div>
-      <button data-view="products" title="Products" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="products" data-tooltip="Products" title="Products" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"></path></svg>
       </button>
-      <button data-view="quotes" title="Quotations" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="quotes" data-tooltip="Quotations" title="Quotations" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
       </button>
-      <button data-view="team" title="Team" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+      <button data-view="team" data-tooltip="Team" title="Team" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-2.13a4 4 0 100-8 4 4 0 000 8zm6 4c.83.6 1.5 1.55 1.5 2.5m-13.5-2.5C4.67 16.6 4 17.55 4 18.5"></path></svg>
       </button>
     </nav>
   </div>
-  <button data-view="settings" title="Settings" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
+  <button data-view="settings" data-tooltip="Settings" title="Settings" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
   </button>
 </aside>
 
 <!-- === WORKSPACE === -->
 <div class="flex-1 flex flex-col min-w-0">
-  <header class="bg-darkBg/60 border-b border-panelBorder/40 px-8 py-4 flex items-center justify-between gap-4 sticky top-0 z-30 backdrop-blur-md">
+  <header class="bg-darkBg/60 border-b border-panelBorder/40 px-4 sm:px-8 py-4 flex items-center justify-between gap-3 sm:gap-4 sticky top-0 z-30 backdrop-blur-md">
     <div class="flex items-center gap-3 flex-shrink-0">
-      <span class="text-xl font-extrabold text-white glow-text tracking-wide" id="page-title">Dashboard</span>
+      <span class="font-display text-xl font-bold text-white glow-text tracking-wide" id="page-title">Dashboard</span>
       <span class="text-[10px] bg-purple-500/10 text-purple-400 font-semibold px-2.5 py-1 rounded-full border border-purple-500/20 hidden sm:inline-block">Enterprise AI</span>
     </div>
 
@@ -139,26 +140,46 @@
     </div>
   </header>
 
-  <main class="p-8">
+  <main class="p-4 sm:p-8">
 
     <!-- ============ DASHBOARD ============ -->
     <section id="view-dashboard" class="view active">
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-5">
-        <div class="glass-card glass-card-hover rounded-3xl p-5">
-          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Total Contacts</p>
-          <p class="text-2xl font-extrabold text-white" id="stat-contacts">0</p>
+        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Total Contacts</p>
+            <p class="font-display text-[28px] leading-none font-bold text-white" id="stat-contacts">0</p>
+          </div>
+          <div class="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+          </div>
         </div>
-        <div class="glass-card glass-card-hover rounded-3xl p-5">
-          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Pipeline Value</p>
-          <p class="text-2xl font-extrabold text-cyan-400" id="stat-pipeline">Rp 0</p>
+        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Pipeline Value</p>
+            <p class="font-display text-[28px] leading-none font-bold text-cyan-400" id="stat-pipeline">Rp 0</p>
+          </div>
+          <div class="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          </div>
         </div>
-        <div class="glass-card glass-card-hover rounded-3xl p-5">
-          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Win Rate</p>
-          <p class="text-2xl font-extrabold text-emerald-400" id="stat-winrate">0%</p>
+        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Win Rate</p>
+            <p class="font-display text-[28px] leading-none font-bold text-emerald-400" id="stat-winrate">0%</p>
+          </div>
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+          </div>
         </div>
-        <div class="glass-card glass-card-hover rounded-3xl p-5">
-          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Open Tasks</p>
-          <p class="text-2xl font-extrabold text-pink-400" id="stat-tasks">0</p>
+        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Open Tasks</p>
+            <p class="font-display text-[28px] leading-none font-bold text-pink-400" id="stat-tasks">0</p>
+          </div>
+          <div class="w-9 h-9 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-400 flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+          </div>
         </div>
       </div>
 
@@ -218,7 +239,7 @@
       </div>
       <div id="tag-filter-row" class="flex flex-wrap gap-1.5 mb-4"></div>
       <div id="contacts-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-      <p id="contacts-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada kontak. Klik "+ Tambah Kontak" untuk memulai.</p>
+      <div id="contacts-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada kontak. Klik <span class="text-purple-400 font-medium">"+ Tambah Kontak"</span> untuk memulai.</p></div>
     </section>
 
     <!-- ============ COMPANIES ============ -->
@@ -228,7 +249,7 @@
         <button onclick="openCompanyModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Perusahaan</button>
       </div>
       <div id="companies-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-      <p id="companies-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada perusahaan.</p>
+      <div id="companies-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada perusahaan. Tambahkan lewat kontak baru atau tombol di atas.</p></div>
     </section>
 
     <!-- ============ DEALS ============ -->
@@ -253,7 +274,7 @@
         <button onclick="openTaskModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Tugas</button>
       </div>
       <div id="tasks-list" class="space-y-3 max-w-3xl"></div>
-      <p id="tasks-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada tugas.</p>
+      <div id="tasks-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada tugas. Anda sedang bebas — nikmati waktunya!</p></div>
     </section>
 
     <!-- ============ CALENDAR ============ -->
@@ -327,7 +348,7 @@
         </div>
       </div>
       <div id="products-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-      <p id="products-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada produk / layanan di price book.</p>
+      <div id="products-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Price book masih kosong. Tambahkan produk atau layanan pertama Anda.</p></div>
     </section>
 
     <!-- ============ QUOTATIONS ============ -->
@@ -337,7 +358,7 @@
         <button onclick="openQuoteModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Buat Quotation</button>
       </div>
       <div id="quotes-list" class="space-y-3"></div>
-      <p id="quotes-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada quotation. Klik "+ Buat Quotation" untuk memulai.</p>
+      <div id="quotes-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada quotation. Klik <span class="text-cyan-400 font-medium">"+ Buat Quotation"</span> untuk membuat penawaran pertama.</p></div>
     </section>
 
     <!-- ============ TEAM ============ -->
@@ -347,7 +368,7 @@
         <button onclick="openTeamModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Anggota</button>
       </div>
       <div id="team-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-      <p id="team-empty" class="hidden text-center text-textMuted text-sm py-16">Belum ada anggota tim selain Anda.</p>
+      <div id="team-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-2.13a4 4 0 100-8 4 4 0 000 8zm6 4c.83.6 1.5 1.55 1.5 2.5m-13.5-2.5C4.67 16.6 4 17.55 4 18.5"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada anggota tim selain Anda. Undang rekan lewat "+ Tambah Anggota".</p></div>
     </section>
 
     <!-- ============ SETTINGS ============ -->
@@ -371,27 +392,27 @@
           <p class="text-xs text-textMuted mb-4">Data ini akan tampil otomatis di kop surat & tanda tangan setiap dokumen Quotation yang dicetak.</p>
           <form id="company-profile-form" class="space-y-3">
             <div><label class="text-xs text-textMuted block mb-1">Nama Perusahaan</label><input name="name" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label class="text-xs text-textMuted block mb-1">Label Kantor Pusat</label><input name="headOfficeLabel" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
               <div><label class="text-xs text-textMuted block mb-1">Label Kantor Cabang</label><input name="branchOfficeLabel" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label class="text-xs text-textMuted block mb-1">Alamat Kantor Pusat</label><textarea name="headOfficeAddress" rows="2" class="field-input rounded-xl px-3 py-2 text-sm w-full"></textarea></div>
               <div><label class="text-xs text-textMuted block mb-1">Alamat Kantor Cabang</label><textarea name="branchOfficeAddress" rows="2" class="field-input rounded-xl px-3 py-2 text-sm w-full"></textarea></div>
             </div>
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div><label class="text-xs text-textMuted block mb-1">Telepon</label><input name="contactPhone" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
               <div><label class="text-xs text-textMuted block mb-1">Email</label><input name="contactEmail" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
               <div><label class="text-xs text-textMuted block mb-1">Website</label><input name="contactWebsite" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
             </div>
             <div><label class="text-xs text-textMuted block mb-1">Info Rekening Pembayaran</label><input name="bankInfo" class="field-input rounded-xl px-3 py-2 text-sm w-full" placeholder="Pembayaran ke BCA atas nama ... No. ..."></div>
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div><label class="text-xs text-textMuted block mb-1">Nama Penandatangan</label><input name="signerName" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
               <div><label class="text-xs text-textMuted block mb-1">Telp Penandatangan</label><input name="signerPhone" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
               <div><label class="text-xs text-textMuted block mb-1">HP Penandatangan</label><input name="signerMobile" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
             </div>
             <div><label class="text-xs text-textMuted block mb-1">Alamat Footer (untuk bagian bawah dokumen)</label><input name="footerAddress" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label class="text-xs text-textMuted block mb-1">Telp/Fax Footer</label><input name="footerPhone" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
               <div><label class="text-xs text-textMuted block mb-1">Website Footer</label><input name="footerWebsite" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
             </div>
@@ -450,6 +471,7 @@
     </section>
 
   </main>
+</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
