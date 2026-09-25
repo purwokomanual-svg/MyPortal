@@ -536,6 +536,15 @@ function tickClock(){
 }
 setInterval(tickClock, 1000);
 
+/* ---------- theme (dark/light) ---------- */
+function toggleTheme(){
+  const root = document.documentElement;
+  const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  root.setAttribute('data-theme', next);
+  try { localStorage.setItem('crm-theme', next); } catch(e){}
+  toast(next === 'light' ? 'Mode terang diaktifkan' : 'Mode gelap diaktifkan', 'info');
+}
+
 /* ---------- MODALS ---------- */
 function openModal(html){
   document.getElementById('modal-root').innerHTML = `
@@ -917,7 +926,7 @@ function openDealDetail(id){
     </div>
     ${d.stage==='Lost' && d.lossReason ? `<div class="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-300 mb-3">Alasan kalah: ${esc(d.lossReason)}</div>` : ''}
     <div class="flex flex-wrap gap-1.5 mb-5">
-      ${STAGES.map(s=>`<button onclick="updateDealStage('${d.id}','${s}'); openDealDetail('${d.id}')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${s===d.stage?'text-white':'text-textMuted'}" style="border-color:${STAGE_COLOR[s]}55; ${s===d.stage?`background:${STAGE_COLOR[s]}33;`:''}">${s}</button>`).join('')}
+      ${STAGES.map(s=>`<button onclick="updateDealStage('${d.id}','${s}'); openDealDetail('${d.id}')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${s===d.stage?'text-textMain':'text-textMuted'}" style="border-color:${STAGE_COLOR[s]}55; ${s===d.stage?`background:${STAGE_COLOR[s]}33;`:''}">${s}</button>`).join('')}
     </div>
     <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">Notes</h4>
     <form onsubmit="return addNote(event,'deal','${d.id}')" class="flex gap-2 mb-3">
@@ -1746,7 +1755,7 @@ function openQuoteDetail(id){
       <button onclick="deleteQuote('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
     </div>
     <div class="flex flex-wrap gap-1.5 mb-5">
-      ${Object.keys(QUOTE_STATUS_COLOR).map(s=>`<button onclick="updateQuoteStatus('${q.id}','${s}')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${s===q.status?'text-white':'text-textMuted'}" style="border-color:${QUOTE_STATUS_COLOR[s]}55; ${s===q.status?`background:${QUOTE_STATUS_COLOR[s]}33;`:''}">${s}</button>`).join('')}
+      ${Object.keys(QUOTE_STATUS_COLOR).map(s=>`<button onclick="updateQuoteStatus('${q.id}','${s}')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${s===q.status?'text-textMain':'text-textMuted'}" style="border-color:${QUOTE_STATUS_COLOR[s]}55; ${s===q.status?`background:${QUOTE_STATUS_COLOR[s]}33;`:''}">${s}</button>`).join('')}
     </div>
     <div class="text-xs text-slate-400 space-y-1 mb-4 bg-panelBg/60 border border-white/5 rounded-xl p-3">
       <p><b class="text-slate-300">To:</b> ${esc(q.toName)||'—'}</p>
