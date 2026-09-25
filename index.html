@@ -4,6 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRM AI Enterprise — Professional</title>
+<script>
+  // Apply saved theme before first paint to avoid a flash of the wrong theme.
+  // Dark is the app's actual default look (see css/style.css :root tokens) —
+  // it must NOT be overridden by the OS's prefers-color-scheme, because most
+  // devices ship with a light OS theme by default. Previously this block did
+  // `prefers-color-scheme: light ? 'light' : 'dark'`, which silently put the
+  // large majority of first-time visitors (anyone on a light-mode OS/browser)
+  // into the light theme — that's why the app looked "dominantly white" even
+  // though every dark-mode CSS rule was correct. Now we only ever leave the
+  // default dark theme once a person has explicitly chosen light via the
+  // sun/moon toggle (which is what sets and reads 'crm-theme' below).
+  (function(){
+    try {
+      var saved = localStorage.getItem('crm-theme');
+      var theme = (saved === 'light' || saved === 'dark') ? saved : 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch(e){ document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23a855f7'/%3E%3Cstop offset='1' stop-color='%2306b6d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2305070a'/%3E%3Crect x='4' y='4' width='92' height='92' rx='20' fill='none' stroke='url(%23g)' stroke-width='4'/%3E%3Ctext x='50' y='68' font-family='Arial,sans-serif' font-weight='800' font-size='52' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -24,7 +43,7 @@
     <div class="flex items-center gap-3 mb-6">
       <div class="relative">
         <div class="absolute -inset-1 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl blur opacity-60"></div>
-        <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-display font-bold text-white text-xl border border-white/10">S</div>
+        <div class="relative w-10 h-10 bg-[#05070a] rounded-2xl flex items-center justify-center font-display font-bold text-white text-xl border border-white/10">S</div>
       </div>
       <div>
         <p class="font-display text-sm font-bold text-white leading-tight tracking-tight">CRM AI Enterprise</p>
@@ -51,50 +70,49 @@
 <div id="drawer-root"></div>
 
 <!-- === SIDEBAR === --><div id="app-shell" class="flex flex-1 min-w-0">
-<aside class="w-20 bg-sidebarBg/90 border-r border-panelBorder/50 flex flex-col justify-between items-center py-6 flex-shrink-0 min-h-screen z-40 backdrop-blur-xl sticky top-0 h-screen">
-  <div class="flex flex-col items-center gap-8 w-full">
-    <div class="relative group cursor-pointer">
-      <div class="absolute -inset-1 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl blur opacity-60 group-hover:opacity-100 transition duration-500"></div>
-      <div class="relative w-10 h-10 bg-darkBg rounded-2xl flex items-center justify-center font-display font-bold text-white text-xl border border-white/10">S</div>
-    </div>
-    <nav class="flex flex-col items-center gap-2.5 w-full px-3">
-      <button data-view="dashboard" data-tooltip="Dashboard" title="Dashboard" class="nav-btn active w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-      </button>
-      <button data-view="contacts" data-tooltip="Contacts" title="Contacts" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-      </button>
-      <button data-view="companies" data-tooltip="Companies" title="Companies" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"></path></svg>
-      </button>
-      <button data-view="deals" data-tooltip="Deals" title="Deals" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-      </button>
-      <button data-view="tasks" data-tooltip="Tasks" title="Tasks" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-      </button>
-      <button data-view="calendar" data-tooltip="Calendar" title="Calendar" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-      </button>
-      <button data-view="reports" data-tooltip="Reports" title="Reports" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h1a1 1 0 011 1v13M3 19v-6a1 1 0 011-1h1a1 1 0 011 1v6m8 0v-9a1 1 0 011-1h1a1 1 0 011 1v9M3 19h18"></path></svg>
-      </button>
-      <div class="w-8 h-px bg-panelBorder/60 my-1"></div>
-      <button data-view="products" data-tooltip="Products" title="Products" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"></path></svg>
-      </button>
-      <button data-view="quotes" data-tooltip="Quotations" title="Quotations" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-      </button>
-      <button data-view="team" data-tooltip="Team" title="Team" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-2.13a4 4 0 100-8 4 4 0 000 8zm6 4c.83.6 1.5 1.55 1.5 2.5m-13.5-2.5C4.67 16.6 4 17.55 4 18.5"></path></svg>
-      </button>
-    </nav>
+<aside class="w-20 bg-sidebarBg/90 border-r border-panelBorder/50 flex flex-col items-center flex-shrink-0 min-h-screen z-40 backdrop-blur-xl sticky top-0 h-screen py-5">
+  <div class="flex-shrink-0 relative group cursor-pointer mb-5">
+    <div class="absolute -inset-1 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl blur opacity-60 group-hover:opacity-100 transition duration-500"></div>
+    <div class="relative w-10 h-10 bg-[#05070a] rounded-2xl flex items-center justify-center font-display font-bold text-white text-xl border border-white/10">S</div>
   </div>
-  <button data-view="settings" data-tooltip="Settings" title="Settings" class="nav-btn w-11 h-11 rounded-2xl border border-transparent flex items-center justify-center transition-all">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+  <nav class="flex-1 min-h-0 overflow-y-auto flex flex-col items-center gap-1.5 w-full px-3">
+    <button data-view="dashboard" data-tooltip="Dashboard" title="Dashboard" style="--nc:168,85,247" class="nav-btn active w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+    </button>
+    <button data-view="contacts" data-tooltip="Contacts" title="Contacts" style="--nc:59,130,246" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+    </button>
+    <button data-view="companies" data-tooltip="Companies" title="Companies" style="--nc:245,158,11" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"></path></svg>
+    </button>
+    <button data-view="deals" data-tooltip="Deals" title="Deals" style="--nc:34,211,238" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+    </button>
+    <button data-view="tasks" data-tooltip="Tasks" title="Tasks" style="--nc:236,72,153" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+    </button>
+    <button data-view="calendar" data-tooltip="Calendar" title="Calendar" style="--nc:251,146,60" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+    </button>
+    <button data-view="reports" data-tooltip="Reports" title="Reports" style="--nc:16,185,129" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h1a1 1 0 011 1v13M3 19v-6a1 1 0 011-1h1a1 1 0 011 1v6m8 0v-9a1 1 0 011-1h1a1 1 0 011 1v9M3 19h18"></path></svg>
+    </button>
+    <div class="w-8 h-px bg-panelBorder/60 my-1 flex-shrink-0"></div>
+    <button data-view="products" data-tooltip="Products" title="Products" style="--nc:20,184,166" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"></path></svg>
+    </button>
+    <button data-view="quotes" data-tooltip="Quotations" title="Quotations" style="--nc:99,102,241" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+    </button>
+    <button data-view="team" data-tooltip="Team" title="Team" style="--nc:244,63,94" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0">
+      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-2.13a4 4 0 100-8 4 4 0 000 8zm6 4c.83.6 1.5 1.55 1.5 2.5m-13.5-2.5C4.67 16.6 4 17.55 4 18.5"></path></svg>
+    </button>
+  </nav>
+  <button data-view="settings" data-tooltip="Settings" title="Settings" style="--nc:232,121,249" class="nav-btn w-10 h-10 rounded-xl border border-transparent flex items-center justify-center transition-all flex-shrink-0 mt-3">
+    <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
   </button>
 </aside>
+
 
 <!-- === WORKSPACE === -->
 <div class="flex-1 flex flex-col min-w-0">
@@ -118,6 +136,15 @@
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <span class="font-mono text-slate-300" id="live-clock">—</span>
       </div>
+
+      <button id="theme-toggle-btn" onclick="toggleTheme()" title="Ganti tampilan gelap/terang" class="w-9 h-9 rounded-xl border border-panelBorder/60 bg-panelBg/80 flex items-center justify-center hover:bg-white/5 flex-shrink-0">
+        <span class="icon-sun flex items-center justify-center">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1.5M12 19.5V21M4.219 4.219l1.061 1.061M18.72 18.72l1.061 1.061M3 12h1.5M19.5 12H21M4.219 19.781l1.061-1.061M18.72 5.28l1.061-1.061M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"></path></svg>
+        </span>
+        <span class="icon-moon">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path></svg>
+        </span>
+      </button>
 
       <div id="notif-wrap" class="relative">
         <button onclick="toggleNotif()" class="relative w-9 h-9 rounded-xl border border-panelBorder/60 bg-panelBg/80 flex items-center justify-center hover:bg-white/5">
