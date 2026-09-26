@@ -171,6 +171,8 @@ header { background-color: rgb(var(--c-darkBg, 5 7 10) / 0.6); }
 
   #notif-dropdown { display:none; }
   #notif-wrap.open #notif-dropdown { display:block; }
+  #profile-dropdown { display:none; }
+  #profile-wrap.open #profile-dropdown { display:block; }
 
   /* ---- Theme toggle switch (sun/moon) ---- */
   #theme-toggle-btn { position: relative; }
