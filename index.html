@@ -157,12 +157,36 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-3 pl-3 border-l border-panelBorder/60">
-        <img id="profile-avatar" src="https://randomuser.me/api/portraits/men/32.jpg" alt="Profile" class="w-8 h-8 rounded-full ring-2 ring-purple-500/50">
-        <span id="profile-name" class="hidden sm:inline text-slate-300 font-medium">Alex Pratama</span>
-        <button onclick="signOutUser()" title="Keluar" class="w-8 h-8 rounded-xl border border-panelBorder/60 bg-panelBg/80 flex items-center justify-center hover:bg-white/5 text-slate-400 hover:text-red-400">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+      <div id="profile-wrap" class="relative flex items-center gap-2 pl-3 border-l border-panelBorder/60">
+        <button onclick="toggleProfileMenu()" class="flex items-center gap-2 rounded-xl px-1.5 py-1 hover:bg-white/5 transition">
+          <img id="profile-avatar" src="https://randomuser.me/api/portraits/men/32.jpg" alt="Profile" class="w-8 h-8 rounded-full ring-2 ring-purple-500/50 object-cover">
+          <span id="profile-name" class="hidden sm:inline text-slate-300 font-medium">Alex Pratama</span>
+          <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
+        <div id="profile-dropdown" class="absolute right-0 top-full mt-2 w-60 glass-card ai-floating-card rounded-2xl p-1.5 z-50">
+          <div class="px-2.5 py-2">
+            <p id="profile-menu-name" class="text-sm font-bold text-white truncate">Alex Pratama</p>
+            <p id="profile-menu-role" class="text-[10px] text-textMuted truncate">Sales Manager</p>
+          </div>
+          <hr class="border-panelBorder/50 my-1">
+          <button onclick="goToProfileSection('profile-form')" class="w-full flex items-center gap-2 text-left text-xs text-slate-300 hover:bg-white/5 rounded-xl px-2.5 py-2 transition">
+            <svg class="w-4 h-4 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+            Ganti Foto Profil
+          </button>
+          <button onclick="goToProfileSection('company-profile-form')" class="w-full flex items-center gap-2 text-left text-xs text-slate-300 hover:bg-white/5 rounded-xl px-2.5 py-2 transition">
+            <svg class="w-4 h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l8-4v18M13 21V11l6 3v7M9 9v.01M9 12v.01M9 15v.01"></path></svg>
+            Ganti Logo Perusahaan
+          </button>
+          <button onclick="closeProfileMenu(); switchView('settings')" class="w-full flex items-center gap-2 text-left text-xs text-slate-300 hover:bg-white/5 rounded-xl px-2.5 py-2 transition">
+            <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            Pengaturan Lengkap
+          </button>
+          <hr class="border-panelBorder/50 my-1">
+          <button onclick="signOutUser()" class="w-full flex items-center gap-2 text-left text-xs text-red-400 hover:bg-red-500/10 rounded-xl px-2.5 py-2 transition">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+            Keluar
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -407,9 +431,25 @@
             <span class="text-[10px] text-textMuted">Akun: <span id="account-email" class="text-slate-300 font-medium"></span></span>
           </div>
           <form id="profile-form" class="space-y-3">
+            <div>
+              <label class="text-xs text-textMuted block mb-1">Foto Profil</label>
+              <div class="flex items-center gap-3">
+                <div class="w-16 h-16 rounded-full border border-panelBorder/60 bg-panelBg/60 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <img id="profile-avatar-preview" src="" alt="Foto Profil" class="w-full h-full object-cover hidden">
+                  <span id="profile-avatar-placeholder" class="text-[9px] text-slate-400 text-center px-1">Belum ada foto</span>
+                </div>
+                <div class="flex-1 space-y-1.5">
+                  <input type="file" id="profile-avatar-input" accept="image/png,image/jpeg,image/webp" class="field-input rounded-xl px-3 py-2 text-xs w-full file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-purple-500/20 file:text-purple-300 file:text-xs">
+                  <div class="flex items-center gap-3">
+                    <p class="text-[10px] text-textMuted">Foto persegi hasilnya paling rapi. Maks ±2MB.</p>
+                    <button type="button" id="profile-avatar-remove" class="hidden text-[10px] text-red-400 hover:underline flex-shrink-0">Hapus foto</button>
+                  </div>
+                </div>
+              </div>
+              <input type="hidden" name="avatar" id="profile-avatar-value">
+            </div>
             <div><label class="text-xs text-textMuted block mb-1">Nama</label><input name="name" class="field-input rounded-xl px-3 py-2 text-sm w-full" required></div>
             <div><label class="text-xs text-textMuted block mb-1">Peran</label><input name="role" class="field-input rounded-xl px-3 py-2 text-sm w-full" required></div>
-            <div><label class="text-xs text-textMuted block mb-1">URL Avatar</label><input name="avatar" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
             <button type="submit" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">Simpan Profil</button>
           </form>
         </div>
