@@ -1333,6 +1333,27 @@ document.addEventListener('click', (e)=>{
   if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
 });
 
+/* ---------- PROFILE MENU (avatar dropdown) ---------- */
+function toggleProfileMenu(){ document.getElementById('profile-wrap').classList.toggle('open'); }
+function closeProfileMenu(){ document.getElementById('profile-wrap').classList.remove('open'); }
+document.addEventListener('click', (e)=>{
+  const wrap = document.getElementById('profile-wrap');
+  if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
+});
+/* Jump to Settings and highlight the relevant card (avatar or company logo) */
+function goToProfileSection(formId){
+  closeProfileMenu();
+  switchView('settings');
+  setTimeout(()=>{
+    const form = document.getElementById(formId);
+    const card = form && form.closest('.glass-card');
+    if (!card) return;
+    card.scrollIntoView({ behavior:'smooth', block:'start' });
+    card.classList.add('ring-2','ring-purple-500/60');
+    setTimeout(()=> card.classList.remove('ring-2','ring-purple-500/60'), 1600);
+  }, 60);
+}
+
 /* ---------- GLOBAL SEARCH ---------- */
 document.getElementById('global-search').addEventListener('input', (e)=>{
   const q = e.target.value.trim().toLowerCase();
@@ -2023,16 +2044,48 @@ async function deleteTeamMember(id){
 }
 
 /* ---------- profile ---------- */
+function setProfileAvatarPreview(dataUrl){
+  const img = document.getElementById('profile-avatar-preview');
+  const placeholder = document.getElementById('profile-avatar-placeholder');
+  const hiddenInput = document.getElementById('profile-avatar-value');
+  const removeBtn = document.getElementById('profile-avatar-remove');
+  hiddenInput.value = dataUrl || '';
+  if (dataUrl){
+    img.src = dataUrl; img.classList.remove('hidden');
+    placeholder.classList.add('hidden');
+    removeBtn.classList.remove('hidden');
+  } else {
+    img.src = ''; img.classList.add('hidden');
+    placeholder.classList.remove('hidden');
+    removeBtn.classList.add('hidden');
+  }
+}
+document.getElementById('profile-avatar-input').addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (file.size > 2*1024*1024){ toast('Ukuran foto maksimal 2MB', 'err'); e.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = ()=> setProfileAvatarPreview(reader.result);
+  reader.onerror = ()=> toast('Gagal membaca file foto', 'err');
+  reader.readAsDataURL(file);
+});
+document.getElementById('profile-avatar-remove').addEventListener('click', ()=>{
+  setProfileAvatarPreview('');
+  document.getElementById('profile-avatar-input').value = '';
+});
 function renderProfile(){
   document.getElementById('profile-avatar').src = state.profile.avatar || 'https://randomuser.me/api/portraits/men/32.jpg';
   document.getElementById('profile-name').textContent = state.profile.name;
+  document.getElementById('profile-menu-name').textContent = state.profile.name;
+  document.getElementById('profile-menu-role').textContent = state.profile.role || '';
   const form = document.getElementById('profile-form');
-  form.name.value = state.profile.name; form.role.value = state.profile.role; form.avatar.value = state.profile.avatar || '';
+  form.name.value = state.profile.name; form.role.value = state.profile.role;
+  setProfileAvatarPreview(state.profile.avatar || '');
 }
 document.getElementById('profile-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const f = new FormData(e.target);
-  state.profile = { name: f.get('name').trim(), role: f.get('role').trim(), avatar: f.get('avatar').trim() };
+  state.profile = { name: f.get('name').trim(), role: f.get('role').trim(), avatar: (f.get('avatar')||'').trim() };
   await persist('profile'); renderProfile(); toast('Profil disimpan');
 });
 
