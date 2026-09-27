@@ -122,10 +122,33 @@ create table if not exists public.products (
   unit         text default 'Unit',
   price        numeric not null default 0,
   description  text default '',
+  min_stock    numeric not null default 0,   -- ambang batas stok minimum (reorder point) untuk peringatan stok rendah
   created_at   timestamptz not null default now()
 );
 create index if not exists products_user_id_idx on public.products (user_id);
 create index if not exists products_category_idx on public.products (category);
+-- Migrasi additive untuk project yang sudah pernah membuat tabel ini sebelum kolom min_stock ada.
+alter table public.products add column if not exists min_stock numeric not null default 0;
+
+-- ---------------------------------------------------------
+-- 7b) STOCK_MOVEMENTS (kartu stok / ledger keluar-masuk barang gudang)
+-- Stok saat ini SENGAJA tidak disimpan sebagai kolom di products — selalu
+-- dihitung dari SUM(movement) per produk, supaya angka stok selalu akurat
+-- dan tidak pernah "melenceng" (drift) dari riwayat transaksinya.
+-- ---------------------------------------------------------
+create table if not exists public.stock_movements (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  product_id    uuid not null,
+  type          text not null default 'in', -- 'in' (barang masuk) | 'out' (barang keluar) | 'adjustment' (stok opname, qty boleh +/-)
+  qty           numeric not null default 0,
+  note          text default '',
+  ref           text default '',   -- referensi bebas: no. PO, no. deal, nama supplier, dll
+  date          date,
+  created_at    timestamptz not null default now()
+);
+create index if not exists stock_movements_user_id_idx on public.stock_movements (user_id);
+create index if not exists stock_movements_product_id_idx on public.stock_movements (product_id);
 
 -- ---------------------------------------------------------
 -- 8) QUOTES (quotation multi-section)
@@ -158,6 +181,34 @@ create index if not exists quotes_status_idx on public.quotes (status);
 create index if not exists quotes_deal_id_idx on public.quotes (deal_id);
 
 -- ---------------------------------------------------------
+-- 8b) INVOICES (faktur — bisa dibuat manual atau dari Quotation yang Accepted)
+-- ---------------------------------------------------------
+create table if not exists public.invoices (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  number        text not null,
+  date          date,
+  due_date      date,
+  quote_id      uuid,
+  deal_id       uuid,
+  contact_id    uuid,
+  to_name       text default '',
+  to_address    text default '',
+  attn_name     text default '',
+  attn_phone    text default '',
+  attn_email    text default '',
+  sections      jsonb not null default '[]',  -- struktur sama seperti quotes.sections
+  notes_list    jsonb not null default '[]',
+  terms         jsonb not null default '[]',
+  amount_paid   numeric not null default 0,
+  status        text not null default 'Draft', -- Draft | Sent | Paid (status tampilan turunan dihitung di aplikasi)
+  created_at    timestamptz not null default now()
+);
+create index if not exists invoices_user_id_idx on public.invoices (user_id);
+create index if not exists invoices_status_idx on public.invoices (status);
+create index if not exists invoices_quote_id_idx on public.invoices (quote_id);
+
+-- ---------------------------------------------------------
 -- 9) TEAM (anggota tim sales)
 -- ---------------------------------------------------------
 create table if not exists public.team (
@@ -180,10 +231,16 @@ create table if not exists public.user_settings (
   auto_task_proposal  boolean not null default true,
   auto_loss_reason    boolean not null default true,
   auto_quote_log      boolean not null default true,
+  auto_quote_followup   boolean not null default true,
+  auto_invoice_reminder boolean not null default true,
   company             jsonb not null default '{}',
   profile             jsonb not null default '{}',
   updated_at          timestamptz not null default now()
 );
+-- Migrasi additive untuk project yang sudah pernah membuat tabel ini sebelum
+-- kolom auto_quote_followup / auto_invoice_reminder ada (aman dijalankan berkali-kali).
+alter table public.user_settings add column if not exists auto_quote_followup boolean not null default true;
+alter table public.user_settings add column if not exists auto_invoice_reminder boolean not null default true;
 
 -- Catatan desain: kolom seperti company_id / contact_id / deal_id / owner_id
 -- SENGAJA tidak dipasangi FOREIGN KEY antar tabel. Aplikasi menulis lewat
@@ -202,7 +259,7 @@ declare
 begin
   for t in select unnest(array[
     'companies','contacts','deals','tasks','notes','activities',
-    'products','quotes','team','user_settings'
+    'products','quotes','invoices','stock_movements','team','user_settings'
   ])
   loop
     execute format('alter table public.%I enable row level security;', t);
@@ -241,7 +298,7 @@ declare
 begin
   for t in select unnest(array[
     'companies','contacts','deals','tasks','notes','activities',
-    'products','quotes','team','user_settings'
+    'products','quotes','invoices','stock_movements','team','user_settings'
   ])
   loop
     begin
