@@ -4,12 +4,13 @@
 const STAGES = ['New','Qualified','Proposal','Won','Lost'];
 const STAGE_COLOR = { New:'#38bdf8', Qualified:'#818cf8', Proposal:'#c084fc', Won:'#10b981', Lost:'#f87171' };
 const QUOTE_STATUS_COLOR = { Draft:'#64748b', Sent:'#38bdf8', Accepted:'#10b981', Declined:'#f87171' };
+const INVOICE_STATUS_COLOR = { Draft:'#64748b', Terkirim:'#38bdf8', 'Lunas Sebagian':'#f59e0b', Lunas:'#10b981', 'Jatuh Tempo':'#f87171' };
 
 let state = {
   contacts: [], deals: [], tasks: [], activities: [], companies: [], notes: [],
-  products: [], quotes: [], team: [],
+  products: [], quotes: [], invoices: [], stock_movements: [], team: [],
   settings: {
-    monthlyTarget: 300000000, autoTaskProposal: true, autoLossReason: true, autoQuoteLog: true,
+    monthlyTarget: 300000000, autoTaskProposal: true, autoLossReason: true, autoQuoteLog: true, autoQuoteFollowup: true, autoInvoiceReminder: true,
     company: {
       name: 'PT SINERGI SEMPURNA SOLUSINDO',
       headOfficeLabel: 'Head Office',
@@ -53,7 +54,7 @@ let currentUser = null;
    insert / update / delete ke tabel yang sesuai. Ini membuat penyimpanan
    data rapi secara relasional di database, tanpa perlu menulis ulang setiap
    fungsi save/delete yang sudah ada. */
-const LIST_PARTS = ['companies','contacts','deals','tasks','notes','activities','products','quotes','team'];
+const LIST_PARTS = ['companies','contacts','deals','tasks','notes','activities','products','quotes','invoices','stock_movements','team'];
 let lastSynced = {}; // part -> deep copy of the last array successfully written to DB
 
 const ROW_MAPPERS = {
@@ -82,16 +83,24 @@ const ROW_MAPPERS = {
     fromRow: r => ({ id:r.id, text:r.text, dealId:r.deal_id, contactId:r.contact_id, at:r.at }),
   },
   products: {
-    toRow: p => ({ id:p.id, name:p.name, model:p.model||'', sku:p.sku||'', category:p.category||'', unit:p.unit||'Unit', price:Number(p.price)||0, description:p.description||'' }),
-    fromRow: r => ({ id:r.id, name:r.name, model:r.model||'', sku:r.sku||'', category:r.category||'', unit:r.unit||'Unit', price:Number(r.price)||0, description:r.description||'' }),
+    toRow: p => ({ id:p.id, name:p.name, model:p.model||'', sku:p.sku||'', category:p.category||'', unit:p.unit||'Unit', price:Number(p.price)||0, description:p.description||'', min_stock:Number(p.minStock)||0 }),
+    fromRow: r => ({ id:r.id, name:r.name, model:r.model||'', sku:r.sku||'', category:r.category||'', unit:r.unit||'Unit', price:Number(r.price)||0, description:r.description||'', minStock:Number(r.min_stock)||0 }),
   },
   quotes: {
     toRow: q => ({ id:q.id, number:q.number, date:q.date||null, subject:q.subject||'', project_name:q.projectName||'', your_ref:q.yourRef||'', pages:q.pages||'1 Lembar', deal_id:q.dealId||null, contact_id:q.contactId||null, to_name:q.toName||'', to_address:q.toAddress||'', attn_name:q.attnName||'', attn_phone:q.attnPhone||'', attn_fax:q.attnFax||'', attn_email:q.attnEmail||'', sections:q.sections||[], notes_list:q.notesList||[], terms:q.terms||[], status:q.status||'Draft', created_at:q.createdAt||new Date().toISOString() }),
     fromRow: r => ({ id:r.id, number:r.number, date:r.date, subject:r.subject||'', projectName:r.project_name||'', yourRef:r.your_ref||'', pages:r.pages||'1 Lembar', dealId:r.deal_id, contactId:r.contact_id, toName:r.to_name||'', toAddress:r.to_address||'', attnName:r.attn_name||'', attnPhone:r.attn_phone||'', attnFax:r.attn_fax||'', attnEmail:r.attn_email||'', sections:r.sections||[], notesList:r.notes_list||[], terms:r.terms||[], status:r.status||'Draft', createdAt:r.created_at }),
   },
+  invoices: {
+    toRow: q => ({ id:q.id, number:q.number, date:q.date||null, due_date:q.dueDate||null, quote_id:q.quoteId||null, deal_id:q.dealId||null, contact_id:q.contactId||null, to_name:q.toName||'', to_address:q.toAddress||'', attn_name:q.attnName||'', attn_phone:q.attnPhone||'', attn_email:q.attnEmail||'', sections:q.sections||[], notes_list:q.notesList||[], terms:q.terms||[], amount_paid:Number(q.amountPaid)||0, status:q.status||'Draft', created_at:q.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, number:r.number, date:r.date, dueDate:r.due_date, quoteId:r.quote_id, dealId:r.deal_id, contactId:r.contact_id, toName:r.to_name||'', toAddress:r.to_address||'', attnName:r.attn_name||'', attnPhone:r.attn_phone||'', attnEmail:r.attn_email||'', sections:r.sections||[], notesList:r.notes_list||[], terms:r.terms||[], amountPaid:Number(r.amount_paid)||0, status:r.status||'Draft', createdAt:r.created_at }),
+  },
   team: {
     toRow: m => ({ id:m.id, name:m.name, role:m.role||'', email:m.email||'', avatar:m.avatar||'', created_at:m.createdAt||new Date().toISOString() }),
     fromRow: r => ({ id:r.id, name:r.name, role:r.role||'', email:r.email||'', avatar:r.avatar||'', createdAt:r.created_at }),
+  },
+  stock_movements: {
+    toRow: m => ({ id:m.id, product_id:m.productId, type:m.type||'in', qty:Number(m.qty)||0, note:m.note||'', ref:m.ref||'', date:m.date||null, created_at:m.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, productId:r.product_id, type:r.type||'in', qty:Number(r.qty)||0, note:r.note||'', ref:r.ref||'', date:r.date, createdAt:r.created_at }),
   },
 };
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -144,6 +153,8 @@ async function persistUserSettings(){
       auto_task_proposal: !!state.settings.autoTaskProposal,
       auto_loss_reason: !!state.settings.autoLossReason,
       auto_quote_log: !!state.settings.autoQuoteLog,
+      auto_quote_followup: !!state.settings.autoQuoteFollowup,
+      auto_invoice_reminder: !!state.settings.autoInvoiceReminder,
       company: state.settings.company || {},
       profile: state.profile || {},
     };
@@ -160,6 +171,8 @@ async function loadUserSettings(){
     autoTaskProposal: !!data.auto_task_proposal,
     autoLossReason: !!data.auto_loss_reason,
     autoQuoteLog: !!data.auto_quote_log,
+    autoQuoteFollowup: data.auto_quote_followup===undefined ? true : !!data.auto_quote_followup,
+    autoInvoiceReminder: data.auto_invoice_reminder===undefined ? true : !!data.auto_invoice_reminder,
     company: (data.company && Object.keys(data.company).length) ? data.company : state.settings.company,
   });
   if (data.profile && Object.keys(data.profile).length) state.profile = data.profile;
@@ -231,6 +244,8 @@ function setupRealtime(){
           autoTaskProposal: !!payload.new.auto_task_proposal,
           autoLossReason: !!payload.new.auto_loss_reason,
           autoQuoteLog: !!payload.new.auto_quote_log,
+          autoQuoteFollowup: payload.new.auto_quote_followup===undefined ? state.settings.autoQuoteFollowup : !!payload.new.auto_quote_followup,
+          autoInvoiceReminder: payload.new.auto_invoice_reminder===undefined ? state.settings.autoInvoiceReminder : !!payload.new.auto_invoice_reminder,
           company: payload.new.company || state.settings.company,
         });
         if (payload.new.profile && Object.keys(payload.new.profile).length) state.profile = payload.new.profile;
@@ -511,24 +526,24 @@ async function resetDemoData(){
 async function clearAllData(){
   if(!confirm('Hapus semua data CRM Anda secara permanen?')) return;
   state.contacts=[]; state.deals=[]; state.tasks=[]; state.activities=[]; state.companies=[]; state.notes=[];
-  state.products=[]; state.quotes=[]; state.team=[];
+  state.products=[]; state.quotes=[]; state.invoices=[]; state.stock_movements=[]; state.team=[];
   await Promise.all(LIST_PARTS.map(persist));
   renderAll(); toast('Semua data telah dihapus', 'err');
 }
 
 /* ---------- navigation ---------- */
 document.querySelectorAll('.nav-btn').forEach(btn=> btn.addEventListener('click', ()=> switchView(btn.dataset.view)));
-const VIEW_TITLES = { dashboard:'Dashboard', contacts:'Contacts', companies:'Companies', deals:'Deals Pipeline', tasks:'Tasks', calendar:'Calendar', reports:'Reports', products:'Products & Price Book', quotes:'Quotations', team:'Team', settings:'Settings' };
+const VIEW_TITLES = { dashboard:'Dashboard', contacts:'Contacts', companies:'Companies', deals:'Deals Pipeline', tasks:'Tasks & Kalender', reports:'Reports', products:'Products & Price Book', quotes:'Penawaran & Invoice', team:'Team', settings:'Settings' };
 function switchView(view){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   document.getElementById('page-title').textContent = VIEW_TITLES[view];
   if (view==='dashboard') updateCharts();
-  if (view==='calendar') renderCalendar();
   if (view==='reports') renderReports();
   if (view==='products') renderProducts();
-  if (view==='quotes') renderQuotes();
+  if (view==='tasks') setTasksTab('list');
+  if (view==='quotes') setDocsTab('quotes');
   if (view==='team') renderTeam();
 }
 
@@ -552,8 +567,11 @@ function toggleTheme(){
 /* ---------- MODALS ---------- */
 function openModal(html){
   document.getElementById('modal-root').innerHTML = `
-    <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 modal-overlay" onclick="if(event.target===this) closeModal()">
-      <div class="glass-card ai-floating-card rounded-3xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">${html}</div>
+    <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 modal-overlay">
+      <div class="glass-card ai-floating-card rounded-3xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
+        <button type="button" onclick="closeModal()" aria-label="Tutup" class="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition">✕</button>
+        ${html}
+      </div>
     </div>`;
 }
 function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
@@ -561,11 +579,21 @@ function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
 /* ---------- DRAWER (detail panel) ---------- */
 function openDrawer(html){
   document.getElementById('drawer-root').innerHTML = `
-    <div class="fixed inset-0 z-[75] flex justify-end modal-overlay" onclick="if(event.target===this) closeDrawer()">
-      <div class="drawer-panel glass-card ai-floating-card w-full max-w-md h-full overflow-y-auto p-6">${html}</div>
+    <div class="fixed inset-0 z-[75] flex justify-end modal-overlay">
+      <div class="drawer-panel glass-card ai-floating-card w-full max-w-md h-full overflow-y-auto p-6 relative">
+        <button type="button" onclick="closeDrawer()" aria-label="Tutup" class="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition">✕</button>
+        ${html}
+      </div>
     </div>`;
 }
 function closeDrawer(){ document.getElementById('drawer-root').innerHTML = ''; }
+document.addEventListener('keydown', (e)=>{
+  if (e.key !== 'Escape') return;
+  const modalOpen = document.getElementById('modal-root').innerHTML.trim().length>0;
+  const drawerOpen = document.getElementById('drawer-root').innerHTML.trim().length>0;
+  if (modalOpen) closeModal();
+  else if (drawerOpen) closeDrawer();
+});
 function switchTab(prefix, tab){
   document.querySelectorAll(`[data-tabgroup="${prefix}"]`).forEach(el=>{
     el.classList.toggle('hidden', el.dataset.tab !== tab);
@@ -1125,6 +1153,18 @@ function renderTasks(){
   }).join('');
 }
 
+/* ---------- Tasks page: List / Kalender tab toggle (merged view) ---------- */
+function setTasksTab(tab){
+  const isList = tab==='list';
+  document.getElementById('tasks-list-view').classList.toggle('hidden', !isList);
+  document.getElementById('tasks-calendar-view').classList.toggle('hidden', isList);
+  const activeCls = 'text-xs font-semibold px-3 py-1.5 rounded-lg transition bg-gradient-to-r from-purple-600 to-cyan-500 text-white';
+  const inactiveCls = 'text-xs font-semibold px-3 py-1.5 rounded-lg transition text-slate-400 hover:text-slate-200';
+  document.getElementById('tasks-tab-list').className = isList ? activeCls : inactiveCls;
+  document.getElementById('tasks-tab-calendar').className = !isList ? activeCls : inactiveCls;
+  if (isList) renderTasks(); else renderCalendar();
+}
+
 /* ---------- RENDER: CALENDAR ---------- */
 function changeMonth(delta, reset){
   if (reset){ const n=new Date(); calState={year:n.getFullYear(), month:n.getMonth()}; }
@@ -1316,17 +1356,58 @@ function updateCharts(){
 
 /* ---------- NOTIFICATIONS ---------- */
 function toggleNotif(){ document.getElementById('notif-wrap').classList.toggle('open'); }
+function dealLastActivityAt(dealId){
+  const acts = state.activities.filter(a=>a.dealId===dealId);
+  if (!acts.length) return null;
+  return acts.reduce((latest,a)=> new Date(a.at)>new Date(latest)?a.at:latest, acts[0].at);
+}
+function staleDeals(days=7){
+  const cutoff = Date.now() - days*86400000;
+  return state.deals.filter(d=>{
+    if (d.stage==='Won'||d.stage==='Lost') return false;
+    const last = dealLastActivityAt(d.id) || d.createdAt;
+    return last && new Date(last).getTime() < cutoff;
+  });
+}
 function renderNotifications(){
   const today = new Date(new Date().toDateString());
   const due = state.tasks.filter(t=>!t.done && new Date(t.due) <= new Date(today.getTime()+86400000-1)).sort((a,b)=>new Date(a.due)-new Date(b.due));
+  const dueInvoices = state.invoices.filter(inv=>{
+    const label = invoiceDisplayStatus(inv);
+    return (label==='Jatuh Tempo') || (inv.dueDate && new Date(inv.dueDate) <= new Date(today.getTime()+86400000-1) && label!=='Lunas');
+  }).sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate));
+  const stale = staleDeals(7).sort((a,b)=> new Date(dealLastActivityAt(a.id)||a.createdAt) - new Date(dealLastActivityAt(b.id)||b.createdAt));
+  const lowStock = lowStockProducts().sort((a,b)=> productStock(a.id)-productStock(b.id));
+  const totalCount = due.length + dueInvoices.length + stale.length + lowStock.length;
   const badge = document.getElementById('notif-badge');
-  if (due.length){ badge.textContent = due.length; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
-  document.getElementById('notif-list').innerHTML = due.length ? due.map(t=>{
+  if (totalCount){ badge.textContent = totalCount; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
+  const taskItems = due.map(t=>{
     const overdue = new Date(t.due) < today;
     return `<div class="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-white/5 cursor-pointer" onclick="openTaskModal('${t.id}')">
       <div><p class="text-xs text-slate-200">${esc(t.title)}</p><p class="text-[10px] ${overdue?'text-red-400':'text-cyan-400'}">${overdue?'Terlambat':'Jatuh tempo hari ini'}</p></div>
     </div>`;
-  }).join('') : '<p class="text-xs text-textMuted p-2">Tidak ada pengingat mendesak.</p>';
+  });
+  const invoiceItems = dueInvoices.map(inv=>{
+    const overdue = inv.dueDate && new Date(inv.dueDate) < today;
+    return `<div class="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-white/5 cursor-pointer" onclick="toggleNotif(); switchView('quotes'); setDocsTab('invoices'); openInvoiceDetail('${inv.id}')">
+      <div><p class="text-xs text-slate-200">Invoice ${esc(inv.number)}</p><p class="text-[10px] ${overdue?'text-red-400':'text-amber-400'}">${overdue?'Piutang jatuh tempo':'Jatuh tempo hari ini'}</p></div>
+    </div>`;
+  });
+  const staleItems = stale.map(d=>{
+    const last = dealLastActivityAt(d.id) || d.createdAt;
+    const daysIdle = Math.floor((Date.now()-new Date(last).getTime())/86400000);
+    return `<div class="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-white/5 cursor-pointer" onclick="toggleNotif(); switchView('deals'); openDealDetail('${d.id}')">
+      <div><p class="text-xs text-slate-200">${esc(d.title)}</p><p class="text-[10px] text-purple-400">Tanpa aktivitas ${daysIdle} hari — perlu follow-up</p></div>
+    </div>`;
+  });
+  const stockItems = lowStock.map(p=>{
+    const stock = productStock(p.id);
+    const empty = stock<=0;
+    return `<div class="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-white/5 cursor-pointer" onclick="toggleNotif(); switchView('products'); openStockHistory('${p.id}')">
+      <div><p class="text-xs text-slate-200">${esc(p.name)}</p><p class="text-[10px] ${empty?'text-red-400':'text-amber-400'}">${empty?'Stok habis':'Stok rendah'} — sisa ${stock.toLocaleString('id-ID')} ${esc(p.unit)||'Unit'}</p></div>
+    </div>`;
+  });
+  document.getElementById('notif-list').innerHTML = (taskItems.length||invoiceItems.length||staleItems.length||stockItems.length) ? (taskItems.join('')+invoiceItems.join('')+staleItems.join('')+stockItems.join('')) : '<p class="text-xs text-textMuted p-2">Tidak ada pengingat mendesak.</p>';
 }
 document.addEventListener('click', (e)=>{
   const wrap = document.getElementById('notif-wrap');
@@ -1365,6 +1446,7 @@ document.getElementById('global-search').addEventListener('input', (e)=>{
   const tasks = state.tasks.filter(t=>t.title.toLowerCase().includes(q)).slice(0,4);
   const products = state.products.filter(p=>p.name.toLowerCase().includes(q)).slice(0,4);
   const quotes = state.quotes.filter(qt=>qt.number.toLowerCase().includes(q)).slice(0,4);
+  const invoices = state.invoices.filter(iv=>iv.number.toLowerCase().includes(q) || (iv.toName||'').toLowerCase().includes(q)).slice(0,4);
   const results = document.getElementById('search-results');
   function section(label, items, renderFn){ return items.length ? `<p class="text-[9px] uppercase font-bold text-textMuted px-2 pt-2 pb-1">${label}</p>${items.map(renderFn).join('')}` : ''; }
   results.innerHTML =
@@ -1373,7 +1455,8 @@ document.getElementById('global-search').addEventListener('input', (e)=>{
     section('Deal', deals, d=>`<div class="px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs text-slate-200" onclick="switchView('deals'); openDealDetail('${d.id}'); closeSearch()">${esc(d.title)}</div>`) +
     section('Tugas', tasks, t=>`<div class="px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs text-slate-200" onclick="switchView('tasks'); openTaskModal('${t.id}'); closeSearch()">${esc(t.title)}</div>`) +
     section('Produk', products, p=>`<div class="px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs text-slate-200" onclick="switchView('products'); closeSearch()">${esc(p.name)}</div>`) +
-    section('Quotation', quotes, qt=>`<div class="px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs text-slate-200" onclick="switchView('quotes'); openQuoteDetail('${qt.id}'); closeSearch()">${esc(qt.number)}</div>`)
+    section('Quotation', quotes, qt=>`<div class="px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs text-slate-200" onclick="switchView('quotes'); openQuoteDetail('${qt.id}'); closeSearch()">${esc(qt.number)}</div>`) +
+    section('Invoice', invoices, iv=>`<div class="px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs text-slate-200" onclick="switchView('quotes'); setDocsTab('invoices'); openInvoiceDetail('${iv.id}'); closeSearch()">${esc(iv.number)}</div>`)
     || '<p class="text-xs text-textMuted p-2">Tidak ditemukan.</p>';
   wrap.classList.add('open');
 });
@@ -1405,16 +1488,68 @@ function exportDealsCSV(){
   toast('Deal diekspor ke CSV');
 }
 function exportProductsCSV(){
-  const rows = state.products.map(p=>({ Nama:p.name, Model:p.model||'', SKU:p.sku||'', Kategori:p.category||'', Satuan:p.unit||'', Harga:p.price, Deskripsi:p.description||'' }));
-  downloadCSV('products.csv', toCSV(rows, ['Nama','Model','SKU','Kategori','Satuan','Harga','Deskripsi']));
-  toast('Price book diekspor ke CSV');
+  const rows = state.products.map(p=>({ Nama:p.name, Model:p.model||'', SKU:p.sku||'', Kategori:p.category||'', Satuan:p.unit||'', Harga:p.price, Stok:productStock(p.id), StokMinimum:Number(p.minStock)||0, Deskripsi:p.description||'' }));
+  downloadCSV('products.csv', toCSV(rows, ['Nama','Model','SKU','Kategori','Satuan','Harga','Stok','StokMinimum','Deskripsi']));
+  toast('Price book & stok diekspor ke CSV');
+}
+function exportCompaniesCSV(){
+  const rows = state.companies.map(co=>({ Nama:co.name, Industri:co.industry||'', Website:co.website||'', Ukuran:co.size||'', Alamat:co.address||'' }));
+  downloadCSV('companies.csv', toCSV(rows, ['Nama','Industri','Website','Ukuran','Alamat']));
+  toast('Perusahaan diekspor ke CSV');
+}
+function exportTasksCSV(){
+  const rows = state.tasks.map(t=>({ Judul:t.title, Kontak: getContact(t.contactId)?.name||'', JatuhTempo: t.due ? t.due.slice(0,10) : '', Prioritas:t.priority, Selesai: t.done?'Ya':'Tidak' }));
+  downloadCSV('tasks.csv', toCSV(rows, ['Judul','Kontak','JatuhTempo','Prioritas','Selesai']));
+  toast('Tugas diekspor ke CSV');
+}
+function exportTeamCSV(){
+  const rows = state.team.map(m=>({ Nama:m.name, Peran:m.role||'', Email:m.email||'' }));
+  downloadCSV('team.csv', toCSV(rows, ['Nama','Peran','Email']));
+  toast('Anggota tim diekspor ke CSV');
 }
 
 /* ---------- PRODUCTS (Price Book) ---------- */
+/* ---------- STOK GUDANG (kartu stok per produk, dihitung dari ledger stock_movements) ---------- */
+function productStock(productId){
+  return state.stock_movements.filter(m=>m.productId===productId).reduce((s,m)=>{
+    if (m.type==='out') return s - (Number(m.qty)||0);
+    return s + (Number(m.qty)||0); // 'in' selalu positif; 'adjustment' disimpan sebagai qty bertanda (+/-)
+  }, 0);
+}
+function productStockStatus(p){
+  const stock = productStock(p.id);
+  const min = Number(p.minStock)||0;
+  if (stock<=0) return { label:'Stok Habis', cls:'text-red-400 border-red-500/30 bg-red-500/10' };
+  if (min>0 && stock<=min) return { label:'Stok Rendah', cls:'text-amber-400 border-amber-500/30 bg-amber-500/10' };
+  return { label:'Stok Aman', cls:'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' };
+}
+function lowStockProducts(){
+  return state.products.filter(p=>{
+    const stock = productStock(p.id);
+    const min = Number(p.minStock)||0;
+    return stock<=0 || (min>0 && stock<=min);
+  });
+}
 function renderProducts(){
   const q = (document.getElementById('products-search').value||'').toLowerCase();
-  const list = state.products.filter(p=> !q || p.name.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.model||'').toLowerCase().includes(q) || (p.category||'').toLowerCase().includes(q));
+  const lowOnly = document.getElementById('stock-low-filter').checked;
+  let list = state.products.filter(p=> !q || p.name.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.model||'').toLowerCase().includes(q) || (p.category||'').toLowerCase().includes(q));
+  if (lowOnly){
+    list = list.filter(p=>{ const stock = productStock(p.id); const min = Number(p.minStock)||0; return stock<=0 || (min>0 && stock<=min); });
+  }
   document.getElementById('products-empty').classList.toggle('hidden', state.products.length>0);
+
+  const totalSKU = state.products.length;
+  const stockValue = state.products.reduce((s,p)=> s + Math.max(0,productStock(p.id))*(Number(p.price)||0), 0);
+  const lowCount = lowStockProducts().length;
+  const totalUnits = state.products.reduce((s,p)=> s + Math.max(0,productStock(p.id)), 0);
+  document.getElementById('stock-summary').innerHTML = `
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Total SKU</p><p class="font-mono font-bold text-white text-sm">${totalSKU}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Total Unit di Gudang</p><p class="font-mono font-bold text-cyan-400 text-sm">${totalUnits.toLocaleString('id-ID')}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Nilai Persediaan</p><p class="font-mono font-bold text-emerald-400 text-sm">${money(stockValue)}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Stok Rendah / Habis</p><p class="font-mono font-bold ${lowCount?'text-red-400':'text-slate-300'} text-sm">${lowCount} produk</p></div>
+  `;
+
   const groups = {};
   list.forEach(p=>{ const g = p.category || 'Tanpa Kategori'; (groups[g] = groups[g]||[]).push(p); });
   const groupNames = Object.keys(groups).sort();
@@ -1422,22 +1557,32 @@ function renderProducts(){
     <div class="md:col-span-2 xl:col-span-3 -mb-2 mt-2 first:mt-0">
       <p class="text-[10px] font-bold uppercase tracking-wider text-purple-400">${esc(g)}</p>
     </div>
-    ${groups[g].map(p=>`
+    ${groups[g].map(p=>{
+      const stock = productStock(p.id);
+      const status = productStockStatus(p);
+      return `
     <div class="glass-card glass-card-hover rounded-2xl p-4">
       <div class="flex justify-between items-start mb-2">
         <div><p class="font-bold text-white text-sm">${esc(p.name)}</p><p class="text-[10px] text-textMuted font-mono">${esc(p.model)||esc(p.sku)||'—'}</p></div>
         <span class="font-mono font-bold text-cyan-400 text-sm">${money(p.price)}</span>
       </div>
       <p class="text-xs text-slate-400 mb-3">${esc(p.description)||'—'}</p>
-      <div class="flex justify-between items-center">
-        <span class="text-[10px] text-textMuted">per ${esc(p.unit)||'Unit'}</span>
+      <div class="flex items-center justify-between mb-3 cursor-pointer" onclick="openStockHistory('${p.id}')">
+        <span class="text-[10px] font-bold px-2 py-1 rounded-full border ${status.cls}">${status.label}</span>
+        <span class="text-xs font-mono text-slate-200">${stock.toLocaleString('id-ID')} <span class="text-textMuted font-sans">${esc(p.unit)||'Unit'}</span></span>
+      </div>
+      <div class="flex justify-between items-center gap-2">
+        <div class="flex gap-1.5">
+          <button onclick="openStockModal('${p.id}','in')" class="text-[10px] px-2.5 py-1 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10" title="Catat barang masuk">+ Masuk</button>
+          <button onclick="openStockModal('${p.id}','out')" class="text-[10px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10" title="Catat barang keluar">- Keluar</button>
+        </div>
         <div class="flex gap-2">
           <button onclick="openProductModal('${p.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
           <button onclick="deleteProduct('${p.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
         </div>
       </div>
-    </div>`).join('')}
-  `).join('');
+    </div>`;}).join('')}
+  `).join('') || `<p class="text-sm text-textMuted col-span-full py-8 text-center">Tidak ada produk yang cocok dengan filter saat ini.</p>`;
 }
 function productCategoryOptions(selected){
   const cats = Array.from(new Set(state.products.map(p=>p.category).filter(Boolean)));
@@ -1463,6 +1608,11 @@ function openProductModal(id){
         <div><label class="text-xs text-textMuted block mb-1">Satuan</label><input name="unit" placeholder="Unit / Lot / Set" class="field-input rounded-xl px-3 py-2 w-full" value="${p?esc(p.unit):'Unit'}"></div>
       </div>
       <div><label class="text-xs text-textMuted block mb-1">Harga (Rp)</label><input type="number" min="0" name="price" required class="field-input rounded-xl px-3 py-2 w-full" value="${p?p.price:0}"></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${p?`<div><label class="text-xs text-textMuted block mb-1">Stok Saat Ini</label><p class="field-input rounded-xl px-3 py-2 w-full bg-panelBg/40 text-slate-300">${productStock(p.id).toLocaleString('id-ID')} ${esc(p.unit)||'Unit'} <span class="text-[10px] text-textMuted">(lihat riwayat setelah simpan)</span></p></div>`
+          : `<div><label class="text-xs text-textMuted block mb-1">Stok Awal (opsional)</label><input type="number" min="0" name="initialStock" class="field-input rounded-xl px-3 py-2 w-full" value="0"></div>`}
+        <div><label class="text-xs text-textMuted block mb-1">Stok Minimum (reorder point)</label><input type="number" min="0" name="minStock" class="field-input rounded-xl px-3 py-2 w-full" value="${p?Number(p.minStock)||0:0}"></div>
+      </div>
       <div><label class="text-xs text-textMuted block mb-1">Deskripsi</label><textarea name="description" rows="2" class="field-input rounded-xl px-3 py-2 w-full">${p?esc(p.description):''}</textarea></div>
       <div class="flex justify-between items-center pt-2">
         ${p?`<button type="button" onclick="deleteProduct('${p.id}')" class="text-xs text-red-400 hover:underline">Hapus produk</button>`:'<span></span>'}
@@ -1479,17 +1629,147 @@ async function saveProduct(e){
   e.preventDefault();
   const f = new FormData(e.target);
   const id = f.get('id');
-  const data = { name:f.get('name').trim(), model:f.get('model').trim(), sku:f.get('sku').trim(), category:f.get('category').trim(), unit:f.get('unit').trim()||'Unit', price:Number(f.get('price'))||0, description:f.get('description').trim() };
+  const data = { name:f.get('name').trim(), model:f.get('model').trim(), sku:f.get('sku').trim(), category:f.get('category').trim(), unit:f.get('unit').trim()||'Unit', price:Number(f.get('price'))||0, description:f.get('description').trim(), minStock:Number(f.get('minStock'))||0 };
   if (!data.name) return;
-  if (id){ Object.assign(state.products.find(x=>x.id===id), data); toast('Produk diperbarui'); }
-  else { state.products.unshift({ id:uid(), ...data }); toast('Produk ditambahkan'); }
-  await persist('products'); closeModal(); renderProducts();
+  if (id){
+    Object.assign(state.products.find(x=>x.id===id), data);
+    toast('Produk diperbarui');
+    await persist('products'); closeModal(); renderProducts();
+  } else {
+    const newId = uid();
+    state.products.unshift({ id:newId, ...data });
+    const initialStock = Number(f.get('initialStock'))||0;
+    await persist('products');
+    if (initialStock>0){
+      state.stock_movements.unshift({ id:uid(), productId:newId, type:'in', qty:initialStock, note:'Stok awal', ref:'', date:new Date().toISOString().slice(0,10), createdAt:new Date().toISOString() });
+      await persist('stock_movements');
+      logActivity(`Stok awal ${initialStock} ${data.unit} dicatat untuk "${data.name}"`);
+    }
+    toast('Produk ditambahkan');
+    closeModal(); renderProducts(); renderNotifications();
+  }
 }
 async function deleteProduct(id){
-  if(!confirm('Hapus produk ini dari price book?')) return;
+  if(!confirm('Hapus produk ini dari price book? Seluruh riwayat stoknya juga akan terhapus.')) return;
   state.products = state.products.filter(x=>x.id!==id);
-  await persist('products'); closeModal(); renderProducts(); toast('Produk dihapus', 'err');
+  const hadMovements = state.stock_movements.some(m=>m.productId===id);
+  state.stock_movements = state.stock_movements.filter(m=>m.productId!==id);
+  await persist('products');
+  if (hadMovements) await persist('stock_movements');
+  closeModal(); closeDrawer(); renderProducts(); renderNotifications(); toast('Produk dihapus', 'err');
 }
+
+/* ---- Modal catat barang masuk / keluar / stok opname ---- */
+function openStockModal(productId, type){
+  const p = state.products.find(x=>x.id===productId); if(!p) return;
+  const stock = productStock(productId);
+  const titles = { in:'Catat Barang Masuk', out:'Catat Barang Keluar', adjustment:'Stok Opname (Penyesuaian)' };
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">${titles[type]||'Catat Pergerakan Stok'}</h3>
+    <p class="text-xs text-textMuted mb-4">${esc(p.name)} • Stok saat ini: <b class="text-slate-200">${stock.toLocaleString('id-ID')} ${esc(p.unit)||'Unit'}</b></p>
+    <form id="stock-form" class="space-y-3 text-sm">
+      <input type="hidden" name="productId" value="${p.id}">
+      <input type="hidden" name="type" value="${type}">
+      <div><label class="text-xs text-textMuted block mb-1">Tanggal</label><input type="date" name="date" required class="field-input rounded-xl px-3 py-2 w-full" value="${new Date().toISOString().slice(0,10)}"></div>
+      ${type==='adjustment'
+        ? `<div><label class="text-xs text-textMuted block mb-1">Stok Fisik Sebenarnya (hasil hitung ulang gudang)</label><input type="number" min="0" name="actualStock" required class="field-input rounded-xl px-3 py-2 w-full" value="${stock}"></div>`
+        : `<div><label class="text-xs text-textMuted block mb-1">Jumlah ${type==='in'?'Masuk':'Keluar'}</label><input type="number" min="1" name="qty" required class="field-input rounded-xl px-3 py-2 w-full" value="1"></div>`}
+      <div><label class="text-xs text-textMuted block mb-1">Referensi (No. PO / Supplier / No. Deal, opsional)</label><input name="ref" class="field-input rounded-xl px-3 py-2 w-full"></div>
+      <div><label class="text-xs text-textMuted block mb-1">Catatan</label><textarea name="note" rows="2" class="field-input rounded-xl px-3 py-2 w-full"></textarea></div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeModal()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+        <button type="submit" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Simpan</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('stock-form').addEventListener('submit', saveStockMovement);
+}
+async function saveStockMovement(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const productId = f.get('productId');
+  const p = state.products.find(x=>x.id===productId); if(!p) return;
+  const type = f.get('type');
+  const date = f.get('date') || new Date().toISOString().slice(0,10);
+  const ref = (f.get('ref')||'').trim();
+  const note = (f.get('note')||'').trim();
+  let qty;
+  if (type==='adjustment'){
+    const actual = Number(f.get('actualStock'))||0;
+    const current = productStock(productId);
+    qty = actual - current;
+    if (qty===0){ toast('Stok fisik sama dengan sistem, tidak ada penyesuaian yang dicatat', 'info'); closeModal(); return; }
+  } else {
+    qty = Number(f.get('qty'))||0;
+    if (qty<=0){ toast('Jumlah harus lebih dari 0','err'); return; }
+    if (type==='out' && qty > productStock(productId)){
+      if (!confirm(`Stok saat ini hanya ${productStock(productId)} ${p.unit||'Unit'}. Tetap catat barang keluar ${qty} (stok akan minus)?`)) return;
+    }
+  }
+  state.stock_movements.unshift({ id:uid(), productId, type, qty, note, ref, date, createdAt:new Date().toISOString() });
+  await persist('stock_movements');
+  const verb = type==='in' ? 'masuk' : type==='out' ? 'keluar' : 'disesuaikan (opname)';
+  logActivity(`Stok "${p.name}" ${verb}: ${type==='adjustment'?(qty>0?'+':'')+qty:qty} ${p.unit||'Unit'}${ref?(' • ref: '+ref):''}`);
+  toast('Pergerakan stok dicatat');
+  closeModal(); closeDrawer(); renderProducts(); renderNotifications();
+}
+async function deleteStockMovement(movId){
+  if(!confirm('Hapus catatan pergerakan stok ini?')) return;
+  const mov = state.stock_movements.find(x=>x.id===movId);
+  state.stock_movements = state.stock_movements.filter(x=>x.id!==movId);
+  await persist('stock_movements'); renderProducts(); renderNotifications();
+  if (mov) openStockHistory(mov.productId);
+}
+function openStockHistory(productId){
+  const p = state.products.find(x=>x.id===productId); if(!p) return;
+  const moves = state.stock_movements.filter(m=>m.productId===productId).sort((a,b)=> new Date(b.date||b.createdAt) - new Date(a.date||a.createdAt));
+  // hitung saldo berjalan (running balance), diurutkan dari yang paling lama ke terbaru lalu dibalik lagi untuk tampilan
+  const chronological = [...moves].reverse();
+  let running = 0;
+  const withBalance = chronological.map(m=>{
+    running += (m.type==='out' ? -(Number(m.qty)||0) : (Number(m.qty)||0));
+    return { ...m, balance: running };
+  }).reverse();
+  const stock = productStock(productId);
+  const status = productStockStatus(p);
+  const typeLabel = { in:'Masuk', out:'Keluar', adjustment:'Opname' };
+  const typeColor = { in:'text-emerald-400', out:'text-red-400', adjustment:'text-amber-400' };
+  openDrawer(`
+    <div class="flex justify-between items-start mb-1">
+      <div><h3 class="font-display text-lg font-bold text-white">${esc(p.name)}</h3><p class="text-xs text-textMuted">${esc(p.model)||esc(p.sku)||''}</p></div>
+      <span class="text-[10px] font-bold px-2 py-1 rounded-full border ${status.cls}">${status.label}</span>
+    </div>
+    <p class="text-2xl font-mono font-bold text-white mt-2 mb-4">${stock.toLocaleString('id-ID')} <span class="text-sm text-textMuted font-sans">${esc(p.unit)||'Unit'}</span></p>
+    <div class="flex gap-2 mb-5 flex-wrap">
+      <button onclick="openStockModal('${p.id}','in')" class="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10">+ Barang Masuk</button>
+      <button onclick="openStockModal('${p.id}','out')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10">- Barang Keluar</button>
+      <button onclick="openStockModal('${p.id}','adjustment')" class="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10">Stok Opname</button>
+    </div>
+    <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">Riwayat Pergerakan (Kartu Stok)</h4>
+    <div class="space-y-1.5">
+      ${withBalance.length ? withBalance.map(m=>`
+        <div class="flex items-center justify-between gap-2 bg-panelBg/60 border border-white/5 rounded-lg px-3 py-2 text-xs">
+          <div>
+            <p class="${typeColor[m.type]} font-bold">${typeLabel[m.type]||m.type} ${m.type==='adjustment'&&m.qty>0?'+':''}${m.qty} ${esc(p.unit)||''}</p>
+            <p class="text-[10px] text-textMuted">${m.date?fmtQuoteDate(m.date):timeAgo(m.createdAt)}${m.ref?(' • '+esc(m.ref)):''}${m.note?(' • '+esc(m.note)):''}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-slate-300">${m.balance.toLocaleString('id-ID')}</span>
+            <button onclick="deleteStockMovement('${m.id}')" class="text-red-400 hover:underline text-[10px]">Hapus</button>
+          </div>
+        </div>`).join('') : '<p class="text-xs text-textMuted">Belum ada riwayat pergerakan stok untuk produk ini.</p>'}
+    </div>
+  `);
+}
+function exportStockCSV(){
+  const rows = [...state.stock_movements].sort((a,b)=> new Date(b.date||b.createdAt) - new Date(a.date||a.createdAt)).map(m=>{
+    const p = state.products.find(x=>x.id===m.productId);
+    return { Tanggal:m.date||'', Produk:p?p.name:'(produk dihapus)', Tipe: m.type==='in'?'Masuk':m.type==='out'?'Keluar':'Opname', Qty:m.qty, Referensi:m.ref||'', Catatan:m.note||'' };
+  });
+  downloadCSV('kartu-stok.csv', toCSV(rows, ['Tanggal','Produk','Tipe','Qty','Referensi','Catatan']));
+  toast('Kartu stok diekspor ke CSV');
+}
+
 
 /* ---------- QUOTATIONS (multi-section, sesuai format quotation resmi) ---------- */
 function blankQuoteSection(name){ return { name: name||'', discountPct: 0, items: [] }; }
@@ -1499,6 +1779,20 @@ function sectionDiscountAmount(sec){ return sectionSubtotal(sec) * ((Number(sec.
 function sectionTotal(sec){ return sectionSubtotal(sec) - sectionDiscountAmount(sec); }
 function quoteGrandTotal(q){ return (q.sections||[]).reduce((s,sec)=> s + sectionTotal(sec), 0); }
 function quoteTotal(q){ return quoteGrandTotal(q); }
+
+/* ---------- Documents page: Quotation / Invoice tab toggle (merged view) ---------- */
+function setDocsTab(tab){
+  const isQuotes = tab==='quotes';
+  document.getElementById('docs-quotes-view').classList.toggle('hidden', !isQuotes);
+  document.getElementById('docs-invoices-view').classList.toggle('hidden', isQuotes);
+  document.getElementById('docs-quotes-actions').classList.toggle('hidden', !isQuotes);
+  document.getElementById('docs-invoices-actions').classList.toggle('hidden', isQuotes);
+  const activeCls = 'text-xs font-semibold px-3 py-1.5 rounded-lg transition bg-gradient-to-r from-purple-600 to-cyan-500 text-white';
+  const inactiveCls = 'text-xs font-semibold px-3 py-1.5 rounded-lg transition text-slate-400 hover:text-slate-200';
+  document.getElementById('docs-tab-quotes').className = isQuotes ? activeCls : inactiveCls;
+  document.getElementById('docs-tab-invoices').className = !isQuotes ? activeCls : inactiveCls;
+  if (isQuotes) renderQuotes(); else renderInvoices();
+}
 
 function renderQuotes(){
   document.getElementById('quotes-empty').classList.toggle('hidden', state.quotes.length>0);
@@ -1564,7 +1858,11 @@ function newQuoteDraftFromDeal(deal){
   };
 }
 function productPickerOptions(){
-  return state.products.map(p=>`<option value="${p.id}">${esc(p.category?('['+p.category+'] '):'')}${esc(p.name)} — ${money(p.price)}</option>`).join('') || '<option value="">Belum ada produk di Price Book</option>';
+  return state.products.map(p=>{
+    const stock = productStock(p.id);
+    const stockTag = stock<=0 ? ' (stok habis)' : ` (stok ${stock.toLocaleString('id-ID')})`;
+    return `<option value="${p.id}">${esc(p.category?('['+p.category+'] '):'')}${esc(p.name)} — ${money(p.price)}${stockTag}</option>`;
+  }).join('') || '<option value="">Belum ada produk di Price Book</option>';
 }
 function renderQuoteSectionsHTML(){
   return quoteDraft.sections.map((sec, sIdx)=>{
@@ -1634,7 +1932,8 @@ function addQuoteItemFromProduct(sIdx){
   const sel = document.getElementById(`qpick-${sIdx}`);
   const p = state.products.find(x=>x.id===sel.value);
   if (!p){ toast('Pilih produk dari daftar dahulu','err'); return; }
-  quoteDraft.sections[sIdx].items.push({ model:p.model||p.sku||'', description:p.name + (p.description?(' — '+p.description):''), qty:1, unit:p.unit||'Unit', price:p.price });
+  const description = [p.model, p.description].filter(Boolean).join(' — ');
+  quoteDraft.sections[sIdx].items.push({ model:p.name||'', description, qty:1, unit:p.unit||'Unit', price:p.price });
   refreshQuoteSectionsUI();
 }
 function addQuoteItemBlank(sIdx){ quoteDraft.sections[sIdx].items.push(blankQuoteItem()); refreshQuoteSectionsUI(); }
@@ -1759,9 +2058,16 @@ async function deleteQuote(id){
 }
 async function updateQuoteStatus(id, status){
   const q = state.quotes.find(x=>x.id===id); if(!q) return;
+  const prevStatus = q.status;
   q.status = status;
   if (status==='Sent' && state.settings.autoQuoteLog){
     logActivity(`Quotation "${q.number}" dikirim ke klien`, {dealId:q.dealId, contactId:q.contactId});
+  }
+  if (status==='Sent' && prevStatus!=='Sent' && state.settings.autoQuoteFollowup){
+    state.tasks.unshift({ id: uid(), title:`Follow up quotation: ${q.number}`, due: daysFromNowISO(3), priority:'high', done:false, contactId:q.contactId||null });
+    await persist('tasks');
+    logActivity(`Tugas follow-up otomatis dibuat untuk quotation "${q.number}" (H+3)`, {dealId:q.dealId, contactId:q.contactId});
+    renderTasks(); renderNotifications();
   }
   await persist('quotes'); openQuoteDetail(id); renderQuotes();
 }
@@ -1777,6 +2083,7 @@ function openQuoteDetail(id){
     <div class="flex gap-2 mt-3 mb-4 flex-wrap">
       <button onclick="openQuoteModal('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
       <button onclick="printQuote('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Cetak / PDF</button>
+      ${q.status==='Accepted'?`<button onclick="closeDrawer(); switchView('quotes'); setDocsTab('invoices'); openInvoiceModal(null,'${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10">Buat Invoice</button>`:''}
       <button onclick="deleteQuote('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
     </div>
     <div class="flex flex-wrap gap-1.5 mb-5">
@@ -1979,6 +2286,489 @@ function printQuote(id){
 }
 
 
+/* ---------- INVOICE ---------- */
+function nextInvoiceNumber(){
+  return `INV/${(state.invoices.length+1).toString().padStart(3,'0')}/${new Date().getFullYear()}`;
+}
+function invoiceGrandTotal(inv){ return (inv.sections||[]).reduce((s,sec)=> s + sectionTotal(sec), 0); }
+function invoiceDisplayStatus(inv){
+  const total = invoiceGrandTotal(inv);
+  const paid = Number(inv.amountPaid)||0;
+  if (inv.status==='Paid' || (total>0 && paid>=total)) return 'Lunas';
+  if (paid>0) return 'Lunas Sebagian';
+  const today = new Date(new Date().toDateString());
+  if (inv.dueDate && new Date(inv.dueDate) < today) return 'Jatuh Tempo';
+  if (inv.status==='Sent') return 'Terkirim';
+  return 'Draft';
+}
+function renderInvoices(){
+  document.getElementById('invoices-empty').classList.toggle('hidden', state.invoices.length>0);
+  const sorted = [...state.invoices].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+
+  const totalBilled = state.invoices.reduce((s,i)=>s+invoiceGrandTotal(i),0);
+  const totalPaid = state.invoices.reduce((s,i)=>s+(Number(i.amountPaid)||0),0);
+  const outstanding = totalBilled - totalPaid;
+  const overdueCount = state.invoices.filter(i=>invoiceDisplayStatus(i)==='Jatuh Tempo').length;
+  document.getElementById('invoices-summary').innerHTML = `
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Total Ditagih</p><p class="font-mono font-bold text-white text-sm">${money(totalBilled)}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Sudah Dibayar</p><p class="font-mono font-bold text-emerald-400 text-sm">${money(totalPaid)}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Piutang Belum Lunas</p><p class="font-mono font-bold text-amber-400 text-sm">${money(outstanding)}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Jatuh Tempo</p><p class="font-mono font-bold ${overdueCount?'text-red-400':'text-slate-300'} text-sm">${overdueCount} invoice</p></div>
+  `;
+
+  document.getElementById('invoices-list').innerHTML = sorted.map(inv=>{
+    const contact = getContact(inv.contactId);
+    const label = invoiceDisplayStatus(inv);
+    const total = invoiceGrandTotal(inv);
+    return `<div class="glass-card glass-card-hover rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 cursor-pointer" onclick="openInvoiceDetail('${inv.id}')">
+      <div>
+        <p class="font-bold text-white text-sm">${esc(inv.number)} — ${esc(inv.toName || (contact?contact.name:'Tanpa penerima'))}</p>
+        <p class="text-xs text-textMuted">Jatuh tempo ${inv.dueDate?fmtQuoteDate(inv.dueDate):'—'} • Dibuat ${timeAgo(inv.createdAt)}</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="font-mono font-bold text-cyan-400">${money(total)}</span>
+        <span class="text-[10px] font-bold px-2 py-1 rounded-full border" style="color:${INVOICE_STATUS_COLOR[label]};border-color:${INVOICE_STATUS_COLOR[label]}55">${label}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let invoiceDraft = null;
+function blankInvoiceItem(){ return blankQuoteItem(); }
+function blankInvoiceSection(name){ return { name, discountPct:0, items:[blankInvoiceItem()] }; }
+function newInvoiceDraftFromQuote(q){
+  if (!q){
+    return {
+      number: nextInvoiceNumber(), date: new Date().toISOString().slice(0,10),
+      dueDate: new Date(Date.now()+14*86400000).toISOString().slice(0,10),
+      quoteId: '', dealId: '', contactId: '',
+      toName:'', toAddress:'', attnName:'', attnPhone:'', attnEmail:'',
+      sections: [blankInvoiceSection('A. EQUIPMENT')],
+      notesList: [], terms: ['Payment : 100% Before delivery', 'Pembayaran mohon ditransfer sesuai info rekening di bawah.'],
+      amountPaid: 0,
+    };
+  }
+  return {
+    number: nextInvoiceNumber(), date: new Date().toISOString().slice(0,10),
+    dueDate: new Date(Date.now()+14*86400000).toISOString().slice(0,10),
+    quoteId: q.id, dealId: q.dealId||'', contactId: q.contactId||'',
+    toName: q.toName||'', toAddress: q.toAddress||'', attnName: q.attnName||'', attnPhone: q.attnPhone||'', attnEmail: q.attnEmail||'',
+    sections: JSON.parse(JSON.stringify(q.sections||[blankInvoiceSection('A. EQUIPMENT')])),
+    notesList: JSON.parse(JSON.stringify(q.notesList||[])),
+    terms: ['Payment : 100% Before delivery', 'Pembayaran mohon ditransfer sesuai info rekening di bawah.'],
+    amountPaid: 0,
+  };
+}
+function renderInvoiceSectionsHTML(){
+  return invoiceDraft.sections.map((sec, sIdx)=>{
+    const sub = sectionSubtotal(sec), disc = sectionDiscountAmount(sec), tot = sectionTotal(sec);
+    return `
+    <div class="border border-white/10 rounded-xl p-3 mb-3 bg-panelBg/40">
+      <div class="flex gap-2 items-center mb-2">
+        <input value="${esc(sec.name)}" oninput="updateInvoiceSectionField(${sIdx},'name',this.value)" placeholder="Nama Section" class="field-input flex-1 rounded-lg px-2 py-1.5 text-xs font-bold">
+        <input type="number" min="0" max="100" value="${sec.discountPct}" oninput="updateInvoiceSectionDiscount(${sIdx},this.value)" class="field-input w-16 rounded-lg px-2 py-1.5 text-xs" title="Diskon %">
+        <span class="text-[10px] text-textMuted">% disc</span>
+        <button type="button" onclick="removeInvoiceSection(${sIdx})" class="text-[10px] text-red-400 hover:underline whitespace-nowrap">Hapus Section</button>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full text-[11px] mb-2 border-collapse">
+        <thead><tr class="text-textMuted text-left border-b border-white/10">
+          <th class="py-1 pr-1 w-24">Model</th><th class="py-1 pr-1">Deskripsi</th><th class="py-1 pr-1 w-12">Qty</th><th class="py-1 pr-1 w-16">Satuan</th><th class="py-1 pr-1 w-28">Harga</th><th class="py-1 pr-1 w-28">Subtotal</th><th class="w-6"></th>
+        </tr></thead>
+        <tbody>
+          ${(sec.items||[]).map((it,iIdx)=>`<tr class="border-b border-white/5">
+            <td class="py-1 pr-1"><input value="${esc(it.model)}" oninput="updateInvoiceItemField(${sIdx},${iIdx},'model',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
+            <td class="py-1 pr-1"><input value="${esc(it.description)}" oninput="updateInvoiceItemField(${sIdx},${iIdx},'description',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
+            <td class="py-1 pr-1"><input type="number" min="0" value="${it.qty}" oninput="updateInvoiceItemNumber(${sIdx},${iIdx},'qty',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
+            <td class="py-1 pr-1"><input value="${esc(it.unit)}" oninput="updateInvoiceItemField(${sIdx},${iIdx},'unit',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
+            <td class="py-1 pr-1"><input type="number" min="0" value="${it.price}" oninput="updateInvoiceItemNumber(${sIdx},${iIdx},'price',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
+            <td class="py-1 pr-1 font-mono text-cyan-400" id="ivi-sub-${sIdx}-${iIdx}">${money((Number(it.qty)||0)*(Number(it.price)||0))}</td>
+            <td class="py-1"><button type="button" onclick="removeInvoiceItem(${sIdx},${iIdx})" class="text-red-400">✕</button></td>
+          </tr>`).join('') || `<tr><td colspan="7" class="text-textMuted py-2">Belum ada item di section ini.</td></tr>`}
+        </tbody>
+      </table>
+      </div>
+      <div class="flex flex-wrap gap-2 mb-2">
+        <select id="ivpick-${sIdx}" class="field-input text-[11px] rounded px-2 py-1.5 flex-1 min-w-[160px]">${productPickerOptions()}</select>
+        <button type="button" onclick="addInvoiceItemFromProduct(${sIdx})" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ dari Price Book</button>
+        <button type="button" onclick="addInvoiceItemBlank(${sIdx})" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ Item Manual</button>
+      </div>
+      <div class="text-[11px] text-right space-y-0.5">
+        <p class="text-textMuted">Sub Total: <span class="font-mono text-slate-300" id="ivs-sub-${sIdx}">${money(sub)}</span></p>
+        <p class="text-textMuted">Diskon (<span id="ivs-discpct-${sIdx}">${sec.discountPct}</span>%): <span class="font-mono text-red-400" id="ivs-disc-${sIdx}">${money(disc)}</span></p>
+        <p class="font-bold text-white">Total ${sIdx+1}: <span class="font-mono text-emerald-400" id="ivs-total-${sIdx}">${money(tot)}</span></p>
+      </div>
+    </div>`;
+  }).join('');
+}
+function refreshInvoiceSectionsUI(){
+  document.getElementById('invoice-sections-wrap').innerHTML = renderInvoiceSectionsHTML();
+  recomputeInvoiceTotals();
+}
+function recomputeInvoiceTotals(){
+  invoiceDraft.sections.forEach((sec, sIdx)=>{
+    (sec.items||[]).forEach((it,iIdx)=>{
+      const el = document.getElementById(`ivi-sub-${sIdx}-${iIdx}`);
+      if (el) el.textContent = money((Number(it.qty)||0)*(Number(it.price)||0));
+    });
+    const subEl = document.getElementById(`ivs-sub-${sIdx}`); if (subEl) subEl.textContent = money(sectionSubtotal(sec));
+    const discPctEl = document.getElementById(`ivs-discpct-${sIdx}`); if (discPctEl) discPctEl.textContent = sec.discountPct;
+    const discEl = document.getElementById(`ivs-disc-${sIdx}`); if (discEl) discEl.textContent = money(sectionDiscountAmount(sec));
+    const totEl = document.getElementById(`ivs-total-${sIdx}`); if (totEl) totEl.textContent = money(sectionTotal(sec));
+  });
+  const grandEl = document.getElementById('invoice-grand-total');
+  if (grandEl) grandEl.textContent = money(invoiceDraft.sections.reduce((s,sec)=>s+sectionTotal(sec),0));
+}
+function updateInvoiceSectionField(sIdx, field, val){ invoiceDraft.sections[sIdx][field] = val; }
+function updateInvoiceSectionDiscount(sIdx, val){ invoiceDraft.sections[sIdx].discountPct = Math.max(0, Math.min(100, Number(val)||0)); recomputeInvoiceTotals(); }
+function updateInvoiceItemField(sIdx, iIdx, field, val){ invoiceDraft.sections[sIdx].items[iIdx][field] = val; }
+function updateInvoiceItemNumber(sIdx, iIdx, field, val){ invoiceDraft.sections[sIdx].items[iIdx][field] = Number(val)||0; recomputeInvoiceTotals(); }
+function addInvoiceItemFromProduct(sIdx){
+  const sel = document.getElementById(`ivpick-${sIdx}`);
+  const p = state.products.find(x=>x.id===sel.value);
+  if (!p){ toast('Pilih produk dari daftar dahulu','err'); return; }
+  const description = [p.model, p.description].filter(Boolean).join(' — ');
+  invoiceDraft.sections[sIdx].items.push({ model:p.name||'', description, qty:1, unit:p.unit||'Unit', price:p.price });
+  refreshInvoiceSectionsUI();
+}
+function addInvoiceItemBlank(sIdx){ invoiceDraft.sections[sIdx].items.push(blankInvoiceItem()); refreshInvoiceSectionsUI(); }
+function removeInvoiceItem(sIdx, iIdx){ invoiceDraft.sections[sIdx].items.splice(iIdx,1); refreshInvoiceSectionsUI(); }
+function addInvoiceSection(){
+  const letter = String.fromCharCode(65 + invoiceDraft.sections.length);
+  invoiceDraft.sections.push(blankInvoiceSection(`${letter}. SECTION BARU`));
+  refreshInvoiceSectionsUI();
+}
+function removeInvoiceSection(sIdx){
+  if (invoiceDraft.sections.length<=1){ toast('Invoice minimal harus punya 1 section','err'); return; }
+  invoiceDraft.sections.splice(sIdx,1); refreshInvoiceSectionsUI();
+}
+function fillInvoiceToFromContact(){
+  const contactId = document.getElementById('invoice-contact-select').value;
+  const contact = getContact(contactId);
+  if (!contact) return;
+  const co = getCompany(contact.companyId);
+  document.querySelector('#invoice-form [name="toName"]').value = co ? co.name : contact.name;
+  document.querySelector('#invoice-form [name="toAddress"]').value = co ? (co.address||'') : '';
+  document.querySelector('#invoice-form [name="attnName"]').value = contact.name;
+  document.querySelector('#invoice-form [name="attnPhone"]').value = contact.phone||'';
+  document.querySelector('#invoice-form [name="attnEmail"]').value = contact.email||'';
+}
+function openInvoiceModal(id, prefillQuoteId){
+  const inv = id ? state.invoices.find(x=>x.id===id) : null;
+  const fromQuote = (!inv && prefillQuoteId) ? state.quotes.find(x=>x.id===prefillQuoteId) : null;
+  invoiceDraft = inv ? JSON.parse(JSON.stringify(inv)) : newInvoiceDraftFromQuote(fromQuote);
+  const quoteOptions = state.quotes.map(q=>`<option value="${q.id}" ${invoiceDraft.quoteId===q.id?'selected':''}>${esc(q.number)}</option>`).join('');
+  const contactOptions = state.contacts.map(c=>`<option value="${c.id}" ${invoiceDraft.contactId===c.id?'selected':''}>${esc(c.name)} — ${esc(contactCompanyName(c))}</option>`).join('');
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-4">${inv?'Edit Invoice':'Buat Invoice'}</h3>
+    <form id="invoice-form" class="space-y-3 text-sm">
+      <input type="hidden" name="id" value="${inv?inv.id:''}">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="text-xs text-textMuted block mb-1">No. Invoice</label><input name="number" required class="field-input rounded-xl px-3 py-2 w-full" value="${esc(invoiceDraft.number)}"></div>
+        <div><label class="text-xs text-textMuted block mb-1">Tanggal</label><input type="date" name="date" required class="field-input rounded-xl px-3 py-2 w-full" value="${invoiceDraft.date}"></div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="text-xs text-textMuted block mb-1">Jatuh Tempo</label><input type="date" name="dueDate" class="field-input rounded-xl px-3 py-2 w-full" value="${invoiceDraft.dueDate||''}"></div>
+        <div><label class="text-xs text-textMuted block mb-1">Quotation Terkait (opsional)</label>
+          <select name="quoteId" class="field-input rounded-xl px-3 py-2 w-full"><option value="">— Tanpa quotation —</option>${quoteOptions}</select>
+        </div>
+      </div>
+      <div><label class="text-xs text-textMuted block mb-1">Kontak Penerima</label>
+        <select id="invoice-contact-select" name="contactId" onchange="fillInvoiceToFromContact()" class="field-input rounded-xl px-3 py-2 w-full"><option value="">— Pilih kontak —</option>${contactOptions}</select>
+      </div>
+      <div class="pt-1 border-t border-white/10 mt-2">
+        <p class="text-xs text-textMuted mb-2 mt-2 font-semibold">Ditagihkan Kepada (blok "Bill To")</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+          <div><label class="text-xs text-textMuted block mb-1">Nama Perusahaan / Penerima</label><input name="toName" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(invoiceDraft.toName)}"></div>
+          <div><label class="text-xs text-textMuted block mb-1">Alamat</label><input name="toAddress" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(invoiceDraft.toAddress)}"></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label class="text-xs text-textMuted block mb-1">Attn (PIC)</label><input name="attnName" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(invoiceDraft.attnName)}"></div>
+          <div><label class="text-xs text-textMuted block mb-1">Telp</label><input name="attnPhone" class="field-input rounded-xl px-3 py-2 w-full" value="${esc(invoiceDraft.attnPhone)}"></div>
+        </div>
+      </div>
+      <div class="pt-1 border-t border-white/10 mt-2">
+        <div class="flex items-center justify-between mt-2 mb-2">
+          <p class="text-xs text-textMuted font-semibold">Item Tagihan (per Section)</p>
+          <button type="button" onclick="addInvoiceSection()" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ Tambah Section</button>
+        </div>
+        <div id="invoice-sections-wrap">${renderInvoiceSectionsHTML()}</div>
+        <p class="text-right text-sm font-bold text-white pt-1">Grand Total: <span class="font-mono text-emerald-400" id="invoice-grand-total">${money(invoiceDraft.sections.reduce((s,sec)=>s+sectionTotal(sec),0))}</span></p>
+      </div>
+      <div>
+        <label class="text-xs text-textMuted block mb-1 mt-2">Jumlah Sudah Dibayar</label>
+        <input type="number" min="0" name="amountPaid" class="field-input rounded-xl px-3 py-2 w-full" value="${Number(invoiceDraft.amountPaid)||0}">
+      </div>
+      <div class="pt-1 border-t border-white/10 mt-2">
+        <label class="text-xs text-textMuted block mb-1 mt-2">Term & Conditions (satu baris = satu poin)</label>
+        <textarea name="terms" rows="4" class="field-input rounded-xl px-3 py-2 w-full text-xs">${esc((invoiceDraft.terms||[]).join('\n'))}</textarea>
+      </div>
+      <div class="flex justify-between items-center pt-2">
+        ${inv?`<button type="button" onclick="deleteInvoice('${inv.id}')" class="text-xs text-red-400 hover:underline">Hapus invoice</button>`:'<span></span>'}
+        <div class="flex gap-2">
+          <button type="button" onclick="closeModal()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+          <button type="submit" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Simpan Invoice</button>
+        </div>
+      </div>
+    </form>
+  `);
+  document.getElementById('invoice-form').addEventListener('submit', saveInvoice);
+}
+async function saveInvoice(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const id = f.get('id');
+  const terms = (f.get('terms')||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const data = {
+    number: f.get('number').trim(), date: f.get('date'), dueDate: f.get('dueDate')||null,
+    quoteId: f.get('quoteId')||null, contactId: f.get('contactId')||null, dealId: invoiceDraft.dealId||null,
+    toName: f.get('toName').trim(), toAddress: f.get('toAddress').trim(),
+    attnName: f.get('attnName').trim(), attnPhone: f.get('attnPhone').trim(), attnEmail: invoiceDraft.attnEmail||'',
+    sections: JSON.parse(JSON.stringify(invoiceDraft.sections)),
+    notesList: invoiceDraft.notesList||[], terms,
+    amountPaid: Number(f.get('amountPaid'))||0,
+  };
+  if (!data.number){ toast('Nomor invoice wajib diisi','err'); return; }
+  if (id){ const ex = state.invoices.find(x=>x.id===id); Object.assign(ex, data); toast('Invoice diperbarui'); }
+  else {
+    state.invoices.unshift({ id:uid(), ...data, status:'Draft', createdAt:new Date().toISOString() });
+    logActivity(`Invoice "${data.number}" dibuat${data.toName?(' untuk "'+data.toName+'"'):''}`, {dealId:data.dealId, contactId:data.contactId});
+    toast('Invoice dibuat');
+    if (state.settings.autoInvoiceReminder && data.dueDate){
+      const due = new Date(data.dueDate);
+      const reminderDate = new Date(due.getTime() - 3*86400000);
+      const finalDate = reminderDate > new Date() ? reminderDate : new Date();
+      state.tasks.unshift({ id: uid(), title:`Reminder invoice jatuh tempo: ${data.number}`, due: finalDate.toISOString(), priority:'medium', done:false, contactId:data.contactId||null });
+      await persist('tasks');
+      logActivity(`Tugas pengingat otomatis dibuat untuk invoice "${data.number}" (H-3 sebelum jatuh tempo)`, {contactId:data.contactId});
+      renderTasks(); renderNotifications();
+    }
+  }
+  await persist('invoices'); closeModal(); closeDrawer(); renderInvoices();
+}
+async function deleteInvoice(id){
+  if(!confirm('Hapus invoice ini?')) return;
+  state.invoices = state.invoices.filter(x=>x.id!==id);
+  await persist('invoices'); closeModal(); closeDrawer(); renderInvoices(); toast('Invoice dihapus','err');
+}
+async function updateInvoiceStatus(id, status){
+  const inv = state.invoices.find(x=>x.id===id); if(!inv) return;
+  inv.status = status;
+  if (status==='Paid') inv.amountPaid = invoiceGrandTotal(inv);
+  await persist('invoices'); openInvoiceDetail(id); renderInvoices();
+}
+async function recordInvoicePayment(id){
+  const inv = state.invoices.find(x=>x.id===id); if(!inv) return;
+  const total = invoiceGrandTotal(inv);
+  const remaining = total - (Number(inv.amountPaid)||0);
+  const input = prompt(`Catat pembayaran untuk ${inv.number}\nSisa tagihan: ${money(remaining)}\n\nMasukkan jumlah yang diterima (Rp):`, remaining>0?remaining:0);
+  if (input===null) return;
+  const amount = Number(input.replace(/[^0-9.-]/g,''))||0;
+  if (amount<=0){ toast('Jumlah pembayaran tidak valid','err'); return; }
+  inv.amountPaid = Math.min(total, (Number(inv.amountPaid)||0) + amount);
+  if (inv.amountPaid >= total) inv.status = 'Paid';
+  await persist('invoices'); openInvoiceDetail(id); renderInvoices(); toast('Pembayaran dicatat');
+}
+function openInvoiceDetail(id){
+  const inv = state.invoices.find(x=>x.id===id); if(!inv) return;
+  const total = invoiceGrandTotal(inv);
+  const paid = Number(inv.amountPaid)||0;
+  const remaining = total - paid;
+  const label = invoiceDisplayStatus(inv);
+  openDrawer(`
+    <div class="flex justify-between items-start mb-1">
+      <div><h3 class="font-display text-lg font-bold text-white">${esc(inv.number)}</h3><p class="text-xs text-textMuted">${esc(inv.toName)||''}</p></div>
+      <span class="text-[10px] font-bold px-2 py-1 rounded-full border" style="color:${INVOICE_STATUS_COLOR[label]};border-color:${INVOICE_STATUS_COLOR[label]}55">${label}</span>
+    </div>
+    <div class="flex gap-2 mt-3 mb-4 flex-wrap">
+      <button onclick="openInvoiceModal('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
+      <button onclick="printInvoice('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Cetak / PDF</button>
+      <button onclick="recordInvoicePayment('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10">Catat Pembayaran</button>
+      <button onclick="deleteInvoice('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
+    </div>
+    <div class="flex flex-wrap gap-1.5 mb-5">
+      <button onclick="updateInvoiceStatus('${inv.id}','Draft')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${inv.status==='Draft'?'text-textMain':'text-textMuted'}" style="border-color:${INVOICE_STATUS_COLOR.Draft}55; ${inv.status==='Draft'?`background:${INVOICE_STATUS_COLOR.Draft}33;`:''}">Draft</button>
+      <button onclick="updateInvoiceStatus('${inv.id}','Sent')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${inv.status==='Sent'?'text-textMain':'text-textMuted'}" style="border-color:${INVOICE_STATUS_COLOR['Terkirim']}55; ${inv.status==='Sent'?`background:${INVOICE_STATUS_COLOR['Terkirim']}33;`:''}">Tandai Terkirim</button>
+      <button onclick="updateInvoiceStatus('${inv.id}','Paid')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${inv.status==='Paid'?'text-textMain':'text-textMuted'}" style="border-color:${INVOICE_STATUS_COLOR['Lunas']}55; ${inv.status==='Paid'?`background:${INVOICE_STATUS_COLOR['Lunas']}33;`:''}">Tandai Lunas</button>
+    </div>
+    <div class="text-xs text-slate-400 space-y-1 mb-4 bg-panelBg/60 border border-white/5 rounded-xl p-3">
+      <p><b class="text-slate-300">Bill To:</b> ${esc(inv.toName)||'—'}</p>
+      <p>${esc(inv.toAddress)||''}</p>
+      <p><b class="text-slate-300">Jatuh Tempo:</b> ${inv.dueDate?fmtQuoteDate(inv.dueDate):'—'}</p>
+    </div>
+    <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">Ringkasan Section</h4>
+    <div class="space-y-1.5 mb-3">
+      ${(inv.sections||[]).map((sec,i)=>`<div class="flex items-center justify-between gap-2 bg-panelBg/60 border border-white/5 rounded-lg px-3 py-2 text-xs">
+        <span class="text-slate-300">${esc(sec.name)||('Section '+(i+1))} <span class="text-textMuted">(${(sec.items||[]).length} item${sec.discountPct?', disc '+sec.discountPct+'%':''})</span></span>
+        <span class="font-mono text-cyan-400">${money(sectionTotal(sec))}</span>
+      </div>`).join('') || '<p class="text-xs text-textMuted">Belum ada section.</p>'}
+    </div>
+    <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3 space-y-1 text-xs mb-2">
+      <p class="flex justify-between text-slate-300">Grand Total <span class="font-mono">${money(total)}</span></p>
+      <p class="flex justify-between text-emerald-400">Sudah Dibayar <span class="font-mono">${money(paid)}</span></p>
+      <p class="flex justify-between font-bold ${remaining>0?'text-red-400':'text-slate-300'}">Sisa Tagihan <span class="font-mono">${money(Math.max(0,remaining))}</span></p>
+    </div>
+  `);
+}
+
+/* ---- Cetak Invoice: layout mirip Quotation dengan info pembayaran ---- */
+function printInvoice(id){
+  const inv = state.invoices.find(x=>x.id===id); if(!inv) return;
+  const co = state.settings.company || {};
+  const sections = inv.sections || [];
+  const grand = invoiceGrandTotal(inv);
+  const paid = Number(inv.amountPaid)||0;
+  const balance = grand - paid;
+
+  let rowsHTML = '';
+  sections.forEach((sec, sIdx)=>{
+    rowsHTML += `<tr><td colspan="7" style="background:#eef1f5;font-weight:bold;padding:5px 6px;border:1px solid #999;">${String.fromCharCode(65+sIdx)}&nbsp;&nbsp;${esc((sec.name||'').replace(/^[A-Z]\.?\s*/,''))}</td></tr>`;
+    (sec.items||[]).forEach((it,iIdx)=>{
+      rowsHTML += `<tr>
+        <td style="border:1px solid #999;padding:4px 6px;text-align:center;">${iIdx+1}</td>
+        <td style="border:1px solid #999;padding:4px 6px;font-weight:bold;">${esc(it.model)}</td>
+        <td style="border:1px solid #999;padding:4px 6px;">${esc(it.description)}</td>
+        <td style="border:1px solid #999;padding:4px 6px;text-align:center;">${it.qty}</td>
+        <td style="border:1px solid #999;padding:4px 6px;text-align:center;">${esc(it.unit)}</td>
+        <td style="border:1px solid #999;padding:4px 6px;text-align:right;">Rp&nbsp;${Number(it.price).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+        <td style="border:1px solid #999;padding:4px 6px;text-align:right;">Rp&nbsp;${((Number(it.qty)||0)*(Number(it.price)||0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      </tr>`;
+    });
+    const sub = sectionSubtotal(sec), disc = sectionDiscountAmount(sec), tot = sectionTotal(sec);
+    rowsHTML += `<tr><td colspan="5" style="border:none;"></td><td style="border:1px solid #999;padding:3px 6px;background:#fff;">SUB TOTAL</td><td style="border:1px solid #999;padding:3px 6px;text-align:right;">Rp ${sub.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>`;
+    if (sec.discountPct){
+      rowsHTML += `<tr><td colspan="5" style="border:none;"></td><td style="border:1px solid #999;padding:3px 6px;background:#fff;">DISCOUNT ${sec.discountPct}%</td><td style="border:1px solid #999;padding:3px 6px;text-align:right;">Rp ${disc.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>`;
+    }
+    rowsHTML += `<tr><td colspan="5" style="border:none;"></td><td style="border:1px solid #999;padding:3px 6px;background:#fff59d;font-weight:bold;">TOTAL ${sIdx+1}</td><td style="border:1px solid #999;padding:3px 6px;text-align:right;background:#fff59d;font-weight:bold;">Rp ${tot.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>`;
+  });
+
+  const termsHTML = (inv.terms||[]).map(t=>`<p style="margin:3px 0;padding-left:12px;text-indent:-12px;">- ${esc(t)}</p>`).join('');
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(inv.number)}</title>
+  <style>
+    @page { size:A4; margin:14mm; }
+    * { box-sizing:border-box; }
+    body{ font-family:Arial,Helvetica,sans-serif; color:#111; font-size:12px; margin:0; padding:0; }
+    table{ width:100%; border-collapse:collapse; }
+    .no-print{ position:fixed; top:10px; right:10px; }
+    @media print { .no-print{ display:none; } }
+    .head-table td{ vertical-align:top; border:none; padding:0; }
+    .letter-title{ font-weight:800; font-size:20px; letter-spacing:0.5px; }
+    .info-table td{ border:none; padding:1.5px 4px; font-size:11.5px; vertical-align:top; }
+    .info-table td.lbl{ width:78px; color:#111; }
+    .item-table th{ border:1px solid #999; background:#d9dde3; padding:5px 6px; font-size:10.5px; text-align:center; }
+    .item-table td{ font-size:11px; }
+    .totals-box td{ font-size:11px; }
+    .grand{ background:#c6efce !important; font-weight:800; font-size:12.5px; }
+    .balance{ background:#ffe0e0 !important; font-weight:800; font-size:12.5px; }
+  </style></head>
+  <body onload="window.print()">
+  <button class="no-print" onclick="window.print()" style="padding:8px 14px;">Print / Save PDF</button>
+
+  <table class="head-table" style="margin-bottom:14px;margin-top:4mm;">
+    <tr>
+      <td style="width:32%;vertical-align:middle;">
+        ${co.logo ? `<img src="${esc(co.logo)}" alt="Logo" style="max-height:64px;max-width:200px;display:block;object-fit:contain;">` : `<span class="letter-title">${esc(co.name || 'PT PERUSAHAAN ANDA')}</span>`}
+      </td>
+      <td style="width:68%;">
+        <div style="font-weight:800;font-size:17px;color:#453B3A;letter-spacing:0.3px;margin-bottom:9px;">${esc(co.name || 'PT PERUSAHAAN ANDA')}</div>
+        <table class="head-table"><tr>
+          <td style="width:50%;padding-right:10px;">${lhOfficeBlock(co.headOfficeLabel||'Head Office', co.headOfficeAddress, co.headOfficePhone, co.headOfficeEmail, co.headOfficeWebsite)}</td>
+          <td style="width:50%;padding-right:10px;">${lhOfficeBlock(co.branchOfficeLabel||'Branch Office', co.branchOfficeAddress, co.branchOfficePhone, co.branchOfficeEmail, co.branchOfficeWebsite)}</td>
+        </tr></table>
+      </td>
+    </tr>
+  </table>
+  <hr style="border:none;border-top:1px solid #ccc;margin:0 0 12px 0;">
+
+  <table class="head-table" style="margin-bottom:10px;">
+    <tr>
+      <td style="width:52%;">
+        <table class="info-table">
+          <tr><td class="lbl">Re.</td><td>: <b>INVOICE</b></td></tr>
+          <tr><td class="lbl">Date</td><td>: ${fmtQuoteDate(inv.date)}</td></tr>
+          <tr><td class="lbl">No. Invoice</td><td>: ${esc(inv.number)}</td></tr>
+          <tr><td class="lbl">Jatuh Tempo</td><td>: ${inv.dueDate?fmtQuoteDate(inv.dueDate):'—'}</td></tr>
+        </table>
+      </td>
+      <td style="width:48%;">
+        <table class="info-table">
+          <tr><td class="lbl">Bill To</td><td>: <b>${esc(inv.toName)||''}</b><br>${esc(inv.toAddress)||''}</td></tr>
+          <tr><td class="lbl">Attn.</td><td>: ${esc(inv.attnName)||''}</td></tr>
+          <tr><td class="lbl">Telp</td><td>: ${esc(inv.attnPhone)||''}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <p style="margin:10px 0 4px 0;">Dear Sir / Madam,</p>
+  <p style="margin:0 0 8px 0;">Berikut kami sampaikan tagihan (invoice) untuk barang/jasa sebagai berikut :</p>
+
+  <table class="item-table" style="margin-bottom:8px;">
+    <thead><tr>
+      <th style="width:4%;">NO.</th><th style="width:12%;">MODEL</th><th>DESCRIPTION</th><th style="width:6%;">QTY</th><th style="width:8%;">SAT</th><th style="width:14%;">UNIT</th><th style="width:15%;">TOTAL PRICE<br>(IDR)</th>
+    </tr></thead>
+    <tbody>${rowsHTML}</tbody>
+  </table>
+
+  <table class="head-table" style="margin-top:6px;">
+    <tr>
+      <td style="width:62%;vertical-align:top;">
+        <p style="font-weight:bold;margin:0 0 4px 0;">Term & Conditions :</p>
+        <div style="font-size:10.5px;">${termsHTML}</div>
+        <p style="font-size:10.5px;margin-top:6px;"><b>* ${esc(co.bankInfo||'')}</b></p>
+      </td>
+      <td style="width:38%;vertical-align:top;">
+        <table class="totals-box" style="width:100%;">
+          <tr><td style="border:1px solid #999;padding:3px 8px;">Grand Total</td><td style="border:1px solid #999;padding:3px 8px;text-align:right;">Rp&nbsp;${grand.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>
+          <tr><td style="border:1px solid #999;padding:3px 8px;">Sudah Dibayar</td><td style="border:1px solid #999;padding:3px 8px;text-align:right;">Rp&nbsp;${paid.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>
+          <tr class="balance"><td style="border:1px solid #999;padding:5px 8px;">Sisa Tagihan</td><td style="border:1px solid #999;padding:5px 8px;text-align:right;">Rp&nbsp;${Math.max(0,balance).toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <table class="head-table" style="margin-top:12px;border-top:1px solid #999;">
+    <tr>
+      <td style="width:60%;padding-top:8px;font-size:11px;">
+        Mohon melakukan pembayaran sebelum tanggal jatuh tempo di atas.<br>
+        Jika ada pertanyaan, silakan hubungi kami.<br>
+        Phone&nbsp;&nbsp;&nbsp;: ${esc(co.signerPhone)||''}<br>
+        Mobile&nbsp;: ${esc(co.signerMobile)||''}<br><br>
+        Terima kasih atas kepercayaan Anda.
+      </td>
+      <td style="width:20%;padding-top:8px;font-size:11px;text-align:center;">
+        Approved by<br><br><br><br>
+        (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
+      </td>
+      <td style="width:20%;padding-top:8px;font-size:11px;text-align:center;">
+        Faithfully yours,<br><br><br>
+        <b>${esc(co.signerName)||''}</b><br>${esc(co.signerName)||''}
+      </td>
+    </tr>
+  </table>
+
+  <p style="text-align:center;font-size:10px;margin-top:24px;border-top:1px solid #999;padding-top:8px;">
+    <b>${esc(co.name)||''}</b><br>
+    ${esc(co.footerAddress)||''}<br>
+    ${esc(co.footerPhone)||''}<br>
+    ${esc(co.footerWebsite)||''}
+  </p>
+  </body></html>`);
+  win.document.close();
+}
+function exportInvoicesCSV(){
+  const rows = state.invoices.map(inv=>({
+    Nomor: inv.number, Tanggal: inv.date||'', JatuhTempo: inv.dueDate||'',
+    Penerima: inv.toName||'', GrandTotal: invoiceGrandTotal(inv), SudahDibayar: Number(inv.amountPaid)||0,
+    Status: invoiceDisplayStatus(inv),
+  }));
+  downloadCSV('invoices.csv', toCSV(rows, ['Nomor','Tanggal','JatuhTempo','Penerima','GrandTotal','SudahDibayar','Status']));
+  toast('Ringkasan invoice diekspor ke CSV');
+}
+
+
 /* ---------- TEAM ---------- */
 function renderTeam(){
   document.getElementById('team-empty').classList.toggle('hidden', state.team.length>0);
@@ -2094,8 +2884,8 @@ function renderAll(){
   populateOwnerFilters();
   renderContacts(); renderCompanies(); renderDeals(); renderTasks();
   renderDashboardStats(); updateCharts(); renderProfile(); renderNotifications();
-  renderProducts(); renderQuotes(); renderTeam(); renderAutomationSettings(); renderTargetForm(); renderCompanyProfileForm();
-  if (document.getElementById('view-calendar').classList.contains('active')) renderCalendar();
+  renderProducts(); renderQuotes(); renderInvoices(); renderTeam(); renderAutomationSettings(); renderTargetForm(); renderCompanyProfileForm();
+  if (document.getElementById('view-tasks').classList.contains('active') && !document.getElementById('tasks-calendar-view').classList.contains('hidden')) renderCalendar();
   if (document.getElementById('view-reports').classList.contains('active')) renderReports();
 }
 
@@ -2166,11 +2956,15 @@ function renderAutomationSettings(){
   document.getElementById('auto-task-proposal').checked = !!state.settings.autoTaskProposal;
   document.getElementById('auto-loss-reason').checked = !!state.settings.autoLossReason;
   document.getElementById('auto-quote-log').checked = !!state.settings.autoQuoteLog;
+  document.getElementById('auto-quote-followup').checked = !!state.settings.autoQuoteFollowup;
+  document.getElementById('auto-invoice-reminder').checked = !!state.settings.autoInvoiceReminder;
 }
 async function saveAutomationSettings(){
   state.settings.autoTaskProposal = document.getElementById('auto-task-proposal').checked;
   state.settings.autoLossReason = document.getElementById('auto-loss-reason').checked;
   state.settings.autoQuoteLog = document.getElementById('auto-quote-log').checked;
+  state.settings.autoQuoteFollowup = document.getElementById('auto-quote-followup').checked;
+  state.settings.autoInvoiceReminder = document.getElementById('auto-invoice-reminder').checked;
   await persist('settings'); toast('Pengaturan automasi disimpan', 'info');
 }
 
@@ -2218,23 +3012,150 @@ async function importProductsCSV(e){
   let rows;
   try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
   let count = 0;
+  const newMovements = [];
   rows.forEach(r=>{
     const name = r['nama'] || r['name'];
     if (!name) return;
+    const newId = uid();
     state.products.unshift({
-      id: uid(), name,
+      id: newId, name,
       model: r['model']||r['kode']||'',
       sku: r['sku']||'',
       category: r['kategori']||r['category']||'',
       unit: r['satuan']||r['unit']||'Unit',
       price: Number(String(r['harga']||r['price']||'0').replace(/[^0-9.-]/g,''))||0,
+      minStock: Number(String(r['stokminimum']||r['minstock']||'0').replace(/[^0-9.-]/g,''))||0,
       description: r['deskripsi']||r['description']||'',
     });
+    const initialStock = Number(String(r['stokawal']||r['stok']||r['initialstock']||r['stock']||'0').replace(/[^0-9.-]/g,''))||0;
+    if (initialStock>0){
+      newMovements.push({ id: uid(), productId:newId, type:'in', qty:initialStock, note:'Stok awal (impor CSV)', ref:'', date:new Date().toISOString().slice(0,10), createdAt:new Date().toISOString() });
+    }
     count++;
   });
   await persist('products');
+  if (newMovements.length){
+    state.stock_movements.unshift(...newMovements);
+    await persist('stock_movements');
+  }
   logActivity(`${count} produk diimpor dari CSV ke price book`);
   renderAll(); toast(`${count} produk berhasil diimpor`);
+  e.target.value = '';
+}
+function findContactIdByName(name){
+  if (!name) return null;
+  const c = state.contacts.find(x=>x.name.toLowerCase()===String(name).trim().toLowerCase());
+  return c ? c.id : null;
+}
+function findOwnerIdByName(name){
+  if (!name) return 'me';
+  const n = String(name).trim().toLowerCase();
+  if (!n) return 'me';
+  if (n===(state.profile.name||'').toLowerCase()) return 'me';
+  const m = state.team.find(x=>x.name.toLowerCase()===n);
+  return m ? m.id : 'me';
+}
+async function importCompaniesCSV(e){
+  const file = e.target.files[0]; if (!file) return;
+  const text = await file.text();
+  let rows;
+  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
+  let count = 0;
+  rows.forEach(r=>{
+    const name = r['nama'] || r['name'];
+    if (!name) return;
+    state.companies.unshift({
+      id: uid(), name,
+      industry: r['industri']||r['industry']||'',
+      website: r['website']||'',
+      size: r['ukuran']||r['size']||'',
+      address: r['alamat']||r['address']||'',
+      createdAt: new Date().toISOString(),
+    });
+    count++;
+  });
+  await persist('companies');
+  logActivity(`${count} perusahaan diimpor dari CSV`);
+  renderAll(); toast(`${count} perusahaan berhasil diimpor`);
+  e.target.value = '';
+}
+async function importDealsCSV(e){
+  const file = e.target.files[0]; if (!file) return;
+  const text = await file.text();
+  let rows;
+  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
+  let count = 0;
+  rows.forEach(r=>{
+    const title = r['deal'] || r['nama'] || r['title'];
+    if (!title) return;
+    const contactId = findContactIdByName(r['kontak']||r['contact']);
+    const stageRaw = (r['stage']||'New').trim();
+    const stage = STAGES.find(s=>s.toLowerCase()===stageRaw.toLowerCase()) || 'New';
+    const probability = Math.max(0, Math.min(100, Number(String(r['probabilitas']||r['probability']||'0').replace(/[^0-9.-]/g,''))||0));
+    state.deals.unshift({
+      id: uid(), title,
+      contactId,
+      value: Number(String(r['nilai']||r['value']||'0').replace(/[^0-9.-]/g,''))||0,
+      stage, probability,
+      ownerId: findOwnerIdByName(r['owner']),
+      lossReason: r['alasankalah']||r['lossreason']||null,
+      items: [],
+      createdAt: new Date().toISOString(),
+    });
+    count++;
+  });
+  await persist('deals');
+  logActivity(`${count} deal diimpor dari CSV`);
+  renderAll(); toast(`${count} deal berhasil diimpor`);
+  e.target.value = '';
+}
+async function importTasksCSV(e){
+  const file = e.target.files[0]; if (!file) return;
+  const text = await file.text();
+  let rows;
+  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
+  let count = 0;
+  rows.forEach(r=>{
+    const title = r['judul'] || r['title'];
+    if (!title) return;
+    const dueRaw = r['jatuhtempo']||r['due']||'';
+    const due = dueRaw && !isNaN(new Date(dueRaw).getTime()) ? new Date(dueRaw).toISOString() : new Date().toISOString();
+    const priorityRaw = (r['prioritas']||r['priority']||'medium').toLowerCase();
+    const priority = ['high','medium','low'].includes(priorityRaw) ? priorityRaw : (priorityRaw==='tinggi'?'high':priorityRaw==='rendah'?'low':'medium');
+    const doneRaw = (r['selesai']||r['done']||'').toLowerCase();
+    const done = doneRaw==='ya' || doneRaw==='yes' || doneRaw==='true';
+    state.tasks.unshift({
+      id: uid(), title, due, priority, done,
+      contactId: findContactIdByName(r['kontak']||r['contact']),
+    });
+    count++;
+  });
+  await persist('tasks');
+  logActivity(`${count} tugas diimpor dari CSV`);
+  renderAll(); toast(`${count} tugas berhasil diimpor`);
+  e.target.value = '';
+}
+async function importTeamCSV(e){
+  const file = e.target.files[0]; if (!file) return;
+  const text = await file.text();
+  let rows;
+  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
+  let count = 0;
+  rows.forEach(r=>{
+    const name = r['nama'] || r['name'];
+    if (!name) return;
+    state.team.unshift({
+      id: uid(), name,
+      role: r['peran']||r['role']||'',
+      email: r['email']||'',
+      avatar: r['avatar']||'',
+      createdAt: new Date().toISOString(),
+    });
+    count++;
+  });
+  await persist('team');
+  logActivity(`${count} anggota tim diimpor dari CSV`);
+  renderAll(); toast(`${count} anggota tim berhasil diimpor`);
   e.target.value = '';
 }
 
