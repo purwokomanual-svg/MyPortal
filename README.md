@@ -4,7 +4,7 @@ CRM ringan berbasis HTML/CSS/JavaScript murni (tanpa framework/build step),
 dengan backend **Supabase** (Auth + Database) dan siap di-deploy ke **Vercel**
 lewat **GitHub**.
 
-> **Update: modul Invoice & Stok Gudang.** Ada tabel baru `invoices` dan
+> **Update: modul Invoice & Stok Gudang.** Ada tabel baru `invoices`, `warehouses` (multi-gudang) dan
 > `stock_movements`, plus kolom baru `min_stock` di tabel `products`. Kalau
 > project Supabase Anda sudah pernah menjalankan `schema.sql` sebelumnya,
 > tinggal jalankan lagi seluruh isi file itu di **SQL Editor** — aman, tabel
