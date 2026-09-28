@@ -8,7 +8,7 @@ const INVOICE_STATUS_COLOR = { Draft:'#64748b', Terkirim:'#38bdf8', 'Lunas Sebag
 
 let state = {
   contacts: [], deals: [], tasks: [], activities: [], companies: [], notes: [],
-  products: [], quotes: [], invoices: [], stock_movements: [], team: [],
+  products: [], quotes: [], invoices: [], warehouses: [], stock_movements: [], team: [],
   settings: {
     monthlyTarget: 300000000, autoTaskProposal: true, autoLossReason: true, autoQuoteLog: true, autoQuoteFollowup: true, autoInvoiceReminder: true,
     company: {
@@ -54,7 +54,7 @@ let currentUser = null;
    insert / update / delete ke tabel yang sesuai. Ini membuat penyimpanan
    data rapi secara relasional di database, tanpa perlu menulis ulang setiap
    fungsi save/delete yang sudah ada. */
-const LIST_PARTS = ['companies','contacts','deals','tasks','notes','activities','products','quotes','invoices','stock_movements','team'];
+const LIST_PARTS = ['companies','contacts','deals','tasks','notes','activities','products','quotes','invoices','warehouses','stock_movements','team'];
 let lastSynced = {}; // part -> deep copy of the last array successfully written to DB
 
 const ROW_MAPPERS = {
@@ -98,9 +98,13 @@ const ROW_MAPPERS = {
     toRow: m => ({ id:m.id, name:m.name, role:m.role||'', email:m.email||'', avatar:m.avatar||'', created_at:m.createdAt||new Date().toISOString() }),
     fromRow: r => ({ id:r.id, name:r.name, role:r.role||'', email:r.email||'', avatar:r.avatar||'', createdAt:r.created_at }),
   },
+  warehouses: {
+    toRow: w => ({ id:w.id, name:w.name, code:w.code||'', address:w.address||'', is_default:!!w.isDefault, created_at:w.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, name:r.name, code:r.code||'', address:r.address||'', isDefault:!!r.is_default, createdAt:r.created_at }),
+  },
   stock_movements: {
-    toRow: m => ({ id:m.id, product_id:m.productId, type:m.type||'in', qty:Number(m.qty)||0, note:m.note||'', ref:m.ref||'', date:m.date||null, created_at:m.createdAt||new Date().toISOString() }),
-    fromRow: r => ({ id:r.id, productId:r.product_id, type:r.type||'in', qty:Number(r.qty)||0, note:r.note||'', ref:r.ref||'', date:r.date, createdAt:r.created_at }),
+    toRow: m => ({ id:m.id, product_id:m.productId, warehouse_id:m.warehouseId||null, transfer_id:m.transferId||null, type:m.type||'in', qty:Number(m.qty)||0, note:m.note||'', ref:m.ref||'', date:m.date||null, created_at:m.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, productId:r.product_id, warehouseId:r.warehouse_id||null, transferId:r.transfer_id||null, type:r.type||'in', qty:Number(r.qty)||0, note:r.note||'', ref:r.ref||'', date:r.date, createdAt:r.created_at }),
   },
 };
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -383,6 +387,18 @@ function seedDemoData(){
     { id:uid(), name:'Seting & Tescomisioning', model:'', sku:'SVC-TEST', category:'JASA & ACCESSORIES', unit:'Lot', price:10000000, description:'' },
   ];
 
+  const whA=uid(), whB=uid();
+  state.warehouses = [
+    { id:whA, name:'Gudang Utama', code:'GU', address:'Surabaya', isDefault:true, createdAt: daysAgoISO(90) },
+    { id:whB, name:'Gudang Cabang Jakarta', code:'GJ', address:'Jakarta', isDefault:false, createdAt: daysAgoISO(60) },
+  ];
+  state.stock_movements = [];
+  state.products.filter(p=>p.category==='EQUIPMENT FIRE ALARM').forEach((p,i)=>{
+    p.minStock = 5;
+    state.stock_movements.push({ id:uid(), productId:p.id, warehouseId:whA, transferId:null, type:'in', qty:20-i, note:'Stok awal', ref:'', date:daysAgoISO(45).slice(0,10), createdAt:daysAgoISO(45) });
+    state.stock_movements.push({ id:uid(), productId:p.id, warehouseId:whB, transferId:null, type:'in', qty:6+i, note:'Stok awal', ref:'', date:daysAgoISO(40).slice(0,10), createdAt:daysAgoISO(40) });
+  });
+
   const coQ=uid();
   state.companies.push({ id:coQ, name:'PT. SURABAYA PRAKARSA F. S', industry:'Konstruksi & Fire Safety', website:'', size:'', address:'Jl.Darmo Harapan IX/EB 27, Surabaya 60187', createdAt: daysAgoISO(2) });
   const cQ=uid();
@@ -526,8 +542,9 @@ async function resetDemoData(){
 async function clearAllData(){
   if(!confirm('Hapus semua data CRM Anda secara permanen?')) return;
   state.contacts=[]; state.deals=[]; state.tasks=[]; state.activities=[]; state.companies=[]; state.notes=[];
-  state.products=[]; state.quotes=[]; state.invoices=[]; state.stock_movements=[]; state.team=[];
+  state.products=[]; state.quotes=[]; state.invoices=[]; state.stock_movements=[]; state.warehouses=[]; state.team=[];
   await Promise.all(LIST_PARTS.map(persist));
+  await ensureDefaultWarehouse();
   renderAll(); toast('Semua data telah dihapus', 'err');
 }
 
@@ -1488,8 +1505,8 @@ function exportDealsCSV(){
   toast('Deal diekspor ke CSV');
 }
 function exportProductsCSV(){
-  const rows = state.products.map(p=>({ Nama:p.name, Model:p.model||'', SKU:p.sku||'', Kategori:p.category||'', Satuan:p.unit||'', Harga:p.price, Stok:productStock(p.id), StokMinimum:Number(p.minStock)||0, Deskripsi:p.description||'' }));
-  downloadCSV('products.csv', toCSV(rows, ['Nama','Model','SKU','Kategori','Satuan','Harga','Stok','StokMinimum','Deskripsi']));
+  const rows = state.products.map(p=>({ Nama:p.name, Model:p.model||'', SKU:p.sku||'', Kategori:p.category||'', Satuan:p.unit||'', Harga:p.price, Stok:productStock(p.id), StokPerGudang:productStockByWarehouse(p.id).filter(x=>x.qty!==0).map(x=>`${x.warehouse.name}: ${x.qty}`).join('; '), StokMinimum:Number(p.minStock)||0, Deskripsi:p.description||'' }));
+  downloadCSV('products.csv', toCSV(rows, ['Nama','Model','SKU','Kategori','Satuan','Harga','Stok','StokPerGudang','StokMinimum','Deskripsi']));
   toast('Price book & stok diekspor ke CSV');
 }
 function exportCompaniesCSV(){
@@ -1509,12 +1526,72 @@ function exportTeamCSV(){
 }
 
 /* ---------- PRODUCTS (Price Book) ---------- */
-/* ---------- STOK GUDANG (kartu stok per produk, dihitung dari ledger stock_movements) ---------- */
-function productStock(productId){
-  return state.stock_movements.filter(m=>m.productId===productId).reduce((s,m)=>{
-    if (m.type==='out') return s - (Number(m.qty)||0);
-    return s + (Number(m.qty)||0); // 'in' selalu positif; 'adjustment' disimpan sebagai qty bertanda (+/-)
+/* ---------- GUDANG & STOK (kartu stok per produk per gudang, dihitung dari ledger stock_movements) ---------- */
+function defaultWarehouse(){
+  return state.warehouses.find(w=>w.isDefault)
+    || [...state.warehouses].sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt))[0]
+    || null;
+}
+/* Pastikan selalu ada minimal 1 gudang, dan seluruh transaksi lama (tanpa gudang) dipindahkan
+   permanen ke gudang default — sekali jalan, aman dipanggil berulang (idempotent). */
+async function ensureDefaultWarehouse(){
+  if (!currentUser) return;
+  if (!state.warehouses.length){
+    state.warehouses.push({ id:uid(), name:'Gudang Utama', code:'GU', address:'', isDefault:true, createdAt:new Date().toISOString() });
+    await persist('warehouses');
+  }
+  const def = defaultWarehouse();
+  let migrated = 0;
+  state.stock_movements.forEach(m=>{
+    if (!m.warehouseId || !state.warehouses.some(w=>w.id===m.warehouseId)){ m.warehouseId = def.id; migrated++; }
+  });
+  if (migrated) await persist('stock_movements');
+}
+function warehouseName(id){ const w = state.warehouses.find(x=>x.id===id); return w ? w.name : '—'; }
+function movementWarehouseId(m, defId){
+  return (m.warehouseId && state.warehouses.some(w=>w.id===m.warehouseId)) ? m.warehouseId : defId;
+}
+function movementSignedQty(m){ return m.type==='out' ? -(Number(m.qty)||0) : (Number(m.qty)||0); } // 'in' positif; 'adjustment' sudah bertanda
+function moveDateKey(m){ return m.date || (m.createdAt||'').slice(0,10); }
+function cmpMove(a,b){ return moveDateKey(a).localeCompare(moveDateKey(b)) || (new Date(a.createdAt)-new Date(b.createdAt)); }
+
+/* Stok produk. Tanpa warehouseId = total seluruh gudang; dengan warehouseId = stok di gudang itu saja. */
+function productStock(productId, warehouseId){
+  const defId = (defaultWarehouse()||{}).id || null;
+  return state.stock_movements.reduce((s,m)=>{
+    if (m.productId!==productId) return s;
+    if (warehouseId && movementWarehouseId(m,defId)!==warehouseId) return s;
+    return s + movementSignedQty(m);
   }, 0);
+}
+function productStockByWarehouse(productId){
+  const defId = (defaultWarehouse()||{}).id || null;
+  const map = {};
+  state.stock_movements.forEach(m=>{
+    if (m.productId!==productId) return;
+    const wid = movementWarehouseId(m,defId);
+    map[wid] = (map[wid]||0) + movementSignedQty(m);
+  });
+  return state.warehouses.map(w=>({ warehouse:w, qty: map[w.id]||0 }))
+    .sort((a,b)=> (b.warehouse.isDefault?1:0)-(a.warehouse.isDefault?1:0) || a.warehouse.name.localeCompare(b.warehouse.name));
+}
+function warehouseSummaries(){
+  const defId = (defaultWarehouse()||{}).id || null;
+  const prod = new Map(state.products.map(p=>[p.id,p]));
+  const per = {};
+  state.stock_movements.forEach(m=>{
+    if (!prod.has(m.productId)) return;
+    const wid = movementWarehouseId(m,defId);
+    per[wid] = per[wid]||{};
+    per[wid][m.productId] = (per[wid][m.productId]||0) + movementSignedQty(m);
+  });
+  const out = {};
+  state.warehouses.forEach(w=>{
+    let units=0, value=0, skus=0;
+    Object.entries(per[w.id]||{}).forEach(([pid,q])=>{ if (q>0){ units+=q; value+=q*(Number(prod.get(pid).price)||0); skus++; } });
+    out[w.id] = { units, value, skus };
+  });
+  return out;
 }
 function productStockStatus(p){
   const stock = productStock(p.id);
@@ -1530,23 +1607,39 @@ function lowStockProducts(){
     return stock<=0 || (min>0 && stock<=min);
   });
 }
+function warehouseOptionsHTML(selectedId, excludeId){
+  return state.warehouses.filter(w=>w.id!==excludeId).map(w=>`<option value="${w.id}" ${w.id===selectedId?'selected':''}>${esc(w.name)}${w.isDefault?' (default)':''}</option>`).join('');
+}
+
 function renderProducts(){
   const q = (document.getElementById('products-search').value||'').toLowerCase();
   const lowOnly = document.getElementById('stock-low-filter').checked;
+  const multi = state.warehouses.length>1;
+
+  const whSel = document.getElementById('stock-warehouse-filter');
+  const prevWh = whSel.value;
+  whSel.innerHTML = '<option value="">Semua Gudang</option>' + state.warehouses.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('');
+  whSel.value = state.warehouses.some(w=>w.id===prevWh) ? prevWh : '';
+  whSel.classList.toggle('hidden', !multi);
+  const wf = multi ? whSel.value : '';
+
   let list = state.products.filter(p=> !q || p.name.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.model||'').toLowerCase().includes(q) || (p.category||'').toLowerCase().includes(q));
   if (lowOnly){
-    list = list.filter(p=>{ const stock = productStock(p.id); const min = Number(p.minStock)||0; return stock<=0 || (min>0 && stock<=min); });
+    const lowIds = new Set(lowStockProducts().map(p=>p.id));
+    list = list.filter(p=>lowIds.has(p.id));
   }
   document.getElementById('products-empty').classList.toggle('hidden', state.products.length>0);
 
+  const sums = warehouseSummaries();
   const totalSKU = state.products.length;
-  const stockValue = state.products.reduce((s,p)=> s + Math.max(0,productStock(p.id))*(Number(p.price)||0), 0);
+  const totalUnits = wf ? (sums[wf]?sums[wf].units:0) : state.products.reduce((s,p)=> s + Math.max(0,productStock(p.id)), 0);
+  const stockValue = wf ? (sums[wf]?sums[wf].value:0) : state.products.reduce((s,p)=> s + Math.max(0,productStock(p.id))*(Number(p.price)||0), 0);
   const lowCount = lowStockProducts().length;
-  const totalUnits = state.products.reduce((s,p)=> s + Math.max(0,productStock(p.id)), 0);
+  const scopeLabel = wf ? warehouseName(wf) : 'Gudang';
   document.getElementById('stock-summary').innerHTML = `
     <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Total SKU</p><p class="font-mono font-bold text-white text-sm">${totalSKU}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Total Unit di Gudang</p><p class="font-mono font-bold text-cyan-400 text-sm">${totalUnits.toLocaleString('id-ID')}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Nilai Persediaan</p><p class="font-mono font-bold text-emerald-400 text-sm">${money(stockValue)}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1 truncate">Total Unit di ${esc(scopeLabel)}</p><p class="font-mono font-bold text-cyan-400 text-sm">${totalUnits.toLocaleString('id-ID')}</p></div>
+    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Nilai Persediaan${wf?' ('+esc(warehouseName(wf))+')':''}</p><p class="font-mono font-bold text-emerald-400 text-sm">${money(stockValue)}</p></div>
     <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Stok Rendah / Habis</p><p class="font-mono font-bold ${lowCount?'text-red-400':'text-slate-300'} text-sm">${lowCount} produk</p></div>
   `;
 
@@ -1558,8 +1651,10 @@ function renderProducts(){
       <p class="text-[10px] font-bold uppercase tracking-wider text-purple-400">${esc(g)}</p>
     </div>
     ${groups[g].map(p=>{
-      const stock = productStock(p.id);
+      const total = productStock(p.id);
+      const shown = wf ? productStock(p.id, wf) : total;
       const status = productStockStatus(p);
+      const chips = (!wf && multi) ? productStockByWarehouse(p.id).filter(x=>x.qty!==0).map(x=>`<span title="${esc(x.warehouse.name)}" class="text-[10px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300">${esc(x.warehouse.code||x.warehouse.name)}: <b class="font-mono">${x.qty.toLocaleString('id-ID')}</b></span>`).join('') : '';
       return `
     <div class="glass-card glass-card-hover rounded-2xl p-4">
       <div class="flex justify-between items-start mb-2">
@@ -1567,14 +1662,17 @@ function renderProducts(){
         <span class="font-mono font-bold text-cyan-400 text-sm">${money(p.price)}</span>
       </div>
       <p class="text-xs text-slate-400 mb-3">${esc(p.description)||'—'}</p>
-      <div class="flex items-center justify-between mb-3 cursor-pointer" onclick="openStockHistory('${p.id}')">
+      <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="openStockHistory('${p.id}','${wf}')" title="Lihat kartu stok">
         <span class="text-[10px] font-bold px-2 py-1 rounded-full border ${status.cls}">${status.label}</span>
-        <span class="text-xs font-mono text-slate-200">${stock.toLocaleString('id-ID')} <span class="text-textMuted font-sans">${esc(p.unit)||'Unit'}</span></span>
+        <span class="text-xs font-mono text-slate-200">${shown.toLocaleString('id-ID')} <span class="text-textMuted font-sans">${esc(p.unit)||'Unit'}</span></span>
       </div>
-      <div class="flex justify-between items-center gap-2">
-        <div class="flex gap-1.5">
-          <button onclick="openStockModal('${p.id}','in')" class="text-[10px] px-2.5 py-1 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10" title="Catat barang masuk">+ Masuk</button>
-          <button onclick="openStockModal('${p.id}','out')" class="text-[10px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10" title="Catat barang keluar">- Keluar</button>
+      ${wf ? `<p class="text-[10px] text-textMuted mb-3">Total semua gudang: <span class="font-mono text-slate-300">${total.toLocaleString('id-ID')}</span></p>`
+           : (chips ? `<div class="flex flex-wrap gap-1 mb-3">${chips}</div>` : '<div class="mb-1"></div>')}
+      <div class="flex flex-wrap justify-between items-center gap-2">
+        <div class="flex flex-wrap gap-1.5">
+          <button onclick="openStockModal('${p.id}','in','${wf}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10" title="Catat barang masuk">+ Masuk</button>
+          <button onclick="openStockModal('${p.id}','out','${wf}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10" title="Catat barang keluar">- Keluar</button>
+          ${multi?`<button onclick="openTransferModal('${p.id}','${wf}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10" title="Pindahkan stok antar gudang">⇄ Transfer</button>`:''}
         </div>
         <div class="flex gap-2">
           <button onclick="openProductModal('${p.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
@@ -1591,6 +1689,8 @@ function productCategoryOptions(selected){
 }
 function openProductModal(id){
   const p = id ? state.products.find(x=>x.id===id) : null;
+  const multi = state.warehouses.length>1;
+  const breakdown = p && multi ? productStockByWarehouse(p.id).map(x=>`${esc(x.warehouse.name)}: ${x.qty.toLocaleString('id-ID')}`).join(' • ') : '';
   openModal(`
     <h3 class="text-sm font-bold text-white mb-4">${p?'Edit Produk':'Tambah Produk / Layanan'}</h3>
     <form id="product-form" class="space-y-3 text-sm">
@@ -1609,10 +1709,11 @@ function openProductModal(id){
       </div>
       <div><label class="text-xs text-textMuted block mb-1">Harga (Rp)</label><input type="number" min="0" name="price" required class="field-input rounded-xl px-3 py-2 w-full" value="${p?p.price:0}"></div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        ${p?`<div><label class="text-xs text-textMuted block mb-1">Stok Saat Ini</label><p class="field-input rounded-xl px-3 py-2 w-full bg-panelBg/40 text-slate-300">${productStock(p.id).toLocaleString('id-ID')} ${esc(p.unit)||'Unit'} <span class="text-[10px] text-textMuted">(lihat riwayat setelah simpan)</span></p></div>`
+        ${p?`<div><label class="text-xs text-textMuted block mb-1">Stok Saat Ini (semua gudang)</label><p class="field-input rounded-xl px-3 py-2 w-full bg-panelBg/40 text-slate-300">${productStock(p.id).toLocaleString('id-ID')} ${esc(p.unit)||'Unit'}</p>${breakdown?`<p class="text-[10px] text-textMuted mt-1">${breakdown}</p>`:''}</div>`
           : `<div><label class="text-xs text-textMuted block mb-1">Stok Awal (opsional)</label><input type="number" min="0" name="initialStock" class="field-input rounded-xl px-3 py-2 w-full" value="0"></div>`}
-        <div><label class="text-xs text-textMuted block mb-1">Stok Minimum (reorder point)</label><input type="number" min="0" name="minStock" class="field-input rounded-xl px-3 py-2 w-full" value="${p?Number(p.minStock)||0:0}"></div>
+        <div><label class="text-xs text-textMuted block mb-1">Stok Minimum (total semua gudang)</label><input type="number" min="0" name="minStock" class="field-input rounded-xl px-3 py-2 w-full" value="${p?Number(p.minStock)||0:0}"></div>
       </div>
+      ${(!p && multi)?`<div><label class="text-xs text-textMuted block mb-1">Gudang untuk Stok Awal</label><select name="initialWarehouse" class="field-input rounded-xl px-3 py-2 w-full">${warehouseOptionsHTML((defaultWarehouse()||{}).id)}</select></div>`:''}
       <div><label class="text-xs text-textMuted block mb-1">Deskripsi</label><textarea name="description" rows="2" class="field-input rounded-xl px-3 py-2 w-full">${p?esc(p.description):''}</textarea></div>
       <div class="flex justify-between items-center pt-2">
         ${p?`<button type="button" onclick="deleteProduct('${p.id}')" class="text-xs text-red-400 hover:underline">Hapus produk</button>`:'<span></span>'}
@@ -1634,23 +1735,24 @@ async function saveProduct(e){
   if (id){
     Object.assign(state.products.find(x=>x.id===id), data);
     toast('Produk diperbarui');
-    await persist('products'); closeModal(); renderProducts();
+    await persist('products'); closeModal(); renderProducts(); renderNotifications();
   } else {
     const newId = uid();
     state.products.unshift({ id:newId, ...data });
     const initialStock = Number(f.get('initialStock'))||0;
     await persist('products');
     if (initialStock>0){
-      state.stock_movements.unshift({ id:uid(), productId:newId, type:'in', qty:initialStock, note:'Stok awal', ref:'', date:new Date().toISOString().slice(0,10), createdAt:new Date().toISOString() });
+      const whId = f.get('initialWarehouse') || (defaultWarehouse()||{}).id || null;
+      state.stock_movements.unshift({ id:uid(), productId:newId, warehouseId:whId, transferId:null, type:'in', qty:initialStock, note:'Stok awal', ref:'', date:new Date().toISOString().slice(0,10), createdAt:new Date().toISOString() });
       await persist('stock_movements');
-      logActivity(`Stok awal ${initialStock} ${data.unit} dicatat untuk "${data.name}"`);
+      logActivity(`Stok awal ${initialStock} ${data.unit} dicatat untuk "${data.name}" di ${warehouseName(whId)}`);
     }
     toast('Produk ditambahkan');
     closeModal(); renderProducts(); renderNotifications();
   }
 }
 async function deleteProduct(id){
-  if(!confirm('Hapus produk ini dari price book? Seluruh riwayat stoknya juga akan terhapus.')) return;
+  if(!confirm('Hapus produk ini dari price book? Seluruh riwayat stoknya (di semua gudang) juga akan terhapus.')) return;
   state.products = state.products.filter(x=>x.id!==id);
   const hadMovements = state.stock_movements.some(m=>m.productId===id);
   state.stock_movements = state.stock_movements.filter(m=>m.productId!==id);
@@ -1659,20 +1761,34 @@ async function deleteProduct(id){
   closeModal(); closeDrawer(); renderProducts(); renderNotifications(); toast('Produk dihapus', 'err');
 }
 
-/* ---- Modal catat barang masuk / keluar / stok opname ---- */
-function openStockModal(productId, type){
+/* ---- Refresh tampilan setelah ada perubahan stok/gudang (drawer yang sedang terbuka ikut diperbarui) ---- */
+function refreshAfterStockChange(){
+  closeModal();
+  renderProducts(); renderNotifications();
+  const hist = document.getElementById('stock-history-root');
+  if (hist) openStockHistory(hist.dataset.product, hist.dataset.wh||'');
+  else if (document.getElementById('warehouse-manager-root')) openWarehouseManager();
+}
+
+/* ---- Modal catat barang masuk / keluar / stok opname (per gudang) ---- */
+function openStockModal(productId, type, warehouseId){
   const p = state.products.find(x=>x.id===productId); if(!p) return;
-  const stock = productStock(productId);
+  const whId = (warehouseId && state.warehouses.some(w=>w.id===warehouseId)) ? warehouseId : (defaultWarehouse()||{}).id;
+  const multi = state.warehouses.length>1;
+  const stock = productStock(productId, whId);
   const titles = { in:'Catat Barang Masuk', out:'Catat Barang Keluar', adjustment:'Stok Opname (Penyesuaian)' };
   openModal(`
     <h3 class="text-sm font-bold text-white mb-1">${titles[type]||'Catat Pergerakan Stok'}</h3>
-    <p class="text-xs text-textMuted mb-4">${esc(p.name)} • Stok saat ini: <b class="text-slate-200">${stock.toLocaleString('id-ID')} ${esc(p.unit)||'Unit'}</b></p>
+    <p class="text-xs text-textMuted mb-4">${esc(p.name)} • Stok di gudang terpilih: <b class="text-slate-200" id="stock-wh-current">${stock.toLocaleString('id-ID')}</b> ${esc(p.unit)||'Unit'}</p>
     <form id="stock-form" class="space-y-3 text-sm">
       <input type="hidden" name="productId" value="${p.id}">
       <input type="hidden" name="type" value="${type}">
+      <div class="${multi?'':'hidden'}"><label class="text-xs text-textMuted block mb-1">Gudang</label>
+        <select name="warehouseId" onchange="onStockWarehouseChange('${p.id}')" class="field-input rounded-xl px-3 py-2 w-full">${warehouseOptionsHTML(whId)}</select>
+      </div>
       <div><label class="text-xs text-textMuted block mb-1">Tanggal</label><input type="date" name="date" required class="field-input rounded-xl px-3 py-2 w-full" value="${new Date().toISOString().slice(0,10)}"></div>
       ${type==='adjustment'
-        ? `<div><label class="text-xs text-textMuted block mb-1">Stok Fisik Sebenarnya (hasil hitung ulang gudang)</label><input type="number" min="0" name="actualStock" required class="field-input rounded-xl px-3 py-2 w-full" value="${stock}"></div>`
+        ? `<div><label class="text-xs text-textMuted block mb-1">Stok Fisik Sebenarnya di Gudang Ini (hasil hitung ulang)</label><input type="number" min="0" name="actualStock" required class="field-input rounded-xl px-3 py-2 w-full" value="${stock}"></div>`
         : `<div><label class="text-xs text-textMuted block mb-1">Jumlah ${type==='in'?'Masuk':'Keluar'}</label><input type="number" min="1" name="qty" required class="field-input rounded-xl px-3 py-2 w-full" value="1"></div>`}
       <div><label class="text-xs text-textMuted block mb-1">Referensi (No. PO / Supplier / No. Deal, opsional)</label><input name="ref" class="field-input rounded-xl px-3 py-2 w-full"></div>
       <div><label class="text-xs text-textMuted block mb-1">Catatan</label><textarea name="note" rows="2" class="field-input rounded-xl px-3 py-2 w-full"></textarea></div>
@@ -1684,96 +1800,292 @@ function openStockModal(productId, type){
   `);
   document.getElementById('stock-form').addEventListener('submit', saveStockMovement);
 }
+function onStockWarehouseChange(productId){
+  const form = document.getElementById('stock-form'); if (!form) return;
+  const whId = form.querySelector('[name="warehouseId"]').value;
+  const stock = productStock(productId, whId);
+  document.getElementById('stock-wh-current').textContent = stock.toLocaleString('id-ID');
+  const actual = form.querySelector('[name="actualStock"]');
+  if (actual) actual.value = stock;
+}
 async function saveStockMovement(e){
   e.preventDefault();
   const f = new FormData(e.target);
   const productId = f.get('productId');
   const p = state.products.find(x=>x.id===productId); if(!p) return;
   const type = f.get('type');
+  const warehouseId = f.get('warehouseId') || (defaultWarehouse()||{}).id || null;
   const date = f.get('date') || new Date().toISOString().slice(0,10);
   const ref = (f.get('ref')||'').trim();
   const note = (f.get('note')||'').trim();
+  const whStock = productStock(productId, warehouseId);
   let qty;
   if (type==='adjustment'){
     const actual = Number(f.get('actualStock'))||0;
-    const current = productStock(productId);
-    qty = actual - current;
+    qty = actual - whStock;
     if (qty===0){ toast('Stok fisik sama dengan sistem, tidak ada penyesuaian yang dicatat', 'info'); closeModal(); return; }
   } else {
     qty = Number(f.get('qty'))||0;
     if (qty<=0){ toast('Jumlah harus lebih dari 0','err'); return; }
-    if (type==='out' && qty > productStock(productId)){
-      if (!confirm(`Stok saat ini hanya ${productStock(productId)} ${p.unit||'Unit'}. Tetap catat barang keluar ${qty} (stok akan minus)?`)) return;
+    if (type==='out' && qty > whStock){
+      if (!confirm(`Stok di ${warehouseName(warehouseId)} hanya ${whStock} ${p.unit||'Unit'}. Tetap catat barang keluar ${qty} (stok gudang akan minus)?`)) return;
     }
   }
-  state.stock_movements.unshift({ id:uid(), productId, type, qty, note, ref, date, createdAt:new Date().toISOString() });
+  state.stock_movements.unshift({ id:uid(), productId, warehouseId, transferId:null, type, qty, note, ref, date, createdAt:new Date().toISOString() });
   await persist('stock_movements');
   const verb = type==='in' ? 'masuk' : type==='out' ? 'keluar' : 'disesuaikan (opname)';
-  logActivity(`Stok "${p.name}" ${verb}: ${type==='adjustment'?(qty>0?'+':'')+qty:qty} ${p.unit||'Unit'}${ref?(' • ref: '+ref):''}`);
+  logActivity(`Stok "${p.name}" ${verb} di ${warehouseName(warehouseId)}: ${type==='adjustment'?(qty>0?'+':'')+qty:qty} ${p.unit||'Unit'}${ref?(' • ref: '+ref):''}`);
   toast('Pergerakan stok dicatat');
-  closeModal(); closeDrawer(); renderProducts(); renderNotifications();
+  refreshAfterStockChange();
 }
-async function deleteStockMovement(movId){
-  if(!confirm('Hapus catatan pergerakan stok ini?')) return;
-  const mov = state.stock_movements.find(x=>x.id===movId);
-  state.stock_movements = state.stock_movements.filter(x=>x.id!==movId);
-  await persist('stock_movements'); renderProducts(); renderNotifications();
-  if (mov) openStockHistory(mov.productId);
-}
-function openStockHistory(productId){
+
+/* ---- Transfer stok antar gudang: dicatat sebagai 2 transaksi (keluar dari asal + masuk ke tujuan) yang terhubung ---- */
+function openTransferModal(productId, preferFromId){
   const p = state.products.find(x=>x.id===productId); if(!p) return;
-  const moves = state.stock_movements.filter(m=>m.productId===productId).sort((a,b)=> new Date(b.date||b.createdAt) - new Date(a.date||a.createdAt));
-  // hitung saldo berjalan (running balance), diurutkan dari yang paling lama ke terbaru lalu dibalik lagi untuk tampilan
-  const chronological = [...moves].reverse();
+  if (state.warehouses.length<2){ toast('Tambahkan minimal 2 gudang untuk melakukan transfer','err'); return; }
+  const byWh = productStockByWarehouse(productId);
+  const richest = [...byWh].sort((a,b)=>b.qty-a.qty)[0];
+  const fromId = (preferFromId && state.warehouses.some(w=>w.id===preferFromId)) ? preferFromId : richest.warehouse.id;
+  const toId = (state.warehouses.find(w=>w.id!==fromId)||{}).id;
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">Transfer Stok Antar Gudang</h3>
+    <p class="text-xs text-textMuted mb-4">${esc(p.name)} • Total stok: <b class="text-slate-200">${productStock(productId).toLocaleString('id-ID')} ${esc(p.unit)||'Unit'}</b></p>
+    <form id="transfer-form" class="space-y-3 text-sm">
+      <input type="hidden" name="productId" value="${p.id}">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="text-xs text-textMuted block mb-1">Dari Gudang</label>
+          <select name="fromId" onchange="onTransferFromChange('${p.id}')" class="field-input rounded-xl px-3 py-2 w-full">${warehouseOptionsHTML(fromId)}</select>
+          <p class="text-[10px] text-textMuted mt-1">Tersedia: <b id="transfer-available" class="text-slate-300">${productStock(productId, fromId).toLocaleString('id-ID')}</b> ${esc(p.unit)||'Unit'}</p>
+        </div>
+        <div><label class="text-xs text-textMuted block mb-1">Ke Gudang</label>
+          <select name="toId" class="field-input rounded-xl px-3 py-2 w-full">${warehouseOptionsHTML(toId, fromId)}</select>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="text-xs text-textMuted block mb-1">Jumlah</label><input type="number" min="1" name="qty" required class="field-input rounded-xl px-3 py-2 w-full" value="1"></div>
+        <div><label class="text-xs text-textMuted block mb-1">Tanggal</label><input type="date" name="date" required class="field-input rounded-xl px-3 py-2 w-full" value="${new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <div><label class="text-xs text-textMuted block mb-1">Catatan (opsional)</label><textarea name="note" rows="2" class="field-input rounded-xl px-3 py-2 w-full"></textarea></div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeModal()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+        <button type="submit" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Transfer</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('transfer-form').addEventListener('submit', saveTransfer);
+}
+function onTransferFromChange(productId){
+  const form = document.getElementById('transfer-form'); if (!form) return;
+  const fromId = form.querySelector('[name="fromId"]').value;
+  const toSel = form.querySelector('[name="toId"]');
+  const prevTo = toSel.value;
+  toSel.innerHTML = warehouseOptionsHTML(prevTo!==fromId?prevTo:'', fromId);
+  document.getElementById('transfer-available').textContent = productStock(productId, fromId).toLocaleString('id-ID');
+}
+async function saveTransfer(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const productId = f.get('productId');
+  const p = state.products.find(x=>x.id===productId); if(!p) return;
+  const fromId = f.get('fromId'), toId = f.get('toId');
+  const qty = Number(f.get('qty'))||0;
+  const date = f.get('date') || new Date().toISOString().slice(0,10);
+  const note = (f.get('note')||'').trim();
+  if (!fromId || !toId || fromId===toId){ toast('Gudang asal dan tujuan harus berbeda','err'); return; }
+  if (qty<=0){ toast('Jumlah harus lebih dari 0','err'); return; }
+  const available = productStock(productId, fromId);
+  if (qty > available){ toast(`Stok di ${warehouseName(fromId)} hanya ${available} ${p.unit||'Unit'}`,'err'); return; }
+  const transferId = uid();
+  const ref = `Transfer ${warehouseName(fromId)} → ${warehouseName(toId)}`;
+  const now = new Date().toISOString();
+  state.stock_movements.unshift(
+    { id:uid(), productId, warehouseId:toId,   transferId, type:'in',  qty, note, ref, date, createdAt:now },
+    { id:uid(), productId, warehouseId:fromId, transferId, type:'out', qty, note, ref, date, createdAt:now }
+  );
+  await persist('stock_movements');
+  logActivity(`Transfer stok "${p.name}": ${qty} ${p.unit||'Unit'} dari ${warehouseName(fromId)} ke ${warehouseName(toId)}`);
+  toast('Transfer stok berhasil');
+  refreshAfterStockChange();
+}
+
+async function deleteStockMovement(movId){
+  const mov = state.stock_movements.find(x=>x.id===movId); if(!mov) return;
+  const msg = mov.transferId ? 'Ini bagian dari transfer antar gudang. Kedua sisi transfer (keluar & masuk) akan dihapus bersamaan. Lanjutkan?' : 'Hapus catatan pergerakan stok ini?';
+  if(!confirm(msg)) return;
+  state.stock_movements = state.stock_movements.filter(x=> x.id!==movId && !(mov.transferId && x.transferId===mov.transferId));
+  await persist('stock_movements');
+  refreshAfterStockChange();
+}
+function openStockHistory(productId, whFilter){
+  const p = state.products.find(x=>x.id===productId); if(!p) return;
+  whFilter = (whFilter && state.warehouses.some(w=>w.id===whFilter)) ? whFilter : '';
+  const multi = state.warehouses.length>1;
+  const defId = (defaultWarehouse()||{}).id || null;
+  const all = state.stock_movements.filter(m=>m.productId===productId);
+  const filtered = whFilter ? all.filter(m=>movementWarehouseId(m,defId)===whFilter) : all;
   let running = 0;
-  const withBalance = chronological.map(m=>{
-    running += (m.type==='out' ? -(Number(m.qty)||0) : (Number(m.qty)||0));
-    return { ...m, balance: running };
-  }).reverse();
-  const stock = productStock(productId);
+  const withBalance = [...filtered].sort(cmpMove).map(m=>{ running += movementSignedQty(m); return { ...m, balance: running }; }).reverse();
+  const total = productStock(productId);
+  const shown = whFilter ? productStock(productId, whFilter) : total;
   const status = productStockStatus(p);
-  const typeLabel = { in:'Masuk', out:'Keluar', adjustment:'Opname' };
+  const label = (m)=> m.transferId ? (m.type==='in'?'Transfer Masuk':'Transfer Keluar') : ({ in:'Masuk', out:'Keluar', adjustment:'Opname' }[m.type]||m.type);
   const typeColor = { in:'text-emerald-400', out:'text-red-400', adjustment:'text-amber-400' };
+  const breakdownRows = multi ? productStockByWarehouse(productId).map(x=>`
+      <button onclick="openStockHistory('${p.id}','${x.warehouse.id}')" class="flex items-center justify-between w-full text-left bg-panelBg/60 border ${whFilter===x.warehouse.id?'border-purple-500/50':'border-white/5'} rounded-lg px-3 py-2 text-xs hover:border-purple-500/30">
+        <span class="text-slate-300">${esc(x.warehouse.name)}${x.warehouse.isDefault?' <span class="text-[9px] text-textMuted">(default)</span>':''}</span>
+        <span class="font-mono ${x.qty<=0?'text-red-400':'text-cyan-400'}">${x.qty.toLocaleString('id-ID')} <span class="text-textMuted font-sans">${esc(p.unit)||''}</span></span>
+      </button>`).join('') : '';
   openDrawer(`
-    <div class="flex justify-between items-start mb-1">
+    <div id="stock-history-root" data-product="${p.id}" data-wh="${whFilter}">
+    <div class="flex justify-between items-start mb-1 pr-8">
       <div><h3 class="font-display text-lg font-bold text-white">${esc(p.name)}</h3><p class="text-xs text-textMuted">${esc(p.model)||esc(p.sku)||''}</p></div>
       <span class="text-[10px] font-bold px-2 py-1 rounded-full border ${status.cls}">${status.label}</span>
     </div>
-    <p class="text-2xl font-mono font-bold text-white mt-2 mb-4">${stock.toLocaleString('id-ID')} <span class="text-sm text-textMuted font-sans">${esc(p.unit)||'Unit'}</span></p>
+    <p class="text-2xl font-mono font-bold text-white mt-2">${shown.toLocaleString('id-ID')} <span class="text-sm text-textMuted font-sans">${esc(p.unit)||'Unit'}</span></p>
+    <p class="text-[11px] text-textMuted mb-4">${whFilter ? 'di '+esc(warehouseName(whFilter))+' • total semua gudang: '+total.toLocaleString('id-ID') : (multi?'total semua gudang':'di gudang')}</p>
+    ${multi ? `<h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">Stok per Gudang</h4><div class="space-y-1.5 mb-4">${breakdownRows}</div>
+      ${whFilter?`<button onclick="openStockHistory('${p.id}','')" class="text-[10px] text-purple-400 hover:underline mb-4">Tampilkan semua gudang</button>`:''}` : ''}
     <div class="flex gap-2 mb-5 flex-wrap">
-      <button onclick="openStockModal('${p.id}','in')" class="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10">+ Barang Masuk</button>
-      <button onclick="openStockModal('${p.id}','out')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10">- Barang Keluar</button>
-      <button onclick="openStockModal('${p.id}','adjustment')" class="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10">Stok Opname</button>
+      <button onclick="openStockModal('${p.id}','in','${whFilter}')" class="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10">+ Barang Masuk</button>
+      <button onclick="openStockModal('${p.id}','out','${whFilter}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10">- Barang Keluar</button>
+      ${multi?`<button onclick="openTransferModal('${p.id}','${whFilter}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">⇄ Transfer</button>`:''}
+      <button onclick="openStockModal('${p.id}','adjustment','${whFilter}')" class="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10">Stok Opname</button>
     </div>
     <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">Riwayat Pergerakan (Kartu Stok)</h4>
     <div class="space-y-1.5">
       ${withBalance.length ? withBalance.map(m=>`
         <div class="flex items-center justify-between gap-2 bg-panelBg/60 border border-white/5 rounded-lg px-3 py-2 text-xs">
-          <div>
-            <p class="${typeColor[m.type]} font-bold">${typeLabel[m.type]||m.type} ${m.type==='adjustment'&&m.qty>0?'+':''}${m.qty} ${esc(p.unit)||''}</p>
-            <p class="text-[10px] text-textMuted">${m.date?fmtQuoteDate(m.date):timeAgo(m.createdAt)}${m.ref?(' • '+esc(m.ref)):''}${m.note?(' • '+esc(m.note)):''}</p>
+          <div class="min-w-0">
+            <p class="${typeColor[m.type]} font-bold">${label(m)} ${m.type==='out'?'-':(m.type==='adjustment'&&m.qty>0?'+':(m.type==='in'?'+':''))}${Math.abs(m.qty)} ${esc(p.unit)||''}</p>
+            <p class="text-[10px] text-textMuted">${m.date?fmtQuoteDate(m.date):timeAgo(m.createdAt)}${multi?(' • '+esc(warehouseName(movementWarehouseId(m,defId)))):''}${m.ref&&!m.transferId?(' • '+esc(m.ref)):''}${m.note?(' • '+esc(m.note)):''}</p>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="font-mono text-slate-300">${m.balance.toLocaleString('id-ID')}</span>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="font-mono text-slate-300" title="Saldo berjalan">${m.balance.toLocaleString('id-ID')}</span>
             <button onclick="deleteStockMovement('${m.id}')" class="text-red-400 hover:underline text-[10px]">Hapus</button>
           </div>
         </div>`).join('') : '<p class="text-xs text-textMuted">Belum ada riwayat pergerakan stok untuk produk ini.</p>'}
     </div>
+    </div>
   `);
 }
-function exportStockCSV(){
-  const rows = [...state.stock_movements].sort((a,b)=> new Date(b.date||b.createdAt) - new Date(a.date||a.createdAt)).map(m=>{
-    const p = state.products.find(x=>x.id===m.productId);
-    return { Tanggal:m.date||'', Produk:p?p.name:'(produk dihapus)', Tipe: m.type==='in'?'Masuk':m.type==='out'?'Keluar':'Opname', Qty:m.qty, Referensi:m.ref||'', Catatan:m.note||'' };
-  });
-  downloadCSV('kartu-stok.csv', toCSV(rows, ['Tanggal','Produk','Tipe','Qty','Referensi','Catatan']));
-  toast('Kartu stok diekspor ke CSV');
+
+/* ---- Kelola Gudang ---- */
+function openWarehouseManager(){
+  const sums = warehouseSummaries();
+  const defId = (defaultWarehouse()||{}).id;
+  openDrawer(`
+    <div id="warehouse-manager-root">
+    <div class="flex justify-between items-start mb-4 pr-8">
+      <div><h3 class="font-display text-lg font-bold text-white">Kelola Gudang</h3><p class="text-xs text-textMuted">${state.warehouses.length} gudang terdaftar</p></div>
+      <button onclick="openWarehouseModal()" class="text-xs font-semibold px-3 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">+ Gudang</button>
+    </div>
+    <div class="space-y-2">
+      ${[...state.warehouses].sort((a,b)=> (b.isDefault?1:0)-(a.isDefault?1:0) || a.name.localeCompare(b.name)).map(w=>{
+        const s = sums[w.id]||{units:0,value:0,skus:0};
+        return `<div class="bg-panelBg/60 border border-white/5 rounded-xl p-3">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <p class="text-sm font-bold text-white">${esc(w.name)} ${w.code?`<span class="text-[10px] font-mono text-textMuted">[${esc(w.code)}]</span>`:''} ${w.id===defId?'<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-purple-500/30 text-purple-300">DEFAULT</span>':''}</p>
+              <p class="text-[11px] text-textMuted">${esc(w.address)||'—'}</p>
+            </div>
+            <div class="flex gap-1.5 flex-shrink-0">
+              <button onclick="openWarehouseModal('${w.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
+              ${w.id!==defId?`<button onclick="deleteWarehouse('${w.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>`:''}
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-2 text-[10px]">
+            <div><p class="text-textMuted">SKU berstok</p><p class="font-mono text-slate-200 text-xs">${s.skus}</p></div>
+            <div><p class="text-textMuted">Total unit</p><p class="font-mono text-cyan-400 text-xs">${s.units.toLocaleString('id-ID')}</p></div>
+            <div><p class="text-textMuted">Nilai</p><p class="font-mono text-emerald-400 text-xs">${money(s.value)}</p></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <p class="text-[10px] text-textMuted mt-4">Gudang default menampung stok lama yang dicatat sebelum fitur multi-gudang. Gudang hanya bisa dihapus jika belum memiliki riwayat transaksi.</p>
+    </div>
+  `);
+}
+function openWarehouseModal(id){
+  const w = id ? state.warehouses.find(x=>x.id===id) : null;
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-4">${w?'Edit Gudang':'Tambah Gudang'}</h3>
+    <form id="warehouse-form" class="space-y-3 text-sm">
+      <input type="hidden" name="id" value="${w?w.id:''}">
+      <div><label class="text-xs text-textMuted block mb-1">Nama Gudang</label><input name="name" required placeholder="cth. Gudang Cabang Jakarta" class="field-input rounded-xl px-3 py-2 w-full" value="${w?esc(w.name):''}"></div>
+      <div><label class="text-xs text-textMuted block mb-1">Kode Singkat (tampil di kartu produk)</label><input name="code" maxlength="8" placeholder="cth. GJ" class="field-input rounded-xl px-3 py-2 w-full" value="${w?esc(w.code):''}"></div>
+      <div><label class="text-xs text-textMuted block mb-1">Alamat / Lokasi</label><input name="address" class="field-input rounded-xl px-3 py-2 w-full" value="${w?esc(w.address):''}"></div>
+      ${(w && w.isDefault)?'<p class="text-[11px] text-textMuted">Ini adalah gudang default.</p>'
+        : `<label class="flex items-center gap-2 text-xs text-textMuted cursor-pointer"><input type="checkbox" name="isDefault" class="task-check w-3.5 h-3.5"> Jadikan gudang default</label>`}
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeModal()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+        <button type="submit" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Simpan</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('warehouse-form').addEventListener('submit', saveWarehouse);
+}
+async function saveWarehouse(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const id = f.get('id');
+  const name = f.get('name').trim();
+  if (!name) return;
+  if (state.warehouses.some(w=>w.id!==id && w.name.toLowerCase()===name.toLowerCase())){ toast('Nama gudang sudah dipakai','err'); return; }
+  const data = { name, code:f.get('code').trim(), address:f.get('address').trim() };
+  const makeDefault = f.get('isDefault')==='on';
+  if (makeDefault) state.warehouses.forEach(w=>{ w.isDefault = false; });
+  if (id){
+    const w = state.warehouses.find(x=>x.id===id);
+    Object.assign(w, data);
+    if (makeDefault) w.isDefault = true;
+    toast('Gudang diperbarui');
+  } else {
+    state.warehouses.push({ id:uid(), ...data, isDefault: makeDefault, createdAt:new Date().toISOString() });
+    toast('Gudang ditambahkan');
+  }
+  if (!state.warehouses.some(w=>w.isDefault)) defaultWarehouse().isDefault = true;
+  await persist('warehouses');
+  refreshAfterStockChange();
+}
+async function deleteWarehouse(id){
+  const w = state.warehouses.find(x=>x.id===id); if(!w) return;
+  if (w.isDefault){ toast('Gudang default tidak bisa dihapus','err'); return; }
+  const defId = (defaultWarehouse()||{}).id;
+  if (state.stock_movements.some(m=>movementWarehouseId(m,defId)===id)){
+    toast('Gudang ini punya riwayat transaksi stok, tidak bisa dihapus. Transfer stoknya ke gudang lain lalu ubah nama bila perlu.','err'); return;
+  }
+  if(!confirm(`Hapus gudang "${w.name}"?`)) return;
+  state.warehouses = state.warehouses.filter(x=>x.id!==id);
+  await persist('warehouses');
+  toast('Gudang dihapus','err');
+  refreshAfterStockChange();
 }
 
+function exportStockCSV(){
+  const rows = [...state.stock_movements].sort((a,b)=>cmpMove(b,a)).map(m=>{
+    const p = state.products.find(x=>x.id===m.productId);
+    const tipe = m.transferId ? (m.type==='in'?'Transfer Masuk':'Transfer Keluar') : (m.type==='in'?'Masuk':m.type==='out'?'Keluar':'Opname');
+    return { Tanggal:m.date||'', Produk:p?p.name:'(produk dihapus)', Gudang:warehouseName(movementWarehouseId(m,(defaultWarehouse()||{}).id)), Tipe:tipe, Qty:m.qty, Referensi:m.ref||'', Catatan:m.note||'' };
+  });
+  downloadCSV('kartu-stok.csv', toCSV(rows, ['Tanggal','Produk','Gudang','Tipe','Qty','Referensi','Catatan']));
+  toast('Kartu stok diekspor ke CSV');
+}
 
 /* ---------- QUOTATIONS (multi-section, sesuai format quotation resmi) ---------- */
 function blankQuoteSection(name){ return { name: name||'', discountPct: 0, items: [] }; }
 function blankQuoteItem(){ return { model:'', description:'', qty:1, unit:'Unit', price:0 }; }
+/* Satu-satunya aturan pemetaan Produk (Price Book) -> baris item Penawaran.
+   Dipakai oleh "+ dari Price Book" (Penawaran & Invoice) dan "Buat Quotation" dari Deals Pipeline. */
+function quoteItemFromProduct(p, override){
+  const o = override || {};
+  return {
+    model: p.name || '',
+    description: [p.model, p.description].filter(Boolean).join(' — '),
+    qty: o.qty!=null ? o.qty : 1,
+    unit: p.unit || 'Unit',
+    price: o.price!=null ? o.price : (Number(p.price)||0),
+  };
+}
 function sectionSubtotal(sec){ return (sec.items||[]).reduce((s,i)=> s + (Number(i.qty)||0)*(Number(i.price)||0), 0); }
 function sectionDiscountAmount(sec){ return sectionSubtotal(sec) * ((Number(sec.discountPct)||0)/100); }
 function sectionTotal(sec){ return sectionSubtotal(sec) - sectionDiscountAmount(sec); }
@@ -1823,11 +2135,17 @@ function newQuoteDraftFromDeal(deal){
   const contact = deal ? getContact(deal.contactId) : null;
   const co = contact ? getCompany(contact.companyId) : null;
   const sections = [];
+  /* Konsisten dengan menu Penawaran & Invoice: nama section default "A. EQUIPMENT" dan
+     tiap item dipetakan dari Price Book lewat quoteItemFromProduct() (Model / Deskripsi / Satuan). */
+  const sec = blankQuoteSection('A. EQUIPMENT');
   if (deal && deal.items && deal.items.length){
-    sections.push({ name:'A. PRODUK & LAYANAN', discountPct:0, items: deal.items.map(it=>({ model:'', description: it.name, qty: it.qty, unit:'Unit', price: it.price })) });
-  } else {
-    sections.push(blankQuoteSection('A. EQUIPMENT'));
+    sec.items = deal.items.map(it=>{
+      const p = it.productId ? state.products.find(x=>x.id===it.productId) : null;
+      // Harga & qty tetap dari deal (nilai kesepakatan); info produk dari Price Book.
+      return quoteItemFromProduct(p || { name: it.name, unit: 'Unit' }, { qty: it.qty, price: it.price });
+    });
   }
+  sections.push(sec);
   return {
     number: nextQuoteNumber(),
     subject: deal ? deal.title : '',
@@ -1932,8 +2250,7 @@ function addQuoteItemFromProduct(sIdx){
   const sel = document.getElementById(`qpick-${sIdx}`);
   const p = state.products.find(x=>x.id===sel.value);
   if (!p){ toast('Pilih produk dari daftar dahulu','err'); return; }
-  const description = [p.model, p.description].filter(Boolean).join(' — ');
-  quoteDraft.sections[sIdx].items.push({ model:p.name||'', description, qty:1, unit:p.unit||'Unit', price:p.price });
+  quoteDraft.sections[sIdx].items.push(quoteItemFromProduct(p));
   refreshQuoteSectionsUI();
 }
 function addQuoteItemBlank(sIdx){ quoteDraft.sections[sIdx].items.push(blankQuoteItem()); refreshQuoteSectionsUI(); }
@@ -2884,7 +3201,7 @@ function renderAll(){
   populateOwnerFilters();
   renderContacts(); renderCompanies(); renderDeals(); renderTasks();
   renderDashboardStats(); updateCharts(); renderProfile(); renderNotifications();
-  renderProducts(); renderQuotes(); renderInvoices(); renderTeam(); renderAutomationSettings(); renderTargetForm(); renderCompanyProfileForm();
+  renderProducts(); renderQuotes(); renderInvoices(); renderTeam(); renderAutomationSettings(); renderTargetForm(); renderCompanyProfileForm(); renderPusatData();
   if (document.getElementById('view-tasks').classList.contains('active') && !document.getElementById('tasks-calendar-view').classList.contains('hidden')) renderCalendar();
   if (document.getElementById('view-reports').classList.contains('active')) renderReports();
 }
@@ -2970,77 +3287,35 @@ async function saveAutomationSettings(){
 
 /* ---------- CSV IMPORT (Contacts) ---------- */
 function parseCSVText(text){
-  const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
-  if (!lines.length) return [];
-  const splitRow = row => row.match(/(".*?"|[^,]+)(?=,|$)/g).map(v=>v.replace(/^"|"$/g,'').replace(/""/g,'"').trim());
-  const headers = splitRow(lines[0]).map(h=>h.toLowerCase());
-  return lines.slice(1).map(line=>{
-    const vals = splitRow(line);
-    const row = {};
-    headers.forEach((h,i)=> row[h] = vals[i] || '');
-    return row;
-  });
-}
-async function importContactsCSV(e){
-  const file = e.target.files[0]; if (!file) return;
-  const text = await file.text();
-  let rows;
-  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
-  let count = 0;
-  rows.forEach(r=>{
-    const name = r['nama'] || r['name'];
-    if (!name) return;
-    let companyId = null;
-    const companyName = r['perusahaan'] || r['company'];
-    if (companyName){
-      let co = state.companies.find(x=>x.name.toLowerCase()===companyName.toLowerCase());
-      if (!co){ co = { id: uid(), name: companyName, industry:'', website:'', size:'', address:'', createdAt:new Date().toISOString() }; state.companies.push(co); }
-      companyId = co.id;
+  // Parser berbasis karakter (bukan regex per-baris) supaya field kosong ("...,,...") tidak
+  // menggeser kolom-kolom setelahnya, dan field berkutip yang memuat koma/baris-baru tetap aman.
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  const pushField = ()=>{ row.push(field.trim()); field=''; };
+  const pushRow = ()=>{ pushField(); rows.push(row); row=[]; };
+  for (let i=0;i<text.length;i++){
+    const ch = text[i], next = text[i+1];
+    if (inQuotes){
+      if (ch==='"' && next==='"'){ field+='"'; i++; }
+      else if (ch==='"'){ inQuotes=false; }
+      else field+=ch;
+    } else {
+      if (ch==='"') inQuotes = true;
+      else if (ch===','){ pushField(); }
+      else if (ch==='\r'){ /* diabaikan, ditangani lewat \n */ }
+      else if (ch==='\n'){ pushRow(); }
+      else field+=ch;
     }
-    const tags = (r['tag']||r['tags']||'').split(';').map(s=>s.trim()).filter(Boolean);
-    state.contacts.unshift({ id: uid(), name, companyId, email: r['email']||'', phone: r['telepon']||r['phone']||'', status: (r['status']||'lead').toLowerCase()==='customer'?'customer':'lead', tags, ownerId:'me', createdAt: new Date().toISOString() });
-    count++;
-  });
-  await Promise.all([persist('contacts'), persist('companies')]);
-  logActivity(`${count} kontak diimpor dari CSV`);
-  renderAll(); toast(`${count} kontak berhasil diimpor`);
-  e.target.value = '';
-}
-async function importProductsCSV(e){
-  const file = e.target.files[0]; if (!file) return;
-  const text = await file.text();
-  let rows;
-  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
-  let count = 0;
-  const newMovements = [];
-  rows.forEach(r=>{
-    const name = r['nama'] || r['name'];
-    if (!name) return;
-    const newId = uid();
-    state.products.unshift({
-      id: newId, name,
-      model: r['model']||r['kode']||'',
-      sku: r['sku']||'',
-      category: r['kategori']||r['category']||'',
-      unit: r['satuan']||r['unit']||'Unit',
-      price: Number(String(r['harga']||r['price']||'0').replace(/[^0-9.-]/g,''))||0,
-      minStock: Number(String(r['stokminimum']||r['minstock']||'0').replace(/[^0-9.-]/g,''))||0,
-      description: r['deskripsi']||r['description']||'',
-    });
-    const initialStock = Number(String(r['stokawal']||r['stok']||r['initialstock']||r['stock']||'0').replace(/[^0-9.-]/g,''))||0;
-    if (initialStock>0){
-      newMovements.push({ id: uid(), productId:newId, type:'in', qty:initialStock, note:'Stok awal (impor CSV)', ref:'', date:new Date().toISOString().slice(0,10), createdAt:new Date().toISOString() });
-    }
-    count++;
-  });
-  await persist('products');
-  if (newMovements.length){
-    state.stock_movements.unshift(...newMovements);
-    await persist('stock_movements');
   }
-  logActivity(`${count} produk diimpor dari CSV ke price book`);
-  renderAll(); toast(`${count} produk berhasil diimpor`);
-  e.target.value = '';
+  if (field.length || row.length) pushRow();
+  const nonEmpty = rows.filter(r=> r.some(v=>v!==''));
+  if (!nonEmpty.length) return [];
+  const headers = nonEmpty[0].map(h=>h.toLowerCase());
+  return nonEmpty.slice(1).map(vals=>{
+    const obj = {};
+    headers.forEach((h,i)=> obj[h] = vals[i] !== undefined ? vals[i] : '');
+    return obj;
+  });
 }
 function findContactIdByName(name){
   if (!name) return null;
@@ -3055,108 +3330,361 @@ function findOwnerIdByName(name){
   const m = state.team.find(x=>x.name.toLowerCase()===n);
   return m ? m.id : 'me';
 }
-async function importCompaniesCSV(e){
-  const file = e.target.files[0]; if (!file) return;
-  const text = await file.text();
-  let rows;
-  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
-  let count = 0;
-  rows.forEach(r=>{
-    const name = r['nama'] || r['name'];
-    if (!name) return;
-    state.companies.unshift({
-      id: uid(), name,
-      industry: r['industri']||r['industry']||'',
-      website: r['website']||'',
-      size: r['ukuran']||r['size']||'',
-      address: r['alamat']||r['address']||'',
-      createdAt: new Date().toISOString(),
-    });
-    count++;
-  });
-  await persist('companies');
-  logActivity(`${count} perusahaan diimpor dari CSV`);
-  renderAll(); toast(`${count} perusahaan berhasil diimpor`);
-  e.target.value = '';
+
+/* =====================================================================
+   PUSAT IMPOR — mesin generik: parse → validasi → PRATINJAU → konfirmasi.
+   Setiap entitas didaftarkan sekali di IMPORT_CONFIG (kolom wajib, cara
+   memvalidasi tiap baris, dan cara benar-benar menyimpannya). Dengan ini,
+   semua jenis data (Kontak, Perusahaan, Deal, Tugas, Produk, Tim) memakai
+   satu alur pratinjau yang sama & konsisten — tidak ada lagi impor yang
+   "langsung nyemplung" tanpa sempat dicek dulu oleh pengguna.
+   ===================================================================== */
+const IMPORT_CONFIG = {
+  contacts: {
+    label:'Kontak', icon:'👤',
+    templateHeaders:['Nama','Perusahaan','Email','Telepon','Status','Tag'],
+    templateExample:['Budi Santoso','PT. Contoh Sejahtera','budi@contoh.com','081234567890','lead','vip; jakarta'],
+    validateRow(r){
+      const name = r['nama']||r['name'];
+      if (!name) return { ok:false, reason:'Kolom "Nama" kosong' };
+      return { ok:true, cols:[name, r['perusahaan']||r['company']||'—', r['email']||'—', (r['status']||'lead')] };
+    },
+    previewCols:['Nama','Perusahaan','Email','Status'],
+    async commit(rows){
+      let count = 0;
+      rows.forEach(r=>{
+        const name = r['nama']||r['name'];
+        let companyId = null;
+        const companyName = r['perusahaan']||r['company'];
+        if (companyName){
+          let co = state.companies.find(x=>x.name.toLowerCase()===companyName.toLowerCase());
+          if (!co){ co = { id:uid(), name:companyName, industry:'', website:'', size:'', address:'', createdAt:new Date().toISOString() }; state.companies.push(co); }
+          companyId = co.id;
+        }
+        const tags = (r['tag']||r['tags']||'').split(';').map(s=>s.trim()).filter(Boolean);
+        state.contacts.unshift({ id:uid(), name, companyId, email:r['email']||'', phone:r['telepon']||r['phone']||'', status:(r['status']||'lead').toLowerCase()==='customer'?'customer':'lead', tags, ownerId:'me', createdAt:new Date().toISOString() });
+        count++;
+      });
+      await Promise.all([persist('contacts'), persist('companies')]);
+      logActivity(`${count} kontak diimpor dari CSV`);
+      renderAll();
+      return count;
+    }
+  },
+  companies: {
+    label:'Perusahaan', icon:'🏢',
+    templateHeaders:['Nama','Industri','Website','Ukuran','Alamat'],
+    templateExample:['PT. Contoh Sejahtera','Manufaktur','www.contoh.com','50-100 karyawan','Jl. Contoh No. 1, Surabaya'],
+    validateRow(r){
+      const name = r['nama']||r['name'];
+      if (!name) return { ok:false, reason:'Kolom "Nama" kosong' };
+      return { ok:true, cols:[name, r['industri']||r['industry']||'—', r['website']||'—'] };
+    },
+    previewCols:['Nama','Industri','Website'],
+    async commit(rows){
+      let count = 0;
+      rows.forEach(r=>{
+        const name = r['nama']||r['name'];
+        state.companies.unshift({ id:uid(), name, industry:r['industri']||r['industry']||'', website:r['website']||'', size:r['ukuran']||r['size']||'', address:r['alamat']||r['address']||'', createdAt:new Date().toISOString() });
+        count++;
+      });
+      await persist('companies');
+      logActivity(`${count} perusahaan diimpor dari CSV`);
+      renderAll();
+      return count;
+    }
+  },
+  deals: {
+    label:'Deal', icon:'💼',
+    templateHeaders:['Deal','Kontak','Nilai','Probabilitas','Stage','Owner','AlasanKalah'],
+    templateExample:['Implementasi CRM PT Contoh','Budi Santoso','75000000','60','Qualified','',''],
+    validateRow(r){
+      const title = r['deal']||r['nama']||r['title'];
+      if (!title) return { ok:false, reason:'Kolom "Deal" kosong' };
+      const stageRaw = (r['stage']||'New').trim();
+      const stage = STAGES.find(s=>s.toLowerCase()===stageRaw.toLowerCase()) || 'New';
+      const contactName = r['kontak']||r['contact']||'';
+      const contactFound = !contactName || !!findContactIdByName(contactName);
+      return { ok:true, cols:[title, contactName||'—', money(Number(String(r['nilai']||r['value']||'0').replace(/[^0-9.-]/g,''))||0), stage], warn: contactName && !contactFound ? `Kontak "${contactName}" tidak ditemukan, deal akan dibuat tanpa kontak` : null };
+    },
+    previewCols:['Deal','Kontak','Nilai','Stage'],
+    async commit(rows){
+      let count = 0;
+      rows.forEach(r=>{
+        const title = r['deal']||r['nama']||r['title'];
+        const contactId = findContactIdByName(r['kontak']||r['contact']);
+        const stageRaw = (r['stage']||'New').trim();
+        const stage = STAGES.find(s=>s.toLowerCase()===stageRaw.toLowerCase()) || 'New';
+        const probability = Math.max(0, Math.min(100, Number(String(r['probabilitas']||r['probability']||'0').replace(/[^0-9.-]/g,''))||0));
+        state.deals.unshift({ id:uid(), title, contactId, value:Number(String(r['nilai']||r['value']||'0').replace(/[^0-9.-]/g,''))||0, stage, probability, ownerId:findOwnerIdByName(r['owner']), lossReason:r['alasankalah']||r['lossreason']||null, items:[], createdAt:new Date().toISOString() });
+        count++;
+      });
+      await persist('deals');
+      logActivity(`${count} deal diimpor dari CSV`);
+      renderAll();
+      return count;
+    }
+  },
+  tasks: {
+    label:'Tugas', icon:'✅',
+    templateHeaders:['Judul','Kontak','JatuhTempo','Prioritas','Selesai'],
+    templateExample:['Follow up penawaran','Budi Santoso','2026-10-15','high','Tidak'],
+    validateRow(r){
+      const title = r['judul']||r['title'];
+      if (!title) return { ok:false, reason:'Kolom "Judul" kosong' };
+      const dueRaw = r['jatuhtempo']||r['due']||'';
+      const dueValid = !dueRaw || !isNaN(new Date(dueRaw).getTime());
+      return { ok:true, cols:[title, r['kontak']||r['contact']||'—', dueRaw||'hari ini', r['prioritas']||r['priority']||'medium'], warn: dueRaw && !dueValid ? 'Format tanggal jatuh tempo tidak dikenali, akan dipakai tanggal hari ini' : null };
+    },
+    previewCols:['Judul','Kontak','JatuhTempo','Prioritas'],
+    async commit(rows){
+      let count = 0;
+      rows.forEach(r=>{
+        const title = r['judul']||r['title'];
+        const dueRaw = r['jatuhtempo']||r['due']||'';
+        const due = dueRaw && !isNaN(new Date(dueRaw).getTime()) ? new Date(dueRaw).toISOString() : new Date().toISOString();
+        const priorityRaw = (r['prioritas']||r['priority']||'medium').toLowerCase();
+        const priority = ['high','medium','low'].includes(priorityRaw) ? priorityRaw : (priorityRaw==='tinggi'?'high':priorityRaw==='rendah'?'low':'medium');
+        const doneRaw = (r['selesai']||r['done']||'').toLowerCase();
+        const done = doneRaw==='ya'||doneRaw==='yes'||doneRaw==='true';
+        state.tasks.unshift({ id:uid(), title, due, priority, done, contactId:findContactIdByName(r['kontak']||r['contact']) });
+        count++;
+      });
+      await persist('tasks');
+      logActivity(`${count} tugas diimpor dari CSV`);
+      renderAll();
+      return count;
+    }
+  },
+  products: {
+    label:'Produk / Price Book', icon:'📦',
+    templateHeaders:['Nama','Model','SKU','Kategori','Satuan','Harga','Deskripsi','StokAwal','StokMinimum','Gudang'],
+    templateExample:['Fire Alarm Panel','GST104A','SKU-001','EQUIPMENT FIRE ALARM','Unit','12500000','Panel kontrol utama','10','2','Gudang Utama'],
+    validateRow(r){
+      const name = r['nama']||r['name'];
+      if (!name) return { ok:false, reason:'Kolom "Nama" kosong' };
+      const whName = String(r['gudang']||r['warehouse']||'').trim().toLowerCase();
+      const whFound = !whName || state.warehouses.some(w=>w.name.toLowerCase()===whName || (w.code||'').toLowerCase()===whName);
+      return { ok:true, cols:[name, r['model']||r['kode']||'—', money(Number(String(r['harga']||r['price']||'0').replace(/[^0-9.-]/g,''))||0), r['stokawal']||r['stok']||'0'], warn: whName && !whFound ? `Gudang "${r['gudang']||r['warehouse']}" tidak ditemukan, dipakai gudang default` : null };
+    },
+    previewCols:['Nama','Model','Harga','StokAwal'],
+    async commit(rows){
+      let count = 0;
+      const newMovements = [];
+      rows.forEach(r=>{
+        const name = r['nama']||r['name'];
+        const newId = uid();
+        state.products.unshift({ id:newId, name, model:r['model']||r['kode']||'', sku:r['sku']||'', category:r['kategori']||r['category']||'', unit:r['satuan']||r['unit']||'Unit', price:Number(String(r['harga']||r['price']||'0').replace(/[^0-9.-]/g,''))||0, minStock:Number(String(r['stokminimum']||r['minstock']||'0').replace(/[^0-9.-]/g,''))||0, description:r['deskripsi']||r['description']||'' });
+        const initialStock = Number(String(r['stokawal']||r['stok']||r['initialstock']||r['stock']||'0').replace(/[^0-9.-]/g,''))||0;
+        if (initialStock>0){
+          const whName = String(r['gudang']||r['warehouse']||'').trim().toLowerCase();
+          const wh = (whName && state.warehouses.find(w=>w.name.toLowerCase()===whName || (w.code||'').toLowerCase()===whName)) || defaultWarehouse();
+          newMovements.push({ id:uid(), productId:newId, warehouseId:wh?wh.id:null, transferId:null, type:'in', qty:initialStock, note:'Stok awal (impor CSV)', ref:'', date:new Date().toISOString().slice(0,10), createdAt:new Date().toISOString() });
+        }
+        count++;
+      });
+      await persist('products');
+      if (newMovements.length){ state.stock_movements.unshift(...newMovements); await persist('stock_movements'); }
+      logActivity(`${count} produk diimpor dari CSV ke price book`);
+      renderAll();
+      return count;
+    }
+  },
+  team: {
+    label:'Anggota Tim', icon:'🧑‍💼',
+    templateHeaders:['Nama','Peran','Email'],
+    templateExample:['Siti Aminah','Sales Executive','siti@perusahaan.com'],
+    validateRow(r){
+      const name = r['nama']||r['name'];
+      if (!name) return { ok:false, reason:'Kolom "Nama" kosong' };
+      return { ok:true, cols:[name, r['peran']||r['role']||'—', r['email']||'—'] };
+    },
+    previewCols:['Nama','Peran','Email'],
+    async commit(rows){
+      let count = 0;
+      rows.forEach(r=>{
+        const name = r['nama']||r['name'];
+        state.team.unshift({ id:uid(), name, role:r['peran']||r['role']||'', email:r['email']||'', avatar:r['avatar']||'', createdAt:new Date().toISOString() });
+        count++;
+      });
+      await persist('team');
+      logActivity(`${count} anggota tim diimpor dari CSV`);
+      renderAll();
+      return count;
+    }
+  },
+};
+let importPreview = null; // { key, evaluated, inputEl }
+function downloadImportTemplate(key){
+  const cfg = IMPORT_CONFIG[key]; if (!cfg) return;
+  const row = {}; cfg.templateHeaders.forEach((h,i)=> row[h] = cfg.templateExample[i]||'');
+  downloadCSV(`template-${key}.csv`, toCSV([row], cfg.templateHeaders));
+  toast(`Template ${cfg.label} diunduh`);
 }
-async function importDealsCSV(e){
+async function handleImportFile(e, key){
   const file = e.target.files[0]; if (!file) return;
+  const cfg = IMPORT_CONFIG[key];
   const text = await file.text();
   let rows;
-  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
-  let count = 0;
-  rows.forEach(r=>{
-    const title = r['deal'] || r['nama'] || r['title'];
-    if (!title) return;
-    const contactId = findContactIdByName(r['kontak']||r['contact']);
-    const stageRaw = (r['stage']||'New').trim();
-    const stage = STAGES.find(s=>s.toLowerCase()===stageRaw.toLowerCase()) || 'New';
-    const probability = Math.max(0, Math.min(100, Number(String(r['probabilitas']||r['probability']||'0').replace(/[^0-9.-]/g,''))||0));
-    state.deals.unshift({
-      id: uid(), title,
-      contactId,
-      value: Number(String(r['nilai']||r['value']||'0').replace(/[^0-9.-]/g,''))||0,
-      stage, probability,
-      ownerId: findOwnerIdByName(r['owner']),
-      lossReason: r['alasankalah']||r['lossreason']||null,
-      items: [],
-      createdAt: new Date().toISOString(),
-    });
-    count++;
-  });
-  await persist('deals');
-  logActivity(`${count} deal diimpor dari CSV`);
-  renderAll(); toast(`${count} deal berhasil diimpor`);
-  e.target.value = '';
+  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); e.target.value=''; return; }
+  if (!rows.length){ toast('File CSV kosong atau tidak berisi data', 'err'); e.target.value=''; return; }
+  const evaluated = rows.map(r=>({ raw:r, ...cfg.validateRow(r) }));
+  importPreview = { key, evaluated, inputEl:e.target };
+  openImportPreviewModal();
 }
-async function importTasksCSV(e){
-  const file = e.target.files[0]; if (!file) return;
-  const text = await file.text();
-  let rows;
-  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
-  let count = 0;
-  rows.forEach(r=>{
-    const title = r['judul'] || r['title'];
-    if (!title) return;
-    const dueRaw = r['jatuhtempo']||r['due']||'';
-    const due = dueRaw && !isNaN(new Date(dueRaw).getTime()) ? new Date(dueRaw).toISOString() : new Date().toISOString();
-    const priorityRaw = (r['prioritas']||r['priority']||'medium').toLowerCase();
-    const priority = ['high','medium','low'].includes(priorityRaw) ? priorityRaw : (priorityRaw==='tinggi'?'high':priorityRaw==='rendah'?'low':'medium');
-    const doneRaw = (r['selesai']||r['done']||'').toLowerCase();
-    const done = doneRaw==='ya' || doneRaw==='yes' || doneRaw==='true';
-    state.tasks.unshift({
-      id: uid(), title, due, priority, done,
-      contactId: findContactIdByName(r['kontak']||r['contact']),
-    });
-    count++;
-  });
-  await persist('tasks');
-  logActivity(`${count} tugas diimpor dari CSV`);
-  renderAll(); toast(`${count} tugas berhasil diimpor`);
-  e.target.value = '';
+function openImportPreviewModal(){
+  const { key, evaluated } = importPreview;
+  const cfg = IMPORT_CONFIG[key];
+  const ok = evaluated.filter(x=>x.ok);
+  const bad = evaluated.filter(x=>!x.ok);
+  const warned = ok.filter(x=>x.warn);
+  const previewRows = evaluated.slice(0,8);
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">${cfg.icon} Pratinjau Impor ${cfg.label}</h3>
+    <p class="text-xs text-textMuted mb-4">Periksa dulu sebelum data benar-benar disimpan.</p>
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      <div class="bg-panelBg/60 border border-white/5 rounded-xl p-2.5 text-center"><p class="text-lg font-mono font-bold text-white">${evaluated.length}</p><p class="text-[10px] text-textMuted">Total baris</p></div>
+      <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2.5 text-center"><p class="text-lg font-mono font-bold text-emerald-400">${ok.length}</p><p class="text-[10px] text-textMuted">Siap diimpor</p></div>
+      <div class="bg-red-500/10 border border-red-500/20 rounded-xl p-2.5 text-center"><p class="text-lg font-mono font-bold text-red-400">${bad.length}</p><p class="text-[10px] text-textMuted">Dilewati</p></div>
+    </div>
+    ${warned.length?`<p class="text-[11px] text-amber-400 mb-3">⚠ ${warned.length} baris punya catatan (lihat tabel), tetap akan diimpor dengan nilai bawaan.</p>`:''}
+    <div class="overflow-x-auto border border-white/10 rounded-xl mb-3">
+      <table class="w-full text-[11px]">
+        <thead><tr class="bg-white/5 text-textMuted text-left">
+          <th class="py-1.5 px-2 w-8">#</th>${cfg.previewCols.map(c=>`<th class="py-1.5 px-2">${esc(c)}</th>`).join('')}<th class="py-1.5 px-2">Status</th>
+        </tr></thead>
+        <tbody>
+          ${previewRows.map((row,i)=>`<tr class="border-t border-white/5">
+            <td class="py-1.5 px-2 text-textMuted">${i+1}</td>
+            ${row.ok ? row.cols.map(c=>`<td class="py-1.5 px-2 text-slate-300">${esc(String(c))}</td>`).join('') : `<td colspan="${cfg.previewCols.length}" class="py-1.5 px-2 text-red-400">${esc(row.reason)}</td>`}
+            <td class="py-1.5 px-2">${row.ok ? (row.warn?`<span class="text-amber-400" title="${esc(row.warn)}">⚠ Catatan</span>`:'<span class="text-emerald-400">✓ Siap</span>') : '<span class="text-red-400">✗ Dilewati</span>'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    ${evaluated.length>previewRows.length?`<p class="text-[10px] text-textMuted mb-3">Menampilkan ${previewRows.length} dari ${evaluated.length} baris.</p>`:''}
+    <div class="flex justify-between items-center pt-1">
+      <button type="button" onclick="cancelImportPreview()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+      <button type="button" onclick="confirmImportPreview()" ${ok.length?'':'disabled'} class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white disabled:opacity-40 disabled:cursor-not-allowed">Impor ${ok.length} Baris</button>
+    </div>
+  `);
 }
-async function importTeamCSV(e){
+function cancelImportPreview(){
+  if (importPreview && importPreview.inputEl) importPreview.inputEl.value = '';
+  importPreview = null;
+  closeModal();
+}
+async function confirmImportPreview(){
+  if (!importPreview) return;
+  const { key, evaluated, inputEl } = importPreview;
+  const cfg = IMPORT_CONFIG[key];
+  const okRows = evaluated.filter(x=>x.ok).map(x=>x.raw);
+  if (!okRows.length){ toast('Tidak ada baris valid untuk diimpor', 'err'); return; }
+  const count = await cfg.commit(okRows);
+  toast(`${count} ${cfg.label.toLowerCase()} berhasil diimpor`);
+  if (inputEl) inputEl.value = '';
+  importPreview = null;
+  closeModal();
+  renderPusatData();
+}
+/* Wrapper agar tombol lama di tiap halaman (onclick="importContactsCSV(event)" dst.) tetap berfungsi tanpa ubah HTML */
+function importContactsCSV(e){ return handleImportFile(e,'contacts'); }
+function importCompaniesCSV(e){ return handleImportFile(e,'companies'); }
+function importDealsCSV(e){ return handleImportFile(e,'deals'); }
+function importTasksCSV(e){ return handleImportFile(e,'tasks'); }
+function importProductsCSV(e){ return handleImportFile(e,'products'); }
+function importTeamCSV(e){ return handleImportFile(e,'team'); }
+
+/* =====================================================================
+   PUSAT DATA — panel terpusat di Settings: lihat semua entitas, jumlah
+   recordnya, dan ekspor/template/impor dalam satu tempat yang rapi.
+   ===================================================================== */
+const PUSAT_DATA_ENTITIES = [
+  { key:'contacts', label:'Kontak', icon:'👤', count:()=>state.contacts.length, exportFn:'exportContactsCSV' },
+  { key:'companies', label:'Perusahaan', icon:'🏢', count:()=>state.companies.length, exportFn:'exportCompaniesCSV' },
+  { key:'deals', label:'Deal', icon:'💼', count:()=>state.deals.length, exportFn:'exportDealsCSV' },
+  { key:'tasks', label:'Tugas', icon:'✅', count:()=>state.tasks.length, exportFn:'exportTasksCSV' },
+  { key:'products', label:'Produk / Price Book', icon:'📦', count:()=>state.products.length, exportFn:'exportProductsCSV' },
+  { key:'team', label:'Anggota Tim', icon:'🧑‍💼', count:()=>state.team.length, exportFn:'exportTeamCSV' },
+];
+const PUSAT_DATA_EXPORT_ONLY = [
+  { label:'Kartu Stok (riwayat gudang)', icon:'📊', count:()=>state.stock_movements.length, exportFn:'exportStockCSV' },
+  { label:'Invoice', icon:'🧾', count:()=>state.invoices.length, exportFn:'exportInvoicesCSV' },
+];
+function renderPusatData(){
+  const root = document.getElementById('pusat-data-root');
+  if (!root) return;
+  root.innerHTML = PUSAT_DATA_ENTITIES.map(ent=>`
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-panelBg/60 border border-white/5 rounded-xl p-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-xl flex-shrink-0">${ent.icon}</span>
+        <div class="min-w-0"><p class="text-sm font-semibold text-white truncate">${esc(ent.label)}</p><p class="text-[11px] text-textMuted">${ent.count().toLocaleString('id-ID')} data tersimpan</p></div>
+      </div>
+      <div class="flex flex-wrap gap-1.5 flex-shrink-0">
+        <button onclick="${ent.exportFn}()" class="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Unduh CSV</button>
+        <button onclick="downloadImportTemplate('${ent.key}')" class="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Unduh Template</button>
+        <button onclick="document.getElementById('pd-import-${ent.key}').click()" class="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Impor CSV</button>
+        <input type="file" id="pd-import-${ent.key}" accept=".csv" class="hidden" onchange="handleImportFile(event,'${ent.key}')">
+      </div>
+    </div>`).join('') + PUSAT_DATA_EXPORT_ONLY.map(ent=>`
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-panelBg/40 border border-white/5 rounded-xl p-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-xl flex-shrink-0">${ent.icon}</span>
+        <div class="min-w-0"><p class="text-sm font-semibold text-white truncate">${esc(ent.label)}</p><p class="text-[11px] text-textMuted">${ent.count().toLocaleString('id-ID')} data • ekspor saja (dikelola dari transaksinya masing-masing)</p></div>
+      </div>
+      <div class="flex-shrink-0"><button onclick="${ent.exportFn}()" class="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Unduh CSV</button></div>
+    </div>`).join('');
+}
+
+/* ---- Backup & Restore penuh (JSON) — cadangan/migrasi seluruh workspace sekaligus ---- */
+function downloadFullBackup(){
+  const payload = { app:'MyPortal CRM', version:1, exportedAt:new Date().toISOString(), data:{} };
+  LIST_PARTS.forEach(part=>{ payload.data[part] = state[part]; });
+  payload.settings = state.settings;
+  payload.profile = state.profile;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `backup-crm-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  URL.revokeObjectURL(url);
+  toast('Backup lengkap diunduh');
+}
+let pendingRestore = null;
+async function handleRestoreFile(e){
   const file = e.target.files[0]; if (!file) return;
-  const text = await file.text();
-  let rows;
-  try { rows = parseCSVText(text); } catch(err){ toast('Format CSV tidak valid', 'err'); return; }
-  let count = 0;
-  rows.forEach(r=>{
-    const name = r['nama'] || r['name'];
-    if (!name) return;
-    state.team.unshift({
-      id: uid(), name,
-      role: r['peran']||r['role']||'',
-      email: r['email']||'',
-      avatar: r['avatar']||'',
-      createdAt: new Date().toISOString(),
-    });
-    count++;
-  });
-  await persist('team');
-  logActivity(`${count} anggota tim diimpor dari CSV`);
-  renderAll(); toast(`${count} anggota tim berhasil diimpor`);
-  e.target.value = '';
+  let payload;
+  try { payload = JSON.parse(await file.text()); } catch(err){ toast('File backup tidak valid (bukan JSON)', 'err'); e.target.value=''; return; }
+  if (!payload || !payload.data || payload.app!=='MyPortal CRM'){ toast('File ini bukan backup dari aplikasi ini', 'err'); e.target.value=''; return; }
+  pendingRestore = { payload, inputEl:e.target };
+  const counts = LIST_PARTS.map(part=>`${part}: ${(payload.data[part]||[]).length}`).join(' • ');
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-2">Pulihkan dari Backup</h3>
+    <p class="text-xs text-textMuted mb-3">Backup dibuat: ${payload.exportedAt?fmtQuoteDate(payload.exportedAt.slice(0,10)):'—'}</p>
+    <p class="text-[11px] text-slate-400 mb-4 leading-relaxed">${esc(counts)}</p>
+    <div class="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4">
+      <p class="text-xs text-red-300 font-semibold mb-1">⚠ Perhatian</p>
+      <p class="text-[11px] text-red-200/80">Memulihkan backup akan <b>mengganti seluruh data saat ini</b> di workspace ini dengan isi file backup. Tindakan ini tidak bisa dibatalkan. Pastikan Anda sudah mengunduh backup data yang sekarang jika masih diperlukan.</p>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button type="button" onclick="cancelRestore()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+      <button type="button" onclick="confirmRestore()" class="text-xs font-semibold px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white">Ganti Semua Data</button>
+    </div>
+  `);
+}
+function cancelRestore(){ if (pendingRestore && pendingRestore.inputEl) pendingRestore.inputEl.value=''; pendingRestore=null; closeModal(); }
+async function confirmRestore(){
+  if (!pendingRestore) return;
+  const { payload, inputEl } = pendingRestore;
+  LIST_PARTS.forEach(part=>{ state[part] = Array.isArray(payload.data[part]) ? payload.data[part] : []; });
+  if (payload.settings) state.settings = { ...state.settings, ...payload.settings };
+  if (payload.profile) state.profile = { ...state.profile, ...payload.profile };
+  await Promise.all(LIST_PARTS.map(persist));
+  await persistUserSettings();
+  await ensureDefaultWarehouse();
+  if (inputEl) inputEl.value = '';
+  pendingRestore = null;
+  closeModal();
+  renderAll();
+  toast('Data berhasil dipulihkan dari backup');
 }
 
 /* ---------- AUTH (Supabase email/password) ---------- */
@@ -3226,6 +3754,7 @@ async function signOutUser(){
 async function init(){
   tickClock();
   await loadAll();
+  await ensureDefaultWarehouse();
   renderAll();
   const overlay = document.getElementById('loading-overlay');
   if (overlay){ overlay.style.opacity = '0'; setTimeout(()=> overlay.remove(), 400); }
