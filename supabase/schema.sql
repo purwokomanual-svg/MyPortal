@@ -136,10 +136,23 @@ alter table public.products add column if not exists min_stock numeric not null 
 -- dihitung dari SUM(movement) per produk, supaya angka stok selalu akurat
 -- dan tidak pernah "melenceng" (drift) dari riwayat transaksinya.
 -- ---------------------------------------------------------
+create table if not exists public.warehouses (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  name        text not null,
+  code        text default '',
+  address     text default '',
+  is_default  boolean not null default false,  -- gudang default: menampung transaksi lama yang belum punya gudang
+  created_at  timestamptz not null default now()
+);
+create index if not exists warehouses_user_id_idx on public.warehouses (user_id);
+
 create table if not exists public.stock_movements (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references auth.users(id) on delete cascade,
   product_id    uuid not null,
+  warehouse_id  uuid,              -- gudang tempat barang masuk/keluar (NULL = gudang default, untuk data lama)
+  transfer_id   uuid,              -- diisi bila transaksi ini bagian dari transfer antar gudang (2 baris: keluar + masuk)
   type          text not null default 'in', -- 'in' (barang masuk) | 'out' (barang keluar) | 'adjustment' (stok opname, qty boleh +/-)
   qty           numeric not null default 0,
   note          text default '',
@@ -149,6 +162,10 @@ create table if not exists public.stock_movements (
 );
 create index if not exists stock_movements_user_id_idx on public.stock_movements (user_id);
 create index if not exists stock_movements_product_id_idx on public.stock_movements (product_id);
+-- Migrasi additive untuk project yang sudah punya tabel stock_movements versi sebelumnya (tanpa multi-gudang).
+alter table public.stock_movements add column if not exists warehouse_id uuid;
+alter table public.stock_movements add column if not exists transfer_id uuid;
+create index if not exists stock_movements_warehouse_id_idx on public.stock_movements (warehouse_id);
 
 -- ---------------------------------------------------------
 -- 8) QUOTES (quotation multi-section)
@@ -259,7 +276,7 @@ declare
 begin
   for t in select unnest(array[
     'companies','contacts','deals','tasks','notes','activities',
-    'products','quotes','invoices','stock_movements','team','user_settings'
+    'products','quotes','invoices','warehouses','stock_movements','team','user_settings'
   ])
   loop
     execute format('alter table public.%I enable row level security;', t);
@@ -298,7 +315,7 @@ declare
 begin
   for t in select unnest(array[
     'companies','contacts','deals','tasks','notes','activities',
-    'products','quotes','invoices','stock_movements','team','user_settings'
+    'products','quotes','invoices','warehouses','stock_movements','team','user_settings'
   ])
   loop
     begin
