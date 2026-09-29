@@ -192,44 +192,7 @@
 
     <!-- ============ DASHBOARD ============ -->
     <section id="view-dashboard" class="view active">
-      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-5">
-        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
-          <div>
-            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Total Contacts</p>
-            <p class="font-display text-[28px] leading-none font-bold text-white" id="stat-contacts">0</p>
-          </div>
-          <div class="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 flex-shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-          </div>
-        </div>
-        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
-          <div>
-            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Pipeline Value</p>
-            <p class="font-display text-[28px] leading-none font-bold text-cyan-400" id="stat-pipeline">Rp 0</p>
-          </div>
-          <div class="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 flex-shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-          </div>
-        </div>
-        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
-          <div>
-            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Win Rate</p>
-            <p class="font-display text-[28px] leading-none font-bold text-emerald-400" id="stat-winrate">0%</p>
-          </div>
-          <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 flex-shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-          </div>
-        </div>
-        <div class="glass-card glass-card-hover rounded-3xl p-5 flex items-start justify-between gap-3">
-          <div>
-            <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Open Tasks</p>
-            <p class="font-display text-[28px] leading-none font-bold text-pink-400" id="stat-tasks">0</p>
-          </div>
-          <div class="w-9 h-9 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-400 flex-shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-          </div>
-        </div>
-      </div>
+      <div id="dashboard-kpis" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
 
       <div class="glass-card glass-card-hover rounded-3xl p-5 mb-6">
         <div class="flex items-center justify-between mb-2">
@@ -275,6 +238,7 @@
 
     <!-- ============ CONTACTS ============ -->
     <section id="view-contacts" class="view">
+      <div id="contacts-kpis" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div class="flex flex-wrap gap-2 flex-1 max-w-xl">
           <input id="contacts-search" type="text" placeholder="Cari nama, perusahaan, atau email..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
@@ -294,6 +258,7 @@
 
     <!-- ============ COMPANIES ============ -->
     <section id="view-companies" class="view">
+      <div id="companies-kpis" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <input id="companies-search" type="text" placeholder="Cari perusahaan..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
         <div class="flex flex-wrap gap-2">
@@ -309,6 +274,7 @@
 
     <!-- ============ DEALS ============ -->
     <section id="view-deals" class="view">
+      <div id="deals-kpis" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div class="flex flex-wrap gap-2 flex-1 max-w-xl">
           <input id="deals-search" type="text" placeholder="Cari nama deal..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
@@ -342,6 +308,8 @@
         </div>
       </div>
 
+      <div id="tasks-kpis" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
+
       <div id="tasks-list-view">
         <div id="tasks-list" class="space-y-3 max-w-3xl"></div>
         <div id="tasks-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada tugas. Anda sedang bebas — nikmati waktunya!</p></div>
@@ -365,23 +333,7 @@
 
     <!-- ============ REPORTS ============ -->
     <section id="view-reports" class="view">
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-6">
-        <div class="glass-card rounded-3xl p-5">
-          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Weighted Forecast</p>
-          <p class="text-xl font-extrabold text-cyan-400" id="report-forecast">Rp 0</p>
-          <p class="text-[10px] text-textMuted mt-1">Nilai × probabilitas, deal aktif</p>
-        </div>
-        <div class="glass-card rounded-3xl p-5">
-          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Revenue Tertutup (Won)</p>
-          <p class="text-xl font-extrabold text-emerald-400" id="report-won-total">Rp 0</p>
-          <p class="text-[10px] text-textMuted mt-1">Total nilai deal yang dimenangkan</p>
-        </div>
-        <div class="glass-card rounded-3xl p-5">
-          <p class="text-[10px] uppercase tracking-wider text-textMuted font-bold mb-2">Rata-rata Nilai Deal</p>
-          <p class="text-xl font-extrabold text-purple-400" id="report-avg-deal">Rp 0</p>
-          <p class="text-[10px] text-textMuted mt-1">Seluruh deal aktif & tertutup</p>
-        </div>
-      </div>
+      <div id="reports-kpis" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6"></div>
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
         <div class="glass-card rounded-3xl p-5">
           <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Sales Funnel (Jumlah Deal)</h2>
@@ -410,6 +362,7 @@
 
     <!-- ============ PRODUCTS ============ -->
     <section id="view-products" class="view">
+      <div id="stock-summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
         <input id="products-search" type="text" placeholder="Cari produk / layanan..." class="field-input rounded-xl px-4 py-2.5 text-sm w-full max-w-sm">
         <div class="flex flex-wrap gap-2">
@@ -421,7 +374,6 @@
           <button onclick="openProductModal()" class="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition">+ Tambah Produk</button>
         </div>
       </div>
-      <div id="stock-summary" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4"></div>
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <select id="stock-warehouse-filter" onchange="renderProducts()" class="field-input rounded-xl px-3 py-2 text-xs hidden" title="Tampilkan stok per gudang"><option value="">Semua Gudang</option></select>
         <label class="flex items-center gap-1.5 text-xs text-textMuted cursor-pointer select-none">
@@ -450,13 +402,14 @@
 
       <div id="docs-quotes-view">
         <p class="text-sm text-textMuted mb-4">Buat & kelola penawaran harga untuk deal Anda</p>
+        <div id="quotes-summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
         <div id="quotes-list" class="space-y-3"></div>
         <div id="quotes-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada quotation. Klik <span class="text-cyan-400 font-medium">"+ Buat Quotation"</span> untuk membuat penawaran pertama.</p></div>
       </div>
 
       <div id="docs-invoices-view" class="hidden">
         <p class="text-sm text-textMuted mb-4">Buat & kelola invoice / faktur penagihan Anda — atau buat langsung dari Quotation yang sudah <b class="text-slate-200">Accepted</b></p>
-        <div id="invoices-summary" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5"></div>
+        <div id="invoices-summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
         <div id="invoices-list" class="space-y-3"></div>
         <div id="invoices-empty" class="hidden flex flex-col items-center justify-center text-center py-16 gap-3"><div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div><p class="text-sm text-textMuted max-w-xs">Belum ada invoice. Klik <span class="text-amber-400 font-medium">"+ Buat Invoice"</span>, atau buat dari Quotation yang sudah Accepted.</p></div>
       </div>
@@ -464,6 +417,7 @@
 
     <!-- ============ TEAM ============ -->
     <section id="view-team" class="view">
+      <div id="team-kpis" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"></div>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <h2 class="text-sm text-textMuted">Kelola anggota tim penjualan & lihat performa mereka</h2>
         <div class="flex flex-wrap gap-2">
@@ -554,10 +508,26 @@
               </div>
             </div>
             <div><label class="text-xs text-textMuted block mb-1">Info Rekening Pembayaran</label><input name="bankInfo" class="field-input rounded-xl px-3 py-2 text-sm w-full" placeholder="Pembayaran ke BCA atas nama ... No. ..."></div>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div><label class="text-xs text-textMuted block mb-1">Nama Penandatangan</label><input name="signerName" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
-              <div><label class="text-xs text-textMuted block mb-1">Telp Penandatangan</label><input name="signerPhone" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
-              <div><label class="text-xs text-textMuted block mb-1">HP Penandatangan</label><input name="signerMobile" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <label class="text-xs text-textMuted">Daftar Penandatangan &amp; Tanda Tangan Digital</label>
+                <button type="button" id="signer-add" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-purple-500/30 text-purple-300 hover:bg-purple-500/10 flex-shrink-0">+ Tambah Penandatangan</button>
+              </div>
+              <p class="text-[10px] text-textMuted mb-2">Klik kotak tanda tangan untuk upload (PNG transparan paling rapi, maks ±2MB, otomatis diperkecil). Perubahan di tabel ini <b>tersimpan otomatis</b>. Penandatangan bertanda Default dipakai lebih dulu; jika ada lebih dari satu, Anda bisa memilihnya saat menekan Cetak / PDF pada Quotation atau Invoice.</p>
+              <div class="overflow-x-auto rounded-xl border border-panelBorder/40">
+                <table class="w-full text-xs min-w-[540px]">
+                  <thead>
+                    <tr class="text-[10px] uppercase tracking-wider text-textMuted border-b border-panelBorder/40 text-left">
+                      <th class="p-2 font-semibold">Tanda Tangan</th>
+                      <th class="p-2 font-semibold">Nama &amp; Jabatan</th>
+                      <th class="p-2 font-semibold">Telp &amp; HP</th>
+                      <th class="p-2 font-semibold text-center">Default</th>
+                      <th class="p-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="signer-table-body"></tbody>
+                </table>
+              </div>
             </div>
             <div><label class="text-xs text-textMuted block mb-1">Alamat Footer (untuk bagian bawah dokumen)</label><input name="footerAddress" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
