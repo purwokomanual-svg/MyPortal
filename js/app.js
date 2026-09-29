@@ -87,12 +87,12 @@ const ROW_MAPPERS = {
     fromRow: r => ({ id:r.id, name:r.name, model:r.model||'', sku:r.sku||'', category:r.category||'', unit:r.unit||'Unit', price:Number(r.price)||0, description:r.description||'', minStock:Number(r.min_stock)||0 }),
   },
   quotes: {
-    toRow: q => ({ id:q.id, number:q.number, date:q.date||null, subject:q.subject||'', project_name:q.projectName||'', your_ref:q.yourRef||'', pages:q.pages||'1 Lembar', deal_id:q.dealId||null, contact_id:q.contactId||null, to_name:q.toName||'', to_address:q.toAddress||'', attn_name:q.attnName||'', attn_phone:q.attnPhone||'', attn_fax:q.attnFax||'', attn_email:q.attnEmail||'', sections:q.sections||[], notes_list:q.notesList||[], terms:q.terms||[], status:q.status||'Draft', created_at:q.createdAt||new Date().toISOString() }),
-    fromRow: r => ({ id:r.id, number:r.number, date:r.date, subject:r.subject||'', projectName:r.project_name||'', yourRef:r.your_ref||'', pages:r.pages||'1 Lembar', dealId:r.deal_id, contactId:r.contact_id, toName:r.to_name||'', toAddress:r.to_address||'', attnName:r.attn_name||'', attnPhone:r.attn_phone||'', attnFax:r.attn_fax||'', attnEmail:r.attn_email||'', sections:r.sections||[], notesList:r.notes_list||[], terms:r.terms||[], status:r.status||'Draft', createdAt:r.created_at }),
+    toRow: q => ({ id:q.id, number:q.number, date:q.date||null, subject:q.subject||'', project_name:q.projectName||'', your_ref:q.yourRef||'', pages:q.pages||'1 Lembar', deal_id:q.dealId||null, contact_id:q.contactId||null, to_name:q.toName||'', to_address:q.toAddress||'', attn_name:q.attnName||'', attn_phone:q.attnPhone||'', attn_fax:q.attnFax||'', attn_email:q.attnEmail||'', sections:q.sections||[], notes_list:q.notesList||[], terms:q.terms||[], status:q.status||'Draft', signer_id:q.signerId||null, created_at:q.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, number:r.number, date:r.date, subject:r.subject||'', projectName:r.project_name||'', yourRef:r.your_ref||'', pages:r.pages||'1 Lembar', dealId:r.deal_id, contactId:r.contact_id, toName:r.to_name||'', toAddress:r.to_address||'', attnName:r.attn_name||'', attnPhone:r.attn_phone||'', attnFax:r.attn_fax||'', attnEmail:r.attn_email||'', sections:r.sections||[], notesList:r.notes_list||[], terms:r.terms||[], status:r.status||'Draft', signerId:r.signer_id||'', createdAt:r.created_at }),
   },
   invoices: {
-    toRow: q => ({ id:q.id, number:q.number, date:q.date||null, due_date:q.dueDate||null, quote_id:q.quoteId||null, deal_id:q.dealId||null, contact_id:q.contactId||null, to_name:q.toName||'', to_address:q.toAddress||'', attn_name:q.attnName||'', attn_phone:q.attnPhone||'', attn_email:q.attnEmail||'', sections:q.sections||[], notes_list:q.notesList||[], terms:q.terms||[], amount_paid:Number(q.amountPaid)||0, status:q.status||'Draft', created_at:q.createdAt||new Date().toISOString() }),
-    fromRow: r => ({ id:r.id, number:r.number, date:r.date, dueDate:r.due_date, quoteId:r.quote_id, dealId:r.deal_id, contactId:r.contact_id, toName:r.to_name||'', toAddress:r.to_address||'', attnName:r.attn_name||'', attnPhone:r.attn_phone||'', attnEmail:r.attn_email||'', sections:r.sections||[], notesList:r.notes_list||[], terms:r.terms||[], amountPaid:Number(r.amount_paid)||0, status:r.status||'Draft', createdAt:r.created_at }),
+    toRow: q => ({ id:q.id, number:q.number, date:q.date||null, due_date:q.dueDate||null, quote_id:q.quoteId||null, deal_id:q.dealId||null, contact_id:q.contactId||null, to_name:q.toName||'', to_address:q.toAddress||'', attn_name:q.attnName||'', attn_phone:q.attnPhone||'', attn_email:q.attnEmail||'', sections:q.sections||[], notes_list:q.notesList||[], terms:q.terms||[], amount_paid:Number(q.amountPaid)||0, status:q.status||'Draft', signer_id:q.signerId||null, created_at:q.createdAt||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, number:r.number, date:r.date, dueDate:r.due_date, quoteId:r.quote_id, dealId:r.deal_id, contactId:r.contact_id, toName:r.to_name||'', toAddress:r.to_address||'', attnName:r.attn_name||'', attnPhone:r.attn_phone||'', attnEmail:r.attn_email||'', sections:r.sections||[], notesList:r.notes_list||[], terms:r.terms||[], amountPaid:Number(r.amount_paid)||0, status:r.status||'Draft', signerId:r.signer_id||'', createdAt:r.created_at }),
   },
   team: {
     toRow: m => ({ id:m.id, name:m.name, role:m.role||'', email:m.email||'', avatar:m.avatar||'', created_at:m.createdAt||new Date().toISOString() }),
@@ -119,6 +119,24 @@ async function dbListAll(part){
    hanya insert/update/delete yang benar-benar berubah. Dipakai oleh SEMUA
    fungsi save/delete yang sudah ada lewat pemanggilan persist(part) —
    tidak ada perubahan yang diperlukan di fungsi-fungsi tersebut. */
+/* Tulis satu baris. Jika kolom signer_id (quotes/invoices) belum dimigrasi di database, tulis ulang tanpa kolom itu
+   supaya data lain TIDAK hilang, lalu beri peringatan sekali. */
+let SIGNER_COL_MISSING = false;
+async function writeRow(part, kind, item, mapper){
+  const build = row => kind==='insert'
+    ? sbClient.from(part).insert({ ...row, user_id: currentUser.id })
+    : sbClient.from(part).update(row).eq('id', item.id).eq('user_id', currentUser.id);
+  const row = mapper.toRow(item);
+  if (SIGNER_COL_MISSING) delete row.signer_id;
+  let r = await build(row);
+  if (r && r.error && ('signer_id' in row) && /signer_id/i.test(`${r.error.message||''} ${r.error.details||''} ${r.error.hint||''}`)){
+    SIGNER_COL_MISSING = true;
+    toast('Kolom signer_id belum ada di database. Jalankan SQL migrasi di supabase/schema.sql agar penandatangan tersimpan per dokumen.', 'err');
+    delete row.signer_id;
+    r = await build(row);
+  }
+  return r;
+}
 async function persist(part){
   if (part === 'settings' || part === 'profile'){ await persistUserSettings(); return; }
   const mapper = ROW_MAPPERS[part];
@@ -132,9 +150,9 @@ async function persist(part){
   for (const item of currList){
     const prev = prevMap.get(item.id);
     if (!prev){
-      ops.push(sbClient.from(part).insert({ ...mapper.toRow(item), user_id: currentUser.id }));
+      ops.push(writeRow(part, 'insert', item, mapper));
     } else if (JSON.stringify(prev) !== JSON.stringify(item)){
-      ops.push(sbClient.from(part).update(mapper.toRow(item)).eq('id', item.id).eq('user_id', currentUser.id));
+      ops.push(writeRow(part, 'update', item, mapper));
     }
   }
   for (const prev of prevList){
@@ -269,6 +287,41 @@ function uid(){
   });
 }
 function money(n){ return 'Rp ' + Number(n||0).toLocaleString('id-ID'); }
+
+/* ---------- KPI CARD (komponen bersama) ----------
+   Dipakai oleh: Dashboard, Products & Price Book, Penawaran & Invoice.
+   tone: purple | cyan | green | red | amber | pink | slate  (lihat .kpi-card di style.css)
+   value: teks sudah siap tampil (angka/nominal). unit: opsional, mis. "produk".
+   sub: satu baris keterangan. dot: titik berdenyut untuk kondisi perlu perhatian.
+   onclick: jika diisi, kartu menjadi tombol (pressed = status filter aktif). */
+const KPI_ICONS = {
+  box:  '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>',
+  wh:   '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 21h18M4.5 21V9.75L12 4.5l7.5 5.25V21M9 21v-6h6v6"/></svg>',
+  coin: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"/></svg>',
+  warn: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>',
+  ok:   '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+  users:'<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>',
+  bars: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>',
+  trend:'<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>',
+  tasks:'<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>',
+  building:'<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21"/></svg>',
+  trophy:'<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0"/></svg>',
+  clock:'<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+  send: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>',
+  pencil:'<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"/></svg>',
+  doc:  '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>'
+};
+function kpiCard(o){
+  const plainLen = (String(o.value)+(o.unit||'')).length + 1;
+  const interactive = !!o.onclick;
+  const tag = interactive ? 'button' : 'div';
+  const attrs = interactive ? ` type="button" onclick="${o.onclick}" aria-pressed="${!!o.pressed}"${o.title?` title="${esc(o.title)}"`:''}` : '';
+  return `<${tag}${attrs} class="kpi-card kpi-${o.tone||'purple'}${o.pressed?' kpi-on':''}">
+      <div class="kpi-head"><span class="kpi-label">${o.dot?'<span class="kpi-dot"></span>':''}${o.label}</span><span class="kpi-icon">${o.icon||''}</span></div>
+      <div class="kpi-body"><p class="kpi-value" style="--len:${plainLen}" title="${esc(String(o.value))}">${esc(String(o.value))}${o.unit?`<span class="kpi-unit">${esc(o.unit)}</span>`:''}</p></div>
+      <p class="kpi-sub">${o.sub||''}</p>
+    </${tag}>`;
+}
 function timeAgo(iso){
   const diff = Math.max(0, Date.now() - new Date(iso).getTime());
   const m = Math.floor(diff/60000);
@@ -1047,6 +1100,88 @@ async function toggleTask(id){
 }
 
 /* ---------- RENDER: CONTACTS ---------- */
+/* ---------- KPI per halaman (memakai kpiCard) ---------- */
+const OK = (label,sub)=>kpiCard({ tone:'slate', label, icon:KPI_ICONS.ok, value:'0', sub });
+function renderContactsKpis(){
+  const all = state.contacts, n = all.length;
+  const customers = all.filter(c=>c.status==='customer').length;
+  const leads = n - customers;
+  const noDeal = all.filter(c=>dealsForContact(c.id).length===0).length;
+  document.getElementById('contacts-kpis').innerHTML =
+    kpiCard({ tone:'purple', label:'Total Kontak', icon:KPI_ICONS.users, value:n.toLocaleString('id-ID'), sub:`${leads} lead, ${customers} customer` }) +
+    kpiCard({ tone:'green', label:'Customer', icon:KPI_ICONS.ok, value:customers.toLocaleString('id-ID'), sub: n ? `${Math.round(customers/n*100)}% dari seluruh kontak` : 'Belum ada kontak' }) +
+    kpiCard({ tone:'cyan', label:'Lead', icon:KPI_ICONS.trend, value:leads.toLocaleString('id-ID'), sub:'Prospek yang belum menjadi customer' }) +
+    (noDeal ? kpiCard({ tone:'amber', label:'Belum Punya Deal', icon:KPI_ICONS.clock, value:noDeal.toLocaleString('id-ID'), unit:'kontak', sub:'Peluang untuk di-follow up dan dibuatkan deal' })
+            : OK('Belum Punya Deal','Semua kontak sudah memiliki deal'));
+}
+function renderCompaniesKpis(){
+  const cos = state.companies;
+  const linked = state.contacts.filter(c=>c.companyId).length;
+  const dealTotals = cos.map(co=>dealsForCompany(co.id).reduce((s,d)=>s+d.value,0));
+  const totalValue = dealTotals.reduce((s,v)=>s+v,0);
+  const withDeal = dealTotals.filter(v=>v>0).length;
+  const noDeal = cos.length - withDeal;
+  document.getElementById('companies-kpis').innerHTML =
+    kpiCard({ tone:'purple', label:'Total Perusahaan', icon:KPI_ICONS.building, value:cos.length.toLocaleString('id-ID'), sub:`${new Set(cos.map(c=>c.industry).filter(Boolean)).size} industri berbeda` }) +
+    kpiCard({ tone:'cyan', label:'Kontak Terhubung', icon:KPI_ICONS.users, value:linked.toLocaleString('id-ID'), sub:`${state.contacts.length-linked} kontak belum punya perusahaan` }) +
+    kpiCard({ tone:'green', label:'Total Nilai Deal', icon:KPI_ICONS.coin, value:money(totalValue), sub:`Dari ${withDeal} perusahaan yang punya deal` }) +
+    (noDeal ? kpiCard({ tone:'amber', label:'Perusahaan Tanpa Deal', icon:KPI_ICONS.clock, value:noDeal.toLocaleString('id-ID'), unit:'perusahaan', sub:'Belum ada peluang penjualan yang tercatat' })
+            : OK('Perusahaan Tanpa Deal','Semua perusahaan sudah punya deal'));
+}
+function renderDealsKpis(){
+  const d = state.deals;
+  const active = d.filter(x=>x.stage!=='Won'&&x.stage!=='Lost');
+  const won = d.filter(x=>x.stage==='Won'), lost = d.filter(x=>x.stage==='Lost');
+  const sum = arr=>arr.reduce((s,x)=>s+x.value,0);
+  const forecast = active.reduce((s,x)=>s+x.value*(x.probability/100),0);
+  const closed = won.length + lost.length;
+  const proposal = d.filter(x=>x.stage==='Proposal');
+  document.getElementById('deals-kpis').innerHTML =
+    kpiCard({ tone:'purple', label:'Total Deal', icon:KPI_ICONS.bars, value:d.length.toLocaleString('id-ID'), sub:`${active.length} aktif, ${won.length} menang, ${lost.length} kalah` }) +
+    kpiCard({ tone:'cyan', label:'Pipeline Aktif', icon:KPI_ICONS.trend, value:money(sum(active)), sub:`Forecast tertimbang ${money(Math.round(forecast))}` }) +
+    kpiCard({ tone:'green', label:'Revenue Won', icon:KPI_ICONS.coin, value:money(sum(won)), sub: closed ? `Win rate ${Math.round(won.length/closed*100)}% dari ${closed} deal selesai` : 'Belum ada deal yang selesai' }) +
+    (proposal.length ? kpiCard({ tone:'amber', label:'Menunggu Keputusan', icon:KPI_ICONS.send, value:proposal.length.toLocaleString('id-ID'), unit:'deal', sub:`Di tahap Proposal, senilai ${money(sum(proposal))}` })
+                     : OK('Menunggu Keputusan','Tidak ada deal di tahap Proposal'));
+}
+function renderTasksKpis(){
+  const t = state.tasks, open = t.filter(x=>!x.done), done = t.length - open.length;
+  const today = new Date(new Date().toDateString()), week = new Date(today.getTime()+7*86400000);
+  const overdue = open.filter(x=>x.due && new Date(x.due) < today).length;
+  const dueToday = open.filter(x=>x.due && new Date(x.due).getTime()===today.getTime()).length;
+  const soon = open.filter(x=>x.due && new Date(x.due)>=today && new Date(x.due)<=week).length;
+  document.getElementById('tasks-kpis').innerHTML =
+    kpiCard({ tone:'pink', label:'Tugas Terbuka', icon:KPI_ICONS.tasks, value:open.length.toLocaleString('id-ID'), sub:`Dari ${t.length} total tugas` }) +
+    (overdue ? kpiCard({ tone:'red', dot:true, label:'Terlambat', icon:KPI_ICONS.warn, value:overdue.toLocaleString('id-ID'), unit:'tugas', sub:'Sudah lewat tenggat dan belum selesai' })
+             : OK('Terlambat','Tidak ada tugas yang terlambat')) +
+    kpiCard({ tone:'amber', label:'Jatuh Tempo 7 Hari', icon:KPI_ICONS.clock, value:soon.toLocaleString('id-ID'), unit:'tugas', sub: dueToday ? `${dueToday} di antaranya jatuh tempo hari ini` : 'Tidak ada yang jatuh tempo hari ini' }) +
+    kpiCard({ tone:'green', label:'Selesai', icon:KPI_ICONS.ok, value:done.toLocaleString('id-ID'), sub: t.length ? `${Math.round(done/t.length*100)}% tugas sudah dikerjakan` : 'Belum ada tugas' });
+}
+function renderQuotesKpis(){
+  const q = state.quotes, by = s=>q.filter(x=>x.status===s);
+  const val = arr=>arr.reduce((s,x)=>s+quoteGrandTotal(x),0);
+  const draft = by('Draft'), sent = by('Sent'), acc = by('Accepted'), dec = by('Declined');
+  const decided = acc.length + dec.length;
+  document.getElementById('quotes-summary').innerHTML =
+    kpiCard({ tone:'purple', label:'Total Penawaran', icon:KPI_ICONS.doc, value:q.length.toLocaleString('id-ID'), sub:`Senilai ${money(val(q))}` }) +
+    (draft.length ? kpiCard({ tone:'amber', label:'Draft', icon:KPI_ICONS.pencil, value:draft.length.toLocaleString('id-ID'), unit:'penawaran', sub:`Belum dikirim, senilai ${money(val(draft))}` })
+                  : OK('Draft','Tidak ada draft yang tertunda')) +
+    kpiCard({ tone:'cyan', label:'Menunggu Respons', icon:KPI_ICONS.send, value:sent.length.toLocaleString('id-ID'), unit:'penawaran', sub:`Terkirim, senilai ${money(val(sent))}` }) +
+    kpiCard({ tone:'green', label:'Diterima', icon:KPI_ICONS.ok, value:acc.length.toLocaleString('id-ID'), unit:'penawaran', sub: decided ? `${money(val(acc))}, ${Math.round(acc.length/decided*100)}% dari yang diputuskan` : 'Belum ada yang diputuskan' });
+}
+function renderTeamKpis(members){
+  const ids = new Set(members.map(m=>m.id));
+  const owned = state.deals.filter(d=>ids.has(d.ownerId));
+  const won = owned.filter(d=>d.stage==='Won');
+  const wonTotal = won.reduce((s,d)=>s+d.value,0);
+  const perf = members.map(m=>({ m, v: state.deals.filter(d=>d.ownerId===m.id&&d.stage==='Won').reduce((s,d)=>s+d.value,0) })).sort((a,b)=>b.v-a.v);
+  const top = perf[0] && perf[0].v>0 ? perf[0] : null;
+  document.getElementById('team-kpis').innerHTML =
+    kpiCard({ tone:'purple', label:'Anggota Tim', icon:KPI_ICONS.users, value:members.length.toLocaleString('id-ID'), sub:'Termasuk Anda' }) +
+    kpiCard({ tone:'cyan', label:'Deal Ditangani', icon:KPI_ICONS.bars, value:owned.length.toLocaleString('id-ID'), sub:`${owned.filter(d=>d.stage!=='Won'&&d.stage!=='Lost').length} masih aktif` }) +
+    kpiCard({ tone:'green', label:'Revenue Won Tim', icon:KPI_ICONS.coin, value:money(wonTotal), sub:`Dari ${won.length} deal yang dimenangkan` }) +
+    kpiCard({ tone:'pink', label:'Top Performer', icon:KPI_ICONS.trophy, value: top ? top.m.name : '—', sub: top ? `Revenue won ${money(top.v)}` : 'Belum ada deal yang dimenangkan' });
+}
+
 function renderTagFilterRow(){
   const allTags = [...new Set(state.contacts.flatMap(c=>c.tags||[]))];
   const row = document.getElementById('tag-filter-row');
@@ -1054,6 +1189,7 @@ function renderTagFilterRow(){
 }
 function toggleTagFilter(tag){ tagFilter = tagFilter===tag ? null : tag; renderContacts(); }
 function renderContacts(){
+  renderContactsKpis();
   const q = (document.getElementById('contacts-search').value||'').toLowerCase();
   const ownerFilter = document.getElementById('contacts-owner-filter').value;
   const list = state.contacts.filter(c=>{
@@ -1093,6 +1229,7 @@ function renderContacts(){
 
 /* ---------- RENDER: COMPANIES ---------- */
 function renderCompanies(){
+  renderCompaniesKpis();
   const q = (document.getElementById('companies-search').value||'').toLowerCase();
   const list = state.companies.filter(co=> !q || co.name.toLowerCase().includes(q));
   document.getElementById('companies-empty').classList.toggle('hidden', state.companies.length>0);
@@ -1112,6 +1249,7 @@ function renderCompanies(){
 
 /* ---------- RENDER: DEALS KANBAN ---------- */
 function renderDeals(){
+  renderDealsKpis();
   const q = (document.getElementById('deals-search').value||'').toLowerCase();
   const ownerFilter = document.getElementById('deals-owner-filter').value;
   const board = document.getElementById('kanban-board');
@@ -1153,6 +1291,7 @@ function handleDrop(e, stage){
 
 /* ---------- RENDER: TASKS ---------- */
 function renderTasks(){
+  renderTasksKpis();
   const sorted = [...state.tasks].sort((a,b)=> a.done-b.done || new Date(a.due)-new Date(b.due));
   document.getElementById('tasks-empty').classList.toggle('hidden', state.tasks.length>0);
   const prColor = { high:'bg-pink-500/10 text-pink-400 border-pink-500/20', medium:'bg-cyan-500/10 text-cyan-400 border-cyan-500/20', low:'bg-slate-500/10 text-slate-400 border-slate-500/20' };
@@ -1217,11 +1356,16 @@ function renderCalendar(){
 function renderReports(){
   const openDeals = state.deals.filter(d=>d.stage!=='Won'&&d.stage!=='Lost');
   const forecast = openDeals.reduce((s,d)=>s+ d.value*(d.probability/100), 0);
-  document.getElementById('report-forecast').textContent = money(forecast);
   const wonTotal = state.deals.filter(d=>d.stage==='Won').reduce((s,d)=>s+d.value,0);
-  document.getElementById('report-won-total').textContent = money(wonTotal);
   const avgDeal = state.deals.length ? state.deals.reduce((s,d)=>s+d.value,0)/state.deals.length : 0;
-  document.getElementById('report-avg-deal').textContent = money(avgDeal);
+
+  const closedDeals = state.deals.filter(d=>d.stage==='Won'||d.stage==='Lost');
+  const wonDeals = state.deals.filter(d=>d.stage==='Won');
+  document.getElementById('reports-kpis').innerHTML =
+    kpiCard({ tone:'cyan', label:'Weighted Forecast', icon:KPI_ICONS.trend, value:money(forecast), sub:`Nilai × probabilitas, ${openDeals.length} deal aktif` }) +
+    kpiCard({ tone:'green', label:'Revenue Tertutup (Won)', icon:KPI_ICONS.coin, value:money(wonTotal), sub:`Dari ${wonDeals.length} deal yang dimenangkan` }) +
+    kpiCard({ tone:'purple', label:'Rata-rata Nilai Deal', icon:KPI_ICONS.bars, value:money(avgDeal), sub:`Seluruh ${state.deals.length} deal aktif & tertutup` }) +
+    kpiCard({ tone:'pink', label:'Win Rate', icon:KPI_ICONS.ok, value:(closedDeals.length ? Math.round(wonDeals.length/closedDeals.length*100) : 0)+'%', sub: closedDeals.length ? `${wonDeals.length} menang, ${closedDeals.length-wonDeals.length} kalah` : 'Belum ada deal yang selesai' });
 
   const ctxFunnel = document.getElementById('funnelChart').getContext('2d');
   if (charts.funnel) charts.funnel.destroy();
@@ -1277,13 +1421,22 @@ function renderReports(){
 
 /* ---------- RENDER: DASHBOARD ---------- */
 function renderDashboardStats(){
-  document.getElementById('stat-contacts').textContent = state.contacts.length;
   const pipelineValue = state.deals.filter(d=>d.stage!=='Lost').reduce((s,d)=>s+d.value,0);
-  document.getElementById('stat-pipeline').textContent = money(pipelineValue);
+  const activeDeals = state.deals.filter(d=>d.stage!=='Lost' && d.stage!=='Won').length;
   const closed = state.deals.filter(d=>d.stage==='Won'||d.stage==='Lost');
   const won = state.deals.filter(d=>d.stage==='Won');
-  document.getElementById('stat-winrate').textContent = (closed.length ? Math.round((won.length/closed.length)*100) : 0) + '%';
-  document.getElementById('stat-tasks').textContent = state.tasks.filter(t=>!t.done).length;
+  const openTasks = state.tasks.filter(t=>!t.done);
+  const todayStr = new Date(new Date().toDateString());
+  const overdueTasks = openTasks.filter(t=> t.due && new Date(t.due) < todayStr).length;
+  document.getElementById('dashboard-kpis').innerHTML =
+    kpiCard({ tone:'purple', label:'Total Contacts', icon:KPI_ICONS.users, value:state.contacts.length.toLocaleString('id-ID'),
+      sub:`Dari ${state.companies.length.toLocaleString('id-ID')} perusahaan` }) +
+    kpiCard({ tone:'cyan', label:'Pipeline Value', icon:KPI_ICONS.bars, value:money(pipelineValue),
+      sub:`${activeDeals} deal masih berjalan, ${won.length} sudah menang` }) +
+    kpiCard({ tone:'green', label:'Win Rate', icon:KPI_ICONS.trend, value:(closed.length ? Math.round((won.length/closed.length)*100) : 0)+'%',
+      sub: closed.length ? `${won.length} menang dari ${closed.length} deal selesai` : 'Belum ada deal yang selesai' }) +
+    kpiCard({ tone:'pink', label:'Open Tasks', icon:KPI_ICONS.tasks, value:openTasks.length.toLocaleString('id-ID'),
+      sub: overdueTasks ? `${overdueTasks} task sudah lewat tenggat` : 'Tidak ada task yang lewat tenggat' });
 
   const now = new Date();
   const wonThisMonth = state.deals.filter(d=>{ if(d.stage!=='Won') return false; const cd=new Date(d.createdAt); return cd.getFullYear()===now.getFullYear() && cd.getMonth()===now.getMonth(); }).reduce((s,d)=>s+d.value,0);
@@ -1611,6 +1764,12 @@ function warehouseOptionsHTML(selectedId, excludeId){
   return state.warehouses.filter(w=>w.id!==excludeId).map(w=>`<option value="${w.id}" ${w.id===selectedId?'selected':''}>${esc(w.name)}${w.isDefault?' (default)':''}</option>`).join('');
 }
 
+function toggleLowStockFilter(){
+  const cb = document.getElementById('stock-low-filter');
+  cb.checked = !cb.checked;
+  renderProducts();
+}
+
 function renderProducts(){
   const q = (document.getElementById('products-search').value||'').toLowerCase();
   const lowOnly = document.getElementById('stock-low-filter').checked;
@@ -1636,12 +1795,22 @@ function renderProducts(){
   const stockValue = wf ? (sums[wf]?sums[wf].value:0) : state.products.reduce((s,p)=> s + Math.max(0,productStock(p.id))*(Number(p.price)||0), 0);
   const lowCount = lowStockProducts().length;
   const scopeLabel = wf ? warehouseName(wf) : 'Gudang';
-  document.getElementById('stock-summary').innerHTML = `
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Total SKU</p><p class="font-mono font-bold text-white text-sm">${totalSKU}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1 truncate">Total Unit di ${esc(scopeLabel)}</p><p class="font-mono font-bold text-cyan-400 text-sm">${totalUnits.toLocaleString('id-ID')}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Nilai Persediaan${wf?' ('+esc(warehouseName(wf))+')':''}</p><p class="font-mono font-bold text-emerald-400 text-sm">${money(stockValue)}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Stok Rendah / Habis</p><p class="font-mono font-bold ${lowCount?'text-red-400':'text-slate-300'} text-sm">${lowCount} produk</p></div>
-  `;
+  const emptyCount = state.products.filter(p=>productStock(p.id)<=0).length;
+  const lowOnlyCount = Math.max(0, lowCount - emptyCount);
+  const categoryCount = new Set(state.products.map(p=>p.category||'Tanpa Kategori')).size;
+  const avgPrice = totalSKU ? state.products.reduce((s,p)=>s+(Number(p.price)||0),0)/totalSKU : 0;
+  document.getElementById('stock-summary').innerHTML =
+    kpiCard({ tone:'purple', label:'Total SKU', icon:KPI_ICONS.box, value:totalSKU.toLocaleString('id-ID'),
+      sub:`${categoryCount} kategori, rata-rata harga ${money(Math.round(avgPrice))}` }) +
+    kpiCard({ tone:'cyan', label:`Total Unit di ${esc(scopeLabel)}`, icon:KPI_ICONS.wh, value:totalUnits.toLocaleString('id-ID'),
+      sub: wf ? 'Stok fisik di gudang terpilih' : 'Stok fisik dari semua gudang' }) +
+    kpiCard({ tone:'green', label:`Nilai Persediaan${wf?' ('+esc(warehouseName(wf))+')':''}`, icon:KPI_ICONS.coin, value:money(stockValue),
+      sub:'Total stok × harga jual per produk' }) +
+    (lowCount
+      ? kpiCard({ tone:'red', dot:true, label:'Stok Rendah / Habis', icon:KPI_ICONS.warn, value:lowCount.toLocaleString('id-ID'), unit:'produk',
+          sub:`${emptyCount} habis, ${lowOnlyCount} di bawah stok minimum. ${lowOnly?'Klik untuk tampilkan semua produk.':'Klik untuk lihat produknya.'}`,
+          onclick:'toggleLowStockFilter()', pressed:lowOnly, title:'Klik untuk memfilter produk dengan stok rendah / habis' })
+      : kpiCard({ tone:'slate', label:'Stok Rendah / Habis', icon:KPI_ICONS.ok, value:'0', unit:'produk', sub:'Semua produk masih di atas stok minimum.' }));
 
   const groups = {};
   list.forEach(p=>{ const g = p.category || 'Tanpa Kategori'; (groups[g] = groups[g]||[]).push(p); });
@@ -1993,10 +2162,10 @@ function openWarehouseManager(){
               ${w.id!==defId?`<button onclick="deleteWarehouse('${w.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>`:''}
             </div>
           </div>
-          <div class="grid grid-cols-3 gap-2 mt-2 text-[10px]">
-            <div><p class="text-textMuted">SKU berstok</p><p class="font-mono text-slate-200 text-xs">${s.skus}</p></div>
-            <div><p class="text-textMuted">Total unit</p><p class="font-mono text-cyan-400 text-xs">${s.units.toLocaleString('id-ID')}</p></div>
-            <div><p class="text-textMuted">Nilai</p><p class="font-mono text-emerald-400 text-xs">${money(s.value)}</p></div>
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <div class="kpi-mini kpi-purple"><p class="kpi-mini-label">SKU berstok</p><div class="kpi-body"><p class="kpi-value" style="--len:${String(s.skus).length+1}">${s.skus}</p></div></div>
+            <div class="kpi-mini kpi-cyan"><p class="kpi-mini-label">Total unit</p><div class="kpi-body"><p class="kpi-value" style="--len:${s.units.toLocaleString('id-ID').length+1}">${s.units.toLocaleString('id-ID')}</p></div></div>
+            <div class="kpi-mini kpi-green col-span-2"><p class="kpi-mini-label">Nilai persediaan</p><div class="kpi-body"><p class="kpi-value" style="--len:${money(s.value).length+1}">${money(s.value)}</p></div></div>
           </div>
         </div>`;
       }).join('')}
@@ -2107,6 +2276,7 @@ function setDocsTab(tab){
 }
 
 function renderQuotes(){
+  renderQuotesKpis();
   document.getElementById('quotes-empty').classList.toggle('hidden', state.quotes.length>0);
   const sorted = [...state.quotes].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
   document.getElementById('quotes-list').innerHTML = sorted.map(q=>{
@@ -2333,6 +2503,10 @@ function openQuoteModal(id, prefillDealId){
         <label class="text-xs text-textMuted block mb-1">Term & Conditions (satu baris = satu poin)</label>
         <textarea name="terms" rows="5" class="field-input rounded-xl px-3 py-2 w-full text-xs">${esc((quoteDraft.terms||[]).join('\n'))}</textarea>
       </div>
+      <div>
+        <label class="text-xs text-textMuted block mb-1">Penandatangan (tampil di dokumen cetak)</label>
+        <select name="signerId" class="field-input rounded-xl px-3 py-2 w-full">${signerOptionsHTML(quoteDraft.signerId||'')}</select>
+      </div>
       <div class="flex justify-between items-center pt-2">
         ${q?`<button type="button" onclick="deleteQuote('${q.id}')" class="text-xs text-red-400 hover:underline">Hapus quotation</button>`:'<span></span>'}
         <div class="flex gap-2">
@@ -2356,6 +2530,7 @@ async function saveQuote(e){
     toName: f.get('toName').trim(), toAddress: f.get('toAddress').trim(),
     attnName: f.get('attnName').trim(), attnPhone: f.get('attnPhone').trim(), attnFax: f.get('attnFax').trim(), attnEmail: f.get('attnEmail').trim(),
     yourRef: f.get('yourRef').trim(), pages: quoteDraft.pages || '1 Lembar',
+    signerId: f.get('signerId')||'',
     sections: JSON.parse(JSON.stringify(quoteDraft.sections)),
     notesList, terms,
   };
@@ -2399,7 +2574,7 @@ function openQuoteDetail(id){
     </div>
     <div class="flex gap-2 mt-3 mb-4 flex-wrap">
       <button onclick="openQuoteModal('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
-      <button onclick="printQuote('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Cetak / PDF</button>
+      <button onclick="askSignerThen('quote','${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Cetak / PDF</button>
       ${q.status==='Accepted'?`<button onclick="closeDrawer(); switchView('quotes'); setDocsTab('invoices'); openInvoiceModal(null,'${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10">Buat Invoice</button>`:''}
       <button onclick="deleteQuote('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
     </div>
@@ -2446,9 +2621,74 @@ function lhOfficeBlock(label, address, phone, email, website){
     <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#56565A;font-weight:600;margin-bottom:2px;">${LH_ICON.email}<span>${esc(email||'')}</span></div>
     <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#A08548;font-weight:600;">${LH_ICON.globe}<span>${esc(website||'')}</span></div>`;
 }
-function printQuote(id){
+/* ---- Penandatangan (multi): company.signers = [{id,name,title,phone,mobile,signature}] + company.defaultSignerId ---- */
+function getSigners(co){
+  if (co && Array.isArray(co.signers) && co.signers.length) return co.signers;
+  // Data lama (satu penandatangan) tetap terbaca tanpa migrasi.
+  if (co && (co.signerName || co.signature || co.signerPhone || co.signerMobile))
+    return [{ id:'legacy', name:co.signerName||'', title:'', phone:co.signerPhone||'', mobile:co.signerMobile||'', signature:co.signature||'' }];
+  return [];
+}
+function resolveSigner(co, signerId){
+  const list = getSigners(co);
+  return list.find(s=>s.id===signerId) || list.find(s=>s.id===(co||{}).defaultSignerId) || list[0] || {};
+}
+/* Blok tanda tangan digital di atas nama penandatangan; tanpa TTD -> ruang kosong bawaan. */
+function signatureHTML(signer){
+  return signer && signer.signature
+    ? `<br><div style="height:52px;display:flex;align-items:center;justify-content:center;"><img src="${esc(signer.signature)}" alt="Tanda tangan" style="max-height:52px;max-width:140px;object-fit:contain;"></div>`
+    : '<br><br><br>';
+}
+/* <option> untuk pilihan penandatangan di form Quotation/Invoice ('' = ikut Default). */
+function signerOptionsHTML(selectedId){
+  const co = state.settings.company || {};
+  const list = getSigners(co);
+  if (!list.length) return '<option value="">— Belum ada penandatangan (atur di Settings) —</option>';
+  const def = resolveSigner(co);
+  const stale = selectedId && !list.some(s=>s.id===selectedId);   // penandatangan sudah dihapus -> jatuh ke Default
+  return `<option value="">Default — ${esc(def.name)||'(tanpa nama)'}${stale?' (pilihan sebelumnya sudah dihapus)':''}</option>` +
+    list.map(s=>`<option value="${esc(s.id)}" ${s.id===selectedId?'selected':''}>${esc(s.name)||'(tanpa nama)'}${s.title?' — '+esc(s.title):''}</option>`).join('');
+}
+/* Tombol Cetak / PDF: pakai penandatangan yang tersimpan di dokumen; jika belum dipilih dan ada >1, tampilkan pemilih. */
+function askSignerThen(kind, id){
+  const co = state.settings.company || {};
+  const list = getSigners(co);
+  const run = sid => kind==='invoice' ? printInvoice(id, sid) : printQuote(id, sid);
+  if (list.length <= 1) return run(list[0] && list[0].id);
+  const doc = (kind==='invoice' ? state.invoices : state.quotes).find(x=>x.id===id);
+  if (doc && doc.signerId && list.some(s=>s.id===doc.signerId)) return run(doc.signerId);
+  const def = resolveSigner(co).id;
+  openModal(`
+    <h3 class="font-display text-lg font-bold text-white mb-1">Pilih Penandatangan</h3>
+    <p class="text-xs text-textMuted mb-4">Nama, kontak, dan tanda tangan digital yang dipilih akan tampil di dokumen cetak.</p>
+    <div class="space-y-2 mb-4">
+      ${list.map(s=>`
+        <label class="flex items-center gap-3 p-2.5 rounded-xl border border-panelBorder/50 hover:bg-white/5 cursor-pointer">
+          <input type="radio" name="print-signer" value="${esc(s.id)}" ${s.id===def?'checked':''}>
+          <div class="w-16 h-10 rounded-md bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
+            ${s.signature?`<img src="${esc(s.signature)}" alt="" class="max-w-full max-h-full object-contain">`:`<span class="text-[8px] text-slate-400">Tanpa TTD</span>`}
+          </div>
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-white truncate">${esc(s.name)||'(tanpa nama)'}</div>
+            <div class="text-[11px] text-textMuted truncate">${esc(s.title)||'—'}${s.id===def?' • Default':''}</div>
+          </div>
+        </label>`).join('')}
+    </div>
+    <div class="flex justify-end gap-2">
+      <button type="button" onclick="closeModal()" class="text-xs px-3 py-2 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Batal</button>
+      <button type="button" onclick="confirmSignerPrint('${kind}','${id}')" class="text-xs font-semibold px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Cetak / PDF</button>
+    </div>`);
+}
+function confirmSignerPrint(kind, id){
+  const sel = document.querySelector('input[name="print-signer"]:checked');
+  const sid = sel ? sel.value : undefined;
+  closeModal();
+  if (kind==='invoice') printInvoice(id, sid); else printQuote(id, sid);
+}
+function printQuote(id, signerId){
   const q = state.quotes.find(x=>x.id===id); if(!q) return;
   const co = state.settings.company || {};
+  const signer = resolveSigner(co, signerId);
   const sections = q.sections || [];
   const grand = quoteGrandTotal(q);
 
@@ -2577,8 +2817,8 @@ function printQuote(id){
       <td style="width:60%;padding-top:8px;font-size:11px;">
         We believe that our quotation will meet your requirement.<br>
         If you have any further question, please do not hesitate to contact.<br>
-        Phone&nbsp;&nbsp;&nbsp;: ${esc(co.signerPhone)||''}<br>
-        Mobile&nbsp;: ${esc(co.signerMobile)||''}<br><br>
+        Phone&nbsp;&nbsp;&nbsp;: ${esc(signer.phone)||''}<br>
+        Mobile&nbsp;: ${esc(signer.mobile)||''}<br><br>
         Thank you for your kind attention and cooperation.
       </td>
       <td style="width:20%;padding-top:8px;font-size:11px;text-align:center;">
@@ -2586,8 +2826,8 @@ function printQuote(id){
         (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
       </td>
       <td style="width:20%;padding-top:8px;font-size:11px;text-align:center;">
-        Faithfully yours,<br><br><br>
-        <b>${esc(co.signerName)||''}</b><br>${esc(co.signerName)||''}
+        Faithfully yours,${signatureHTML(signer)}
+        <b>${esc(signer.name)||''}</b>${signer.title?`<br>${esc(signer.title)}`:''}
       </td>
     </tr>
   </table>
@@ -2626,12 +2866,18 @@ function renderInvoices(){
   const totalPaid = state.invoices.reduce((s,i)=>s+(Number(i.amountPaid)||0),0);
   const outstanding = totalBilled - totalPaid;
   const overdueCount = state.invoices.filter(i=>invoiceDisplayStatus(i)==='Jatuh Tempo').length;
-  document.getElementById('invoices-summary').innerHTML = `
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Total Ditagih</p><p class="font-mono font-bold text-white text-sm">${money(totalBilled)}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Sudah Dibayar</p><p class="font-mono font-bold text-emerald-400 text-sm">${money(totalPaid)}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Piutang Belum Lunas</p><p class="font-mono font-bold text-amber-400 text-sm">${money(outstanding)}</p></div>
-    <div class="glass-card rounded-2xl p-3.5"><p class="text-[10px] text-textMuted uppercase tracking-wider mb-1">Jatuh Tempo</p><p class="font-mono font-bold ${overdueCount?'text-red-400':'text-slate-300'} text-sm">${overdueCount} invoice</p></div>
-  `;
+  const paidPct = totalBilled>0 ? Math.round(totalPaid/totalBilled*100) : 0;
+  document.getElementById('invoices-summary').innerHTML =
+    kpiCard({ tone:'purple', label:'Total Ditagih', icon:KPI_ICONS.doc, value:money(totalBilled),
+      sub:`Dari ${state.invoices.length.toLocaleString('id-ID')} invoice` }) +
+    kpiCard({ tone:'green', label:'Sudah Dibayar', icon:KPI_ICONS.coin, value:money(totalPaid),
+      sub: totalBilled>0 ? `${paidPct}% dari total tagihan sudah masuk` : 'Belum ada tagihan' }) +
+    kpiCard({ tone:'amber', label:'Piutang Belum Lunas', icon:KPI_ICONS.bars, value:money(outstanding),
+      sub: outstanding>0 ? 'Sisa tagihan yang belum dibayar' : 'Tidak ada piutang berjalan' }) +
+    (overdueCount
+      ? kpiCard({ tone:'red', dot:true, label:'Jatuh Tempo', icon:KPI_ICONS.warn, value:overdueCount.toLocaleString('id-ID'), unit:'invoice',
+          sub:'Sudah lewat tanggal jatuh tempo dan belum lunas' })
+      : kpiCard({ tone:'slate', label:'Jatuh Tempo', icon:KPI_ICONS.ok, value:'0', unit:'invoice', sub:'Tidak ada invoice yang lewat jatuh tempo' }));
 
   document.getElementById('invoices-list').innerHTML = sorted.map(inv=>{
     const contact = getContact(inv.contactId);
@@ -2668,7 +2914,7 @@ function newInvoiceDraftFromQuote(q){
   return {
     number: nextInvoiceNumber(), date: new Date().toISOString().slice(0,10),
     dueDate: new Date(Date.now()+14*86400000).toISOString().slice(0,10),
-    quoteId: q.id, dealId: q.dealId||'', contactId: q.contactId||'',
+    quoteId: q.id, dealId: q.dealId||'', contactId: q.contactId||'', signerId: q.signerId||'',
     toName: q.toName||'', toAddress: q.toAddress||'', attnName: q.attnName||'', attnPhone: q.attnPhone||'', attnEmail: q.attnEmail||'',
     sections: JSON.parse(JSON.stringify(q.sections||[blankInvoiceSection('A. EQUIPMENT')])),
     notesList: JSON.parse(JSON.stringify(q.notesList||[])),
@@ -2820,6 +3066,10 @@ function openInvoiceModal(id, prefillQuoteId){
         <label class="text-xs text-textMuted block mb-1 mt-2">Term & Conditions (satu baris = satu poin)</label>
         <textarea name="terms" rows="4" class="field-input rounded-xl px-3 py-2 w-full text-xs">${esc((invoiceDraft.terms||[]).join('\n'))}</textarea>
       </div>
+      <div>
+        <label class="text-xs text-textMuted block mb-1">Penandatangan (tampil di dokumen cetak)</label>
+        <select name="signerId" class="field-input rounded-xl px-3 py-2 w-full">${signerOptionsHTML(invoiceDraft.signerId||'')}</select>
+      </div>
       <div class="flex justify-between items-center pt-2">
         ${inv?`<button type="button" onclick="deleteInvoice('${inv.id}')" class="text-xs text-red-400 hover:underline">Hapus invoice</button>`:'<span></span>'}
         <div class="flex gap-2">
@@ -2844,6 +3094,7 @@ async function saveInvoice(e){
     sections: JSON.parse(JSON.stringify(invoiceDraft.sections)),
     notesList: invoiceDraft.notesList||[], terms,
     amountPaid: Number(f.get('amountPaid'))||0,
+    signerId: f.get('signerId')||'',
   };
   if (!data.number){ toast('Nomor invoice wajib diisi','err'); return; }
   if (id){ const ex = state.invoices.find(x=>x.id===id); Object.assign(ex, data); toast('Invoice diperbarui'); }
@@ -2899,7 +3150,7 @@ function openInvoiceDetail(id){
     </div>
     <div class="flex gap-2 mt-3 mb-4 flex-wrap">
       <button onclick="openInvoiceModal('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
-      <button onclick="printInvoice('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Cetak / PDF</button>
+      <button onclick="askSignerThen('invoice','${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">Cetak / PDF</button>
       <button onclick="recordInvoicePayment('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10">Catat Pembayaran</button>
       <button onclick="deleteInvoice('${inv.id}')" class="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
     </div>
@@ -2929,9 +3180,10 @@ function openInvoiceDetail(id){
 }
 
 /* ---- Cetak Invoice: layout mirip Quotation dengan info pembayaran ---- */
-function printInvoice(id){
+function printInvoice(id, signerId){
   const inv = state.invoices.find(x=>x.id===id); if(!inv) return;
   const co = state.settings.company || {};
+  const signer = resolveSigner(co, signerId);
   const sections = inv.sections || [];
   const grand = invoiceGrandTotal(inv);
   const paid = Number(inv.amountPaid)||0;
@@ -3051,8 +3303,8 @@ function printInvoice(id){
       <td style="width:60%;padding-top:8px;font-size:11px;">
         Mohon melakukan pembayaran sebelum tanggal jatuh tempo di atas.<br>
         Jika ada pertanyaan, silakan hubungi kami.<br>
-        Phone&nbsp;&nbsp;&nbsp;: ${esc(co.signerPhone)||''}<br>
-        Mobile&nbsp;: ${esc(co.signerMobile)||''}<br><br>
+        Phone&nbsp;&nbsp;&nbsp;: ${esc(signer.phone)||''}<br>
+        Mobile&nbsp;: ${esc(signer.mobile)||''}<br><br>
         Terima kasih atas kepercayaan Anda.
       </td>
       <td style="width:20%;padding-top:8px;font-size:11px;text-align:center;">
@@ -3060,8 +3312,8 @@ function printInvoice(id){
         (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
       </td>
       <td style="width:20%;padding-top:8px;font-size:11px;text-align:center;">
-        Faithfully yours,<br><br><br>
-        <b>${esc(co.signerName)||''}</b><br>${esc(co.signerName)||''}
+        Faithfully yours,${signatureHTML(signer)}
+        <b>${esc(signer.name)||''}</b>${signer.title?`<br>${esc(signer.title)}`:''}
       </td>
     </tr>
   </table>
@@ -3090,6 +3342,7 @@ function exportInvoicesCSV(){
 function renderTeam(){
   document.getElementById('team-empty').classList.toggle('hidden', state.team.length>0);
   const members = [{ id:'me', name: state.profile.name, role: state.profile.role, avatar: state.profile.avatar, isMe:true }, ...state.team];
+  renderTeamKpis(members);
   document.getElementById('team-grid').innerHTML = members.map(m=>{
     const ownedDeals = state.deals.filter(d=>d.ownerId===m.id);
     const won = ownedDeals.filter(d=>d.stage==='Won');
@@ -3228,6 +3481,8 @@ function renderCompanyProfileForm(){
   const co = state.settings.company || {};
   Object.keys(co).forEach(k=>{ if (f.elements[k]) f.elements[k].value = co[k] || ''; });
   setCompanyLogoPreview(co.logo || '');
+  ensureSigners();
+  renderSignerTable();
 }
 /* ---- Logo perusahaan: preview, upload (base64), hapus ---- */
 function setCompanyLogoPreview(dataUrl){
@@ -3259,11 +3514,127 @@ document.getElementById('company-logo-remove').addEventListener('click', ()=>{
   setCompanyLogoPreview('');
   document.getElementById('company-logo-input').value = '';
 });
+/* ---- Tanda tangan digital & daftar penandatangan (tabel, tersimpan otomatis) ---- */
+/* Perkecil ke maks 600x300 px (PNG, transparansi dipertahankan) agar baris user_settings tetap ringan. */
+function downscaleSignature(dataUrl, cb){
+  const im = new Image();
+  im.onload = ()=>{
+    const scale = Math.min(1, 600/im.width, 300/im.height);
+    const w = Math.max(1, Math.round(im.width*scale)), h = Math.max(1, Math.round(im.height*scale));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(im, 0, 0, w, h);
+    cb(c.toDataURL('image/png'));
+  };
+  im.onerror = ()=> cb(null);
+  im.src = dataUrl;
+}
+/* Migrasi data lama (satu penandatangan) ke daftar; hanya di memori sampai ada perubahan yang disimpan. */
+function ensureSigners(){
+  const co = state.settings.company || (state.settings.company = {});
+  if (Array.isArray(co.signers) && co.signers.length){
+    if (!co.signers.some(s=>s.id===co.defaultSignerId)) co.defaultSignerId = co.signers[0].id;
+    return co.signers;
+  }
+  co.signers = [];
+  if (co.signerName || co.signature || co.signerPhone || co.signerMobile){
+    const s = { id: uid(), name: co.signerName||'', title:'', phone: co.signerPhone||'', mobile: co.signerMobile||'', signature: co.signature||'' };
+    co.signers.push(s); co.defaultSignerId = s.id;
+  }
+  return co.signers;
+}
+/* Simpan + jaga field lama (signerName/Phone/Mobile/signature) tetap sinkron dengan penandatangan default. */
+async function saveSigners(msg){
+  const co = state.settings.company;
+  const def = co.signers.find(s=>s.id===co.defaultSignerId) || co.signers[0] || {};
+  co.signerName = def.name||''; co.signerPhone = def.phone||''; co.signerMobile = def.mobile||''; co.signature = def.signature||'';
+  await persist('settings');
+  toast(msg || 'Penandatangan disimpan', 'info');
+}
+function renderSignerTable(force){
+  const body = document.getElementById('signer-table-body'); if (!body) return;
+  // Jangan bangun ulang tabel saat pengguna sedang mengetik di dalamnya (mis. echo realtime).
+  if (!force && body.contains(document.activeElement) && document.activeElement.tagName==='INPUT') return;
+  const co = state.settings.company || {};
+  const list = co.signers || [];
+  if (!list.length){
+    body.innerHTML = '<tr><td colspan="5" class="text-center text-[11px] text-textMuted py-5">Belum ada penandatangan. Klik "+ Tambah Penandatangan".</td></tr>';
+    return;
+  }
+  const inp = 'field-input rounded-lg px-2 py-1.5 text-xs w-full';
+  body.innerHTML = list.map(s=>`
+    <tr data-id="${esc(s.id)}" class="border-b border-panelBorder/30 last:border-0 align-top">
+      <td class="p-2 w-28">
+        <div data-act="upload" title="Klik untuk upload tanda tangan" class="w-24 h-14 rounded-lg border border-panelBorder/60 bg-white flex items-center justify-center overflow-hidden cursor-pointer hover:border-purple-400">
+          ${s.signature ? `<img src="${esc(s.signature)}" alt="Tanda tangan" class="max-w-full max-h-full object-contain">` : '<span class="text-[9px] text-slate-400 text-center px-1">Klik untuk upload TTD</span>'}
+        </div>
+        <input type="file" data-act="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+        ${s.signature ? '<button type="button" data-act="clear-sig" class="text-[10px] text-red-400 hover:underline mt-1">Hapus TTD</button>' : ''}
+      </td>
+      <td class="p-2 space-y-1.5">
+        <input data-field="name" value="${esc(s.name)}" placeholder="Nama penandatangan" class="${inp}">
+        <input data-field="title" value="${esc(s.title)}" placeholder="Jabatan (mis. Sales Manager)" class="${inp}">
+      </td>
+      <td class="p-2 space-y-1.5">
+        <input data-field="phone" value="${esc(s.phone)}" placeholder="Telp" class="${inp}">
+        <input data-field="mobile" value="${esc(s.mobile)}" placeholder="HP" class="${inp}">
+      </td>
+      <td class="p-2 text-center pt-3"><input type="radio" name="signer-default" data-act="default" ${s.id===co.defaultSignerId?'checked':''} title="Jadikan default"></td>
+      <td class="p-2 text-center pt-2.5"><button type="button" data-act="delete" class="text-[11px] text-red-400 hover:underline">Hapus</button></td>
+    </tr>`).join('');
+}
+(function initSignerTable(){
+  const body = document.getElementById('signer-table-body');
+  const findSigner = tr => (state.settings.company.signers||[]).find(s=>s.id===tr.dataset.id);
+  body.addEventListener('click', async (e)=>{
+    const t = e.target.closest('[data-act]'); if (!t) return;
+    const tr = t.closest('tr[data-id]'); if (!tr) return;
+    const s = findSigner(tr); if (!s) return;
+    const act = t.dataset.act;
+    if (act==='upload'){ tr.querySelector('input[type=file]').click(); }
+    else if (act==='clear-sig'){ s.signature=''; renderSignerTable(true); await saveSigners('Tanda tangan dihapus'); }
+    else if (act==='delete'){
+      if (!confirm('Hapus penandatangan ini beserta tanda tangannya?')) return;
+      const co = state.settings.company;
+      co.signers = co.signers.filter(x=>x.id!==s.id);
+      if (co.defaultSignerId===s.id) co.defaultSignerId = co.signers[0] ? co.signers[0].id : '';
+      renderSignerTable(true); await saveSigners('Penandatangan dihapus');
+    }
+  });
+  body.addEventListener('change', async (e)=>{
+    const t = e.target; const tr = t.closest('tr[data-id]'); if (!tr) return;
+    const s = findSigner(tr); if (!s) return;
+    if (t.dataset.field){ s[t.dataset.field] = t.value.trim(); await saveSigners(); }
+    else if (t.dataset.act==='default'){ state.settings.company.defaultSignerId = s.id; await saveSigners('Penandatangan default diubah'); }
+    else if (t.dataset.act==='file'){
+      const file = t.files && t.files[0]; if (!file) return;
+      if (!/^image\/(png|jpeg|webp)$/.test(file.type)){ toast('Format TTD harus PNG, JPG, atau WEBP', 'err'); t.value=''; return; }
+      if (file.size > 2*1024*1024){ toast('Ukuran tanda tangan maksimal 2MB', 'err'); t.value=''; return; }
+      const reader = new FileReader();
+      reader.onload = ()=> downscaleSignature(reader.result, async out=>{
+        if (!out){ toast('Gagal memproses gambar tanda tangan', 'err'); return; }
+        s.signature = out; renderSignerTable(true); await saveSigners('Tanda tangan diunggah');
+      });
+      reader.onerror = ()=> toast('Gagal membaca file tanda tangan', 'err');
+      reader.readAsDataURL(file);
+    }
+  });
+  document.getElementById('signer-add').addEventListener('click', async ()=>{
+    ensureSigners();
+    const co = state.settings.company;
+    const s = { id: uid(), name:'', title:'', phone:'', mobile:'', signature:'' };
+    co.signers.push(s);
+    if (!co.defaultSignerId) co.defaultSignerId = s.id;
+    renderSignerTable(true);
+    const row = document.querySelector(`#signer-table-body tr[data-id="${s.id}"] input[data-field="name"]`);
+    if (row) row.focus();
+    await saveSigners('Penandatangan ditambahkan');
+  });
+})();
 document.getElementById('company-profile-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const f = new FormData(e.target);
-  const fields = ['name','headOfficeLabel','headOfficeAddress','headOfficePhone','headOfficeEmail','headOfficeWebsite','branchOfficeLabel','branchOfficeAddress','branchOfficePhone','branchOfficeEmail','branchOfficeWebsite','bankInfo','signerName','signerPhone','signerMobile','footerAddress','footerPhone','footerWebsite','logo'];
-  const company = {};
+  const fields = ['name','headOfficeLabel','headOfficeAddress','headOfficePhone','headOfficeEmail','headOfficeWebsite','branchOfficeLabel','branchOfficeAddress','branchOfficePhone','branchOfficeEmail','branchOfficeWebsite','bankInfo','footerAddress','footerPhone','footerWebsite','logo'];
+  const company = Object.assign({}, state.settings.company);   // pertahankan signers/defaultSignerId
   fields.forEach(k=> company[k] = (f.get(k)||'').trim());
   state.settings.company = company;
   await persist('settings');
