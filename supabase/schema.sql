@@ -221,6 +221,11 @@ create table if not exists public.invoices (
   status        text not null default 'Draft', -- Draft | Sent | Paid (status tampilan turunan dihitung di aplikasi)
   created_at    timestamptz not null default now()
 );
+
+-- Penandatangan per dokumen (id penandatangan dari user_settings.company.signers; text karena bisa 'legacy').
+-- Aman dijalankan berulang. Jalankan di Supabase SQL Editor jika database sudah berjalan.
+alter table public.quotes   add column if not exists signer_id text;
+alter table public.invoices add column if not exists signer_id text;
 create index if not exists invoices_user_id_idx on public.invoices (user_id);
 create index if not exists invoices_status_idx on public.invoices (status);
 create index if not exists invoices_quote_id_idx on public.invoices (quote_id);
