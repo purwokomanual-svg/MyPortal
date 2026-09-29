@@ -218,3 +218,59 @@ header { background-color: rgb(var(--c-darkBg, 5 7 10) / 0.6); }
   [data-theme="light"] .bg-slate-800\/80  { background-color: #e2e8f0 !important; }
   [data-theme="light"] .bg-slate-900\/50  { background-color: #f1f5f9 !important; }
   [data-theme="light"] .bg-slate-900\/50:hover  { background-color: #eef2f7 !important; }
+
+
+  /* ============================================================
+     KPI CARDS (Products & Price Book) — kartu ringkasan besar.
+     Warna aksen diatur lewat --k (rgb triplet) & --k-ink (warna teks
+     angka, versi dark/light). Ukuran angka menyesuaikan lebar kartu
+     dan panjang teks (--len) sehingga nominal besar tidak pernah terpotong.
+     ============================================================ */
+  .kpi-card { --k: 168,85,247; --k-ink: 192,132,252; --k-ink-light: 126,34,206;
+    position: relative; overflow: hidden; text-align: left; width: 100%;
+    border-radius: 1.5rem; padding: 1.35rem 1.5rem 1.2rem;
+    background: linear-gradient(155deg, rgba(var(--k),.20) 0%, rgba(var(--k),.05) 58%, transparent 100%), rgba(var(--c-glass-bg, 11,15,25),.78);
+    border: 1px solid rgba(var(--k),.38);
+    box-shadow: 0 18px 40px -22px rgba(var(--k),.7), inset 0 1px 0 rgba(255,255,255,.06);
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+  .kpi-card::before { content:''; position:absolute; left:0; right:0; top:0; height:4px; background: linear-gradient(90deg, rgba(var(--k),1), rgba(var(--k),.25)); }
+  .kpi-card::after { content:''; position:absolute; right:-42px; bottom:-52px; width:150px; height:150px; border-radius:50%; background: radial-gradient(circle, rgba(var(--k),.22), transparent 70%); pointer-events:none; }
+  .kpi-card.kpi-purple { --k:168,85,247; --k-ink:216,180,254; --k-ink-light:126,34,206; }
+  .kpi-card.kpi-cyan   { --k:6,182,212;  --k-ink:103,232,249; --k-ink-light:14,116,144; }
+  .kpi-card.kpi-green  { --k:16,185,129; --k-ink:110,231,183; --k-ink-light:4,120,87; }
+  .kpi-card.kpi-red    { --k:239,68,68;  --k-ink:252,165,165; --k-ink-light:185,28,28; }
+  .kpi-card.kpi-pink   { --k:236,72,153; --k-ink:249,168,212; --k-ink-light:190,24,93; }
+  .kpi-card.kpi-amber  { --k:245,158,11; --k-ink:252,211,77; --k-ink-light:180,83,9; }
+  .kpi-card.kpi-slate  { --k:100,116,139; --k-ink:203,213,225; --k-ink-light:51,65,85; }
+  .kpi-head { position: relative; z-index: 1; display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom: .9rem; }
+  .kpi-label { font-size: .9rem; font-weight: 700; color: rgb(var(--c-textMain, 248 250 252)); line-height: 1.25; }
+  .kpi-icon { flex: none; width: 2.75rem; height: 2.75rem; border-radius: .9rem; display:flex; align-items:center; justify-content:center;
+    background: rgba(var(--k),.20); border: 1px solid rgba(var(--k),.45); color: rgb(var(--k-ink)); }
+  .kpi-icon svg { width: 1.45rem; height: 1.45rem; }
+  .kpi-body { position: relative; z-index: 1; container-type: inline-size; }
+  .kpi-value { font-family: 'Outfit','Plus Jakarta Sans',sans-serif; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; white-space: nowrap;
+    color: rgb(var(--k-ink)); font-variant-numeric: tabular-nums; margin: 0;
+    font-size: min(var(--max, 2.6rem), calc(100cqi / (var(--len, 8) * .6))); }
+  .kpi-unit { font-size: .95rem; font-weight: 600; color: rgb(var(--c-textMuted, 100 116 139)); margin-left: .35rem; letter-spacing: 0; }
+  .kpi-sub { position: relative; z-index: 1; margin: .7rem 0 0; font-size: .78rem; line-height: 1.35; color: rgb(var(--c-textMuted, 100 116 139)); }
+  [data-theme="light"] .kpi-card { background: linear-gradient(155deg, rgba(var(--k),.13) 0%, rgba(var(--k),.03) 58%, #fff 100%);
+    box-shadow: 0 14px 30px -22px rgba(var(--k),.6), 0 1px 2px rgba(15,23,42,.04); }
+  [data-theme="light"] .kpi-value, [data-theme="light"] .kpi-icon { color: rgb(var(--k-ink-light)); }
+
+  /* Kartu interaktif (Stok Rendah / Habis) */
+  button.kpi-card { cursor: pointer; font: inherit; }
+  button.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 22px 44px -20px rgba(var(--k),.85), inset 0 1px 0 rgba(255,255,255,.06); }
+  .kpi-card.kpi-on { border-color: rgba(var(--k),.9); box-shadow: 0 0 0 3px rgba(var(--k),.25), 0 18px 40px -20px rgba(var(--k),.8); }
+  .kpi-dot { display:inline-block; width:.6rem; height:.6rem; border-radius:50%; background: rgb(var(--k)); margin-right:.45rem; vertical-align: middle; animation: kpiPulse 1.8s ease-out infinite; }
+  @keyframes kpiPulse { 0% { box-shadow: 0 0 0 0 rgba(var(--k),.7);} 70%,100% { box-shadow: 0 0 0 .55rem rgba(var(--k),0);} }
+
+  /* Tile mini (ringkasan per gudang di panel Kelola Gudang) — bahasa visual sama dengan .kpi-card */
+  .kpi-mini { --k:168,85,247; --k-ink:216,180,254; --k-ink-light:126,34,206; border-radius:.9rem; padding:.7rem .85rem .75rem;
+    background: linear-gradient(155deg, rgba(var(--k),.16), rgba(var(--k),.04)), rgba(var(--c-glass-bg,11,15,25),.6);
+    border:1px solid rgba(var(--k),.32); border-top:3px solid rgba(var(--k),.9); }
+  .kpi-mini.kpi-cyan  { --k:6,182,212;  --k-ink:103,232,249; --k-ink-light:14,116,144; }
+  .kpi-mini.kpi-green { --k:16,185,129; --k-ink:110,231,183; --k-ink-light:4,120,87; }
+  .kpi-mini-label { margin:0 0 .25rem; font-size:.75rem; font-weight:700; color: rgb(var(--c-textMuted,100 116 139)); }
+  .kpi-mini .kpi-value { --max: 1.6rem; }
+  [data-theme="light"] .kpi-mini { background: linear-gradient(155deg, rgba(var(--k),.12), #fff); }
+  [data-theme="light"] .kpi-mini .kpi-value { color: rgb(var(--k-ink-light)); }
