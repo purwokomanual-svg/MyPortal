@@ -9,6 +9,7 @@ const INVOICE_STATUS_COLOR = { Draft:'#64748b', Terkirim:'#38bdf8', 'Lunas Sebag
 let state = {
   contacts: [], deals: [], tasks: [], activities: [], companies: [], notes: [],
   products: [], quotes: [], invoices: [], warehouses: [], stock_movements: [], team: [],
+  members: [], invites: [], requests: [],   // anggota workspace (akun login) & undangan — bukan bagian LIST_PARTS
   settings: {
     monthlyTarget: 300000000, autoTaskProposal: true, autoLossReason: true, autoQuoteLog: true, autoQuoteFollowup: true, autoInvoiceReminder: true,
     company: {
@@ -42,6 +43,377 @@ let calState = (()=>{ const n=new Date(); return { year:n.getFullYear(), month:n
 /* ---------- Supabase client & auth state ---------- */
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
+let workspaceId = null;   // id workspace = uid pemilik; dipakai sebagai kolom user_id di SEMUA tabel data
+let myMember = null;      // baris workspace_members milik user yang login (role + permissions)
+
+/* =========================================================
+   HAK AKSES — role & privilege
+   Dipetakan 1:1 ke RLS di supabase/schema.sql (katalog modul/aksi harus sama
+   dengan fungsi clean_permissions di SQL). Penyembunyian tombol di layar hanya
+   kenyamanan; yang benar-benar menjaga data adalah RLS di database.
+   ========================================================= */
+const ROLES = {
+  administrator:{ label:'Administrator', color:'#a855f7', desc:'Akses penuh: kelola user & hak akses, pengaturan perusahaan, dan seluruh data.' },
+  marketing:    { label:'Marketing',     color:'#06b6d4', desc:'Prospek, kontak, deal pipeline, tugas, dan pembuatan penawaran. Default: hanya melihat data miliknya sendiri, tidak melihat data marketing lain.' },
+  accounting:   { label:'Accounting',    color:'#10b981', desc:'Invoice & penagihan, memantau penawaran, deal, dan laporan.' },
+  purchasing:   { label:'Purchasing',    color:'#f59e0b', desc:'Price book produk, stok & gudang, serta data perusahaan/pemasok.' },
+};
+const ROLE_ORDER = ['administrator','marketing','accounting','purchasing'];
+const CRUD = ['view','create','edit','delete'];
+const PERM_CATALOG = [
+  { key:'dashboard', label:'Dashboard',              hint:'Ringkasan, grafik & feed aktivitas', actions:['view'] },
+  { key:'companies', label:'Perusahaan',             hint:'Data perusahaan klien / pemasok', actions:CRUD },
+  { key:'contacts',  label:'Kontak',                 hint:'Kontak & catatan prospek', actions:CRUD },
+  { key:'deals',     label:'Deals Pipeline',         hint:'Deal, stage & nilai penjualan', actions:CRUD },
+  { key:'tasks',     label:'Tugas & Kalender',       hint:'Tugas, pengingat & kalender', actions:CRUD },
+  { key:'reports',   label:'Reports',                hint:'Laporan & peringkat performa', actions:['view'] },
+  { key:'products',  label:'Products & Price Book',  hint:'Daftar produk/jasa & harga', actions:CRUD },
+  { key:'stock',     label:'Stok & Gudang',          hint:'Kartu stok, barang masuk/keluar, transfer, gudang', actions:CRUD },
+  { key:'quotes',    label:'Quotation',              hint:'Penawaran harga', actions:CRUD },
+  { key:'invoices',  label:'Invoice',                hint:'Faktur & pencatatan pembayaran', actions:CRUD },
+  { key:'team',      label:'Halaman Team',           hint:'Melihat performa tim penjualan', actions:['view'] },
+  { key:'settings',  label:'Pengaturan Perusahaan',  hint:'Kop surat, penandatangan, target & automasi', actions:['manage'] },
+  { key:'data',      label:'Pusat Data',             hint:'Backup, pulihkan, impor massal & reset data', actions:['manage'] },
+];
+const ACTION_LABEL = { view:'Lihat', create:'Buat', edit:'Ubah', delete:'Hapus', manage:'Kelola' };
+// v=view c=create e=edit d=delete m=manage
+const ROLE_PRESET_SPEC = {
+  marketing:  { dashboard:'v', companies:'vce', contacts:'vce', deals:'vce', tasks:'vced', reports:'v', products:'v', stock:'v', quotes:'vce', invoices:'v', team:'v' },
+  accounting: { dashboard:'v', companies:'v',   contacts:'v',   deals:'v',   tasks:'vce',  reports:'v', products:'v', stock:'v', quotes:'v',   invoices:'vced' },
+  purchasing: { dashboard:'v', companies:'vce', contacts:'v',   deals:'v',   tasks:'vce',  products:'vced', stock:'vced', quotes:'v' },
+};
+const ACTION_LETTER = { view:'v', create:'c', edit:'e', delete:'d', manage:'m' };
+function presetPermissions(role){
+  const spec = ROLE_PRESET_SPEC[role] || {};
+  const out = {};
+  PERM_CATALOG.forEach(m=>{
+    out[m.key] = {};
+    m.actions.forEach(a=>{ out[m.key][a] = role==='administrator' ? true : (spec[m.key]||'').includes(ACTION_LETTER[a]); });
+  });
+  return out;
+}
+function countPerms(perms, role){
+  let on = 0, total = 0;
+  PERM_CATALOG.forEach(m=> m.actions.forEach(a=>{ total++; if (role==='administrator' || (perms && perms[m.key] && perms[m.key][a])) on++; }));
+  return { on, total };
+}
+
+function can(mod, act){
+  if (!myMember || !myMember.is_active) return false;
+  if (myMember.role === 'administrator') return true;
+  const p = myMember.permissions && myMember.permissions[mod];
+  return !!(p && p[act]);
+}
+function isAdmin(){ return !!myMember && myMember.is_active && myMember.role === 'administrator'; }
+/* Cakupan data: 'own' = hanya data milik sendiri (kontak/deal yang ia pegang + turunannya). Administrator tidak pernah dibatasi.
+   Ditegakkan oleh RLS di database; di sini hanya menyesuaikan tampilan (filter owner, daftar anggota, badge). */
+function isOwnScope(){ return !!myMember && myMember.is_active && myMember.role !== 'administrator' && myMember.data_scope === 'own'; }
+const ROLE_DEFAULT_SCOPE = { administrator:'all', marketing:'own', accounting:'all', purchasing:'all' };
+const SCOPE_LABEL = { all:'Semua data tim', own:'Hanya data milik sendiri' };
+// expr: "modul.aksi", beberapa alternatif dipisah "|" (salah satu cukup), atau "admin"
+function canExpr(expr){
+  if (!expr) return true;
+  return String(expr).split('|').some(tok=>{
+    tok = tok.trim();
+    if (tok === 'admin') return isAdmin();
+    const i = tok.indexOf('.');
+    return i > 0 && can(tok.slice(0,i), tok.slice(i+1));
+  });
+}
+function requirePerm(expr, msg){
+  if (canExpr(expr)) return true;
+  toast(msg || 'Anda tidak memiliki izin untuk melakukan aksi ini', 'err');
+  return false;
+}
+
+/* Izin per tabel (dipakai persist()/dbFetch()) — cermin dari kebijakan RLS */
+const PART_PERM = { companies:'companies', contacts:'contacts', deals:'deals', tasks:'tasks', products:'products',
+                    warehouses:'stock', stock_movements:'stock', quotes:'quotes', invoices:'invoices' };
+function partCan(part, action){
+  if (part === 'team')       return action === 'view' ? true : isAdmin();
+  if (part === 'activities') return action === 'view' ? can('dashboard','view') : (action === 'create' || action === 'delete') ? true : isAdmin();
+  if (part === 'notes'){
+    if (action === 'view')   return can('contacts','view') || can('deals','view');
+    if (action === 'delete') return can('contacts','edit') || can('deals','edit') || can('contacts','delete') || can('deals','delete');
+    return can('contacts','edit') || can('deals','edit');
+  }
+  return PART_PERM[part] ? can(PART_PERM[part], action) : false;
+}
+
+/* ---- Peta fungsi aksi -> izin yang dibutuhkan ----
+   'modul.aksi' | 'modul.ce' (create bila tanpa id, edit bila ada id) | 'admin' | fungsi(args)->ekspresi */
+const GUARD_MAP = {
+  // Kontak
+  openContactModal:'contacts.ce', saveContact:'contacts.ce', deleteContact:'contacts.delete', openContactDetail:'contacts.view',
+  exportContactsCSV:'contacts.view', importContactsCSV:'contacts.create',
+  addNote:(a)=> a[1]==='deal' ? 'deals.edit' : 'contacts.edit',
+  // Perusahaan
+  openCompanyModal:'companies.ce', saveCompany:'companies.ce', deleteCompany:'companies.delete', openCompanyDetail:'companies.view',
+  exportCompaniesCSV:'companies.view', importCompaniesCSV:'companies.create',
+  // Deal
+  openDealModal:'deals.ce', saveDeal:'deals.ce', deleteDeal:'deals.delete', updateDealStage:'deals.edit', handleDrop:'deals.edit',
+  openDealDetail:'deals.view', exportDealsCSV:'deals.view', importDealsCSV:'deals.create',
+  // Tugas
+  openTaskModal:'tasks.ce', saveTask:'tasks.ce', deleteTask:'tasks.delete', toggleTask:'tasks.edit',
+  exportTasksCSV:'tasks.view', importTasksCSV:'tasks.create',
+  // Produk
+  openProductModal:'products.ce', saveProduct:'products.ce', deleteProduct:'products.delete',
+  exportProductsCSV:'products.view', importProductsCSV:'products.create',
+  // Stok & gudang
+  openStockModal:'stock.create', saveStockMovement:'stock.create', openTransferModal:'stock.create', saveTransfer:'stock.create',
+  deleteStockMovement:'stock.delete', openStockHistory:'stock.view', openWarehouseManager:'stock.view',
+  openWarehouseModal:'stock.ce', saveWarehouse:'stock.ce', deleteWarehouse:'stock.delete', exportStockCSV:'stock.view',
+  // Quotation
+  openQuoteModal:'quotes.ce', saveQuote:'quotes.ce', deleteQuote:'quotes.delete', updateQuoteStatus:'quotes.edit',
+  openQuoteDetail:'quotes.view', printQuote:'quotes.view',
+  askSignerThen:(a)=> a[0]==='invoice' ? 'invoices.view' : 'quotes.view',
+  confirmSignerPrint:(a)=> a[0]==='invoice' ? 'invoices.view' : 'quotes.view',
+  // Invoice
+  openInvoiceModal:'invoices.ce', saveInvoice:'invoices.ce', deleteInvoice:'invoices.delete', updateInvoiceStatus:'invoices.edit',
+  recordInvoicePayment:'invoices.edit', openInvoiceDetail:'invoices.view', printInvoice:'invoices.view', exportInvoicesCSV:'invoices.view',
+  // Anggota tim tanpa akun (data lama) — hanya Administrator
+  openUserModal:'admin', saveUser:'admin', openOwnerTransfer:'admin', saveOwnerTransfer:'admin', toggleUserActive:'admin', openResetPassword:'admin', saveResetPassword:'admin', deleteUser:'admin', cancelInvite:'admin',
+  openTeamModal:'admin', saveTeamMember:'admin', deleteTeamMember:'admin', importTeamCSV:'admin', exportTeamCSV:'team.view|admin',
+  // Pengaturan & data
+  saveSigners:'settings.manage', saveAutomationSettings:'settings.manage',
+  downloadFullBackup:'data.manage', handleRestoreFile:'data.manage', confirmRestore:'data.manage',
+  resetDemoData:'data.manage', clearAllData:'data.manage',
+  downloadImportTemplate:(a)=> a[0]==='team' ? 'admin' : (a[0] ? a[0]+'.view' : null),
+  handleImportFile:(a)=> a[1]==='team' ? 'admin' : (a[1] ? a[1]+'.create' : null),
+  confirmImportPreview:()=> (typeof importPreview!=='undefined' && importPreview) ? (importPreview.key==='team' ? 'admin' : importPreview.key+'.create') : null,
+};
+function argPresent(v){ return v !== undefined && v !== null && v !== ''; }
+function formHasId(ev){
+  try { const el = ev && ev.target && ev.target.elements && ev.target.elements.id; return !!(el && el.value); } catch(e){ return false; }
+}
+function guardNeeds(name, args, runtime){
+  const g = GUARD_MAP[name];
+  if (!g) return null;
+  if (typeof g === 'function') return g(args, runtime);
+  if (g.endsWith('.ce')){
+    const hasId = name.startsWith('save') ? (runtime ? formHasId(args[0]) : false) : argPresent(args[0]);
+    return g.slice(0,-3) + (hasId ? '.edit' : '.create');
+  }
+  return g;
+}
+function installPermissionGuards(){
+  Object.keys(GUARD_MAP).forEach(name=>{
+    const orig = window[name];
+    if (typeof orig !== 'function'){ console.warn('[hak-akses] fungsi tidak ditemukan:', name); return; }
+    if (orig.__guarded) return;
+    const wrapped = function(...args){
+      const need = guardNeeds(name, args, true);
+      if (need && !canExpr(need)){
+        const ev = args[0];
+        if (ev && ev.preventDefault){ try { ev.preventDefault(); } catch(e){} }
+        if (ev && ev.target && ev.target.type === 'file'){ try { ev.target.value = ''; } catch(e){} }
+        toast('Anda tidak memiliki izin untuk melakukan aksi ini', 'err');
+        return;
+      }
+      return orig.apply(this, args);
+    };
+    wrapped.__guarded = true;
+    window[name] = wrapped;
+  });
+}
+
+/* ---- Sembunyikan elemen UI yang aksinya tidak diizinkan ---- */
+function parseInlineArgs(str){
+  return String(str||'').split(',').map(t=>{
+    t = t.trim();
+    if (t==='' || t==='null' || t==='undefined' || t==="''" || t==='""') return null;
+    return t.replace(/^['"]|['"]$/g,'');
+  });
+}
+function inlineNeeds(handlerSrc){
+  const needs = [];
+  for (const m of String(handlerSrc).matchAll(/([A-Za-z_$][\w$]*)\s*\(([^()]*)\)/g)){
+    if (!Object.prototype.hasOwnProperty.call(GUARD_MAP, m[1])) continue;
+    const n = guardNeeds(m[1], parseInlineArgs(m[2]), false);
+    if (n) needs.push(n);
+  }
+  return needs;
+}
+let applyingPermUI = false;
+function applyPermissionUI(){
+  if (applyingPermUI || !myMember) return;
+  applyingPermUI = true;
+  try {
+    document.querySelectorAll('main [data-perm], #modal-root [data-perm], #drawer-root [data-perm], #profile-dropdown [data-perm]').forEach(el=>{
+      el.classList.toggle('perm-hidden', !canExpr(el.getAttribute('data-perm')));
+    });
+    document.querySelectorAll('main [onclick], main [onchange], main [ondrop], #modal-root [onclick], #drawer-root [onclick], #drawer-root [onchange], #modal-root [onchange]').forEach(el=>{
+      if (el.hasAttribute('data-perm')) return;
+      let deny = false;
+      for (const attr of ['onclick','onchange','ondrop']){
+        const v = el.getAttribute(attr);
+        if (v && inlineNeeds(v).some(n=>!canExpr(n))){ deny = true; break; }
+      }
+      el.classList.toggle('perm-hidden', deny);
+    });
+  } finally { applyingPermUI = false; }
+}
+function startPermObserver(){
+  if (window.__permObserver) return;
+  const cb = ()=> applyPermissionUI();
+  window.__permObserver = new MutationObserver(cb);
+  ['main','modal-root','drawer-root'].forEach(id=>{
+    const el = id==='main' ? document.querySelector('main') : document.getElementById(id);
+    if (el) window.__permObserver.observe(el, { childList:true, subtree:true });
+  });
+}
+
+/* ---- Menu samping & navigasi ---- */
+const VIEW_PERMS = { dashboard:'dashboard.view', companies:'companies.view', contacts:'contacts.view', deals:'deals.view', tasks:'tasks.view',
+                     reports:'reports.view', products:'products.view', quotes:'quotes.view|invoices.view', team:'team.view|admin', settings:'' };
+const VIEW_ORDER = ['dashboard','contacts','companies','deals','tasks','reports','products','quotes','team','settings'];
+function viewAllowed(v){ return canExpr(VIEW_PERMS[v]); }
+function firstAllowedView(){ return VIEW_ORDER.find(viewAllowed) || 'settings'; }
+function applyScopeBadge(){
+  const b = document.getElementById('scope-badge'); if (!b) return;
+  b.classList.toggle('hidden', !isOwnScope());
+}
+function applyNavPermissions(){
+  applyScopeBadge();
+  document.querySelectorAll('.nav-btn').forEach(b=> b.classList.toggle('perm-hidden', !viewAllowed(b.dataset.view)));
+  const sep = document.getElementById('nav-sep-docs');
+  if (sep){
+    const before = ['dashboard','companies','contacts','deals','tasks','reports'].some(viewAllowed);
+    const after = ['products','quotes','team'].some(viewAllowed);
+    sep.classList.toggle('perm-hidden', !(before && after));
+  }
+}
+function ensureAllowedView(){
+  const active = document.querySelector('.nav-btn.active');
+  const cur = active ? active.dataset.view : 'dashboard';
+  if (!viewAllowed(cur)) switchView(firstAllowedView());
+}
+
+/* ---- Keanggotaan (akun login -> workspace + role) ---- */
+async function loadMembership(){
+  const { data, error } = await sbClient.rpc('ensure_membership');
+  if (error || !data){
+    console.error('ensure_membership gagal', error);
+    if (error && /belum diundang|dinonaktifkan|belum dikonfirmasi/i.test(error.message||'')) return { blocked: error.message, title:'Akses belum tersedia' };
+    return { blocked:'Database belum siap untuk fitur Team & Hak Akses. Jalankan file supabase/schema.sql versi terbaru di Supabase → SQL Editor, lalu muat ulang halaman.\n\nDetail: ' + ((error && error.message) || 'tidak ada respons'), title:'Database perlu diperbarui' };
+  }
+  if (data.access_status){   // belum menjadi anggota: permintaan akses menunggu / ditolak Administrator utama
+    return data.access_status === 'rejected'
+      ? { blocked:'Permintaan akses Anda ditolak oleh Administrator utama.' + (data.review_note ? '\n\nCatatan: ' + data.review_note : '') + '\n\nHubungi Administrator bila ini keliru.', title:'Permintaan akses ditolak' }
+      : { blocked:'Akun ' + (data.email||'') + ' sudah terdaftar dan menunggu persetujuan Administrator utama. Anda belum bisa melihat data apa pun sampai disetujui.\n\nHalaman ini bisa ditutup. Masuk lagi nanti, atau tekan Periksa status.', title:'Menunggu persetujuan', pending:true };
+  }
+  myMember = data; workspaceId = data.workspace_id;
+  if (!data.is_active) return { blocked:'Akun Anda dinonaktifkan oleh Administrator. Hubungi Administrator untuk mengaktifkannya kembali.', title:'Akun dinonaktifkan' };
+  applyMyProfile();
+  return {};
+}
+function applyMyProfile(){
+  if (!myMember) return;
+  state.profile = {
+    name:   myMember.full_name || (myMember.email||'').split('@')[0] || 'User',
+    role:   myMember.job_title || '',
+    avatar: myMember.avatar || '',
+  };
+}
+async function loadMembers(){
+  if (!workspaceId) return;
+  const r = await sbClient.from('workspace_members').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending:true });
+  if (!r.error) state.members = r.data || [];
+  if (isAdmin()){
+    const iv = await sbClient.from('workspace_invites').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending:false });
+    if (!iv.error) state.invites = (iv.data||[]).filter(i=> new Date(i.expires_at) > new Date());
+  } else state.invites = [];
+  if (myMember && myMember.is_owner){   // antrean permintaan akses: hanya pemilik (Administrator utama)
+    const rq = await sbClient.from('access_requests').select('*').eq('workspace_id', workspaceId).in('status', ['pending']).order('created_at', { ascending:true });
+    if (!rq.error) state.requests = rq.data || [];
+  } else state.requests = [];
+  updateRequestBadge();
+}
+function updateRequestBadge(){
+  const btn = document.querySelector('[data-view="team"]'); if (!btn) return;
+  let b = btn.querySelector('.req-badge'); const n = (state.requests||[]).length;
+  if (!n){ if (b) b.remove(); return; }
+  if (!b){ b = document.createElement('span'); b.className = 'req-badge absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-[9px] font-bold text-black flex items-center justify-center'; btn.style.position = 'relative'; btn.appendChild(b); }
+  b.textContent = n > 9 ? '9+' : n; b.title = n + ' permintaan akses menunggu persetujuan';
+}
+function showBlockedScreen(msg, title, opts){
+  opts = opts || {};
+  teardownRealtime();
+  ['loading-overlay','auth-overlay'].forEach(id=>{ const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+  closeModal(); closeDrawer();
+  let el = document.getElementById('blocked-overlay');
+  if (!el){ el = document.createElement('div'); el.id = 'blocked-overlay'; document.body.appendChild(el); }
+  el.className = 'cy'; el.style.zIndex = '120'; delete el.dataset.cyBuilt;
+  el.innerHTML = `
+    <button type="button" class="cy-theme" onclick="cyToggleTheme()" aria-label="Ganti tampilan gelap/terang" title="Ganti tampilan gelap/terang"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z"/></svg></button>
+    <div class="cy-stage"><div class="cy-wrap"><div class="cy-pins l" aria-hidden="true"></div><div class="cy-pins r" aria-hidden="true"></div>
+      <div class="cy-card" style="text-align:center" role="alertdialog" aria-labelledby="blocked-title">
+        
+        <div class="cy-statusico ${opts.pending ? 'warn' : 'bad'}">${opts.pending ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>'}</div>
+        <h2 id="blocked-title" class="cy-title">${esc(title||'Akses ditolak')}</h2>
+        <p class="cy-sub" style="white-space:pre-line;margin:12px 0 20px;font-size:12px">${esc(msg)}</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${opts.pending ? '<button type="button" onclick="location.reload()" class="cy-ghost">Periksa status</button>' : ''}
+          <button type="button" onclick="blockedSignOut()" class="cy-btn">Keluar &amp; kembali ke halaman masuk</button>
+        </div>
+      </div></div></div>`;
+  cyScene(el);
+}
+async function blockedSignOut(){ intentionalSignOut = true; try { await sbClient.auth.signOut(); } catch(e){} location.reload(); }
+let intentionalSignOut = false;
+async function forceSignOut(msg, title){
+  intentionalSignOut = true;
+  stopAccessWatch();
+  try { await sbClient.auth.signOut(); } catch(e){}
+  showBlockedScreen(msg, title);
+}
+
+/* Cek berkala: perubahan role/izin/status oleh Administrator berlaku seketika di sesi yang sedang berjalan */
+let accessTimer = null, accessRefreshing = false;
+async function refreshAccess(){
+  if (!currentUser || !myMember || accessRefreshing) return;
+  accessRefreshing = true;
+  try {
+    const { data, error } = await sbClient.from('workspace_members').select('*').eq('user_id', currentUser.id).maybeSingle();
+    if (error) return; // gangguan jaringan sementara -> abaikan, coba lagi nanti
+    if (!data) return forceSignOut('Akses Anda ke workspace ini telah dicabut oleh Administrator.', 'Akses dicabut');
+    if (!data.is_active) return forceSignOut('Akun Anda dinonaktifkan oleh Administrator.', 'Akun dinonaktifkan');
+    const changed = JSON.stringify([data.role, data.permissions, data.data_scope]) !== JSON.stringify([myMember.role, myMember.permissions, myMember.data_scope]);
+    myMember = data; applyMyProfile();
+    const prevReq = (state.requests||[]).length;
+    await loadMembers();
+    if ((state.requests||[]).length > prevReq) toast('Ada permintaan akses baru menunggu persetujuan Anda', 'info');
+    if (changed){
+      toast('Hak akses Anda diperbarui oleh Administrator', 'info');
+      await reloadAllData();
+    }
+    else if (isOwnScope()) await silentRefreshScoped();
+    applyNavPermissions(); ensureAllowedView(); renderAll(); applyPermissionUI();
+  } finally { accessRefreshing = false; }
+}
+function startAccessWatch(){
+  stopAccessWatch();
+  accessTimer = setInterval(refreshAccess, 30000);
+  if (!window.__visWatch){ window.__visWatch = true; document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) refreshAccess(); }); }
+}
+function stopAccessWatch(){ if (accessTimer){ clearInterval(accessTimer); accessTimer = null; } }
+/* Realtime tidak mengirim kejadian ketika sebuah baris KELUAR dari cakupan user (mis. Administrator mengalihkan owner),
+   jadi user ber-cakupan 'own' menyegarkan datanya secara berkala — dilewati saat ada form terbuka / simpan berjalan. */
+async function silentRefreshScoped(){
+  if (persistBusy > 0 || document.querySelector('#modal-root > *') || document.querySelector('#drawer-root > *')) return;
+  const fresh = {};
+  await Promise.all(LIST_PARTS.map(async part=>{ const r = await dbFetch(part); if (r.ok) fresh[part] = r.rows; }));
+  if (persistBusy > 0 || document.querySelector('#modal-root > *') || document.querySelector('#drawer-root > *')) return;
+  LIST_PARTS.forEach(part=>{ if (fresh[part]){ state[part] = fresh[part]; lastSynced[part] = clone(fresh[part]); } });
+}
+async function reloadAllData(){
+  await loadUserSettings();
+  await Promise.all(LIST_PARTS.map(async part=>{
+    const r = await dbFetch(part);
+    if (r.ok){ state[part] = r.rows; lastSynced[part] = clone(r.rows); }
+  }));
+}
+
 
 /* ---------- Relational data layer (Postgres tables, one per entity) ----------
    Setiap "part" di atas (contacts, deals, dst) punya tabelnya sendiri di
@@ -79,8 +451,8 @@ const ROW_MAPPERS = {
     fromRow: r => ({ id:r.id, entityType:r.entity_type, entityId:r.entity_id, text:r.text, at:r.at }),
   },
   activities: {
-    toRow: a => ({ id:a.id, text:a.text, deal_id:a.dealId||null, contact_id:a.contactId||null, at:a.at||new Date().toISOString() }),
-    fromRow: r => ({ id:r.id, text:r.text, dealId:r.deal_id, contactId:r.contact_id, at:r.at }),
+    toRow: a => ({ id:a.id, text:a.text, deal_id:a.dealId||null, contact_id:a.contactId||null, actor_id:a.actorId||null, actor_name:a.actorName||'', at:a.at||new Date().toISOString() }),
+    fromRow: r => ({ id:r.id, text:r.text, dealId:r.deal_id, contactId:r.contact_id, actorId:r.actor_id||null, actorName:r.actor_name||'', at:r.at }),
   },
   products: {
     toRow: p => ({ id:p.id, name:p.name, model:p.model||'', sku:p.sku||'', category:p.category||'', unit:p.unit||'Unit', price:Number(p.price)||0, description:p.description||'', min_stock:Number(p.minStock)||0 }),
@@ -109,11 +481,16 @@ const ROW_MAPPERS = {
 };
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
-async function dbListAll(part){
-  const { data, error } = await sbClient.from(part).select('*').eq('user_id', currentUser.id).order('created_at', { ascending:false });
-  if (error){ console.error('load failed', part, error); return []; }
-  return (data||[]).map(ROW_MAPPERS[part].fromRow);
+const ORDER_COL = { notes:'at', activities:'at' };   // tabel ini tidak punya kolom created_at
+async function dbFetch(part){
+  if (!workspaceId || !partCan(part, 'view')) return { ok:true, rows:[] };
+  let q = sbClient.from(part).select('*').eq('user_id', workspaceId).order(ORDER_COL[part]||'created_at', { ascending:false });
+  if (part === 'activities') q = q.limit(60);
+  const { data, error } = await q;
+  if (error){ console.error('load failed', part, error); return { ok:false, rows:[] }; }
+  return { ok:true, rows:(data||[]).map(ROW_MAPPERS[part].fromRow) };
 }
+async function dbListAll(part){ return (await dbFetch(part)).rows; }
 
 /* Sinkronisasi diff: bandingkan state[part] vs lastSynced[part], kirim
    hanya insert/update/delete yang benar-benar berubah. Dipakai oleh SEMUA
@@ -124,8 +501,8 @@ async function dbListAll(part){
 let SIGNER_COL_MISSING = false;
 async function writeRow(part, kind, item, mapper){
   const build = row => kind==='insert'
-    ? sbClient.from(part).insert({ ...row, user_id: currentUser.id })
-    : sbClient.from(part).update(row).eq('id', item.id).eq('user_id', currentUser.id);
+    ? sbClient.from(part).insert({ ...row, user_id: workspaceId })
+    : sbClient.from(part).update(row).eq('id', item.id).eq('user_id', workspaceId);
   const row = mapper.toRow(item);
   if (SIGNER_COL_MISSING) delete row.signer_id;
   let r = await build(row);
@@ -137,40 +514,55 @@ async function writeRow(part, kind, item, mapper){
   }
   return r;
 }
-async function persist(part){
-  if (part === 'settings' || part === 'profile'){ await persistUserSettings(); return; }
+const SILENT_PARTS = new Set(['tasks','activities']); // efek samping otomatis: bila tak diizinkan, dilewati tanpa notifikasi
+let persistBusy = 0;
+async function persist(part){ persistBusy++; try { return await persistCore(part); } finally { persistBusy--; } }
+async function persistCore(part){
+  if (part === 'settings' || part === 'profile'){ await persistUserSettings(); return true; }
   const mapper = ROW_MAPPERS[part];
-  if (!mapper || !currentUser) return;
+  if (!mapper || !currentUser || !workspaceId) return false;
   const prevList = lastSynced[part] || [];
   const currList = state[part] || [];
   const prevMap = new Map(prevList.map(x=>[x.id, x]));
   const currMap = new Map(currList.map(x=>[x.id, x]));
   const ops = [];
+  let denied = 0;
 
   for (const item of currList){
     const prev = prevMap.get(item.id);
     if (!prev){
-      ops.push(writeRow(part, 'insert', item, mapper));
+      if (partCan(part,'create')) ops.push(writeRow(part, 'insert', item, mapper)); else denied++;
     } else if (JSON.stringify(prev) !== JSON.stringify(item)){
-      ops.push(writeRow(part, 'update', item, mapper));
+      if (partCan(part,'edit')) ops.push(writeRow(part, 'update', item, mapper)); else denied++;
     }
   }
   for (const prev of prevList){
     if (!currMap.has(prev.id)){
-      ops.push(sbClient.from(part).delete().eq('id', prev.id).eq('user_id', currentUser.id));
+      if (partCan(part,'delete')) ops.push(sbClient.from(part).delete().eq('id', prev.id).eq('user_id', workspaceId)); else denied++;
     }
   }
+  let failed = null;
   if (ops.length){
     const results = await Promise.all(ops);
-    results.forEach(r=>{ if (r && r.error) console.error('sync error on', part, r.error); });
+    results.forEach(r=>{ if (r && r.error){ console.error('sync error on', part, r.error); failed = failed || r.error; } });
   }
-  lastSynced[part] = clone(currList);
+  if (!denied && !failed){ lastSynced[part] = clone(currList); return true; }
+
+  // Ada perubahan yang ditolak / gagal: jadikan database sebagai sumber kebenaran (tidak ada selisih diam-diam).
+  const fresh = await dbFetch(part);
+  if (fresh.ok){ state[part] = fresh.rows; lastSynced[part] = clone(fresh.rows); }
+  if (!SILENT_PARTS.has(part)){
+    const rls = failed && (failed.code === '42501' || /row-level security|permission denied/i.test(failed.message||''));
+    toast(denied || rls ? 'Perubahan ditolak: role Anda tidak memiliki izin untuk aksi ini' : 'Gagal menyimpan ke server — data disegarkan ulang, silakan coba lagi', 'err');
+  }
+  return false;
 }
 async function persistUserSettings(){
-  if (!currentUser) return;
+  if (!currentUser || !workspaceId) return;
+  if (!can('settings','manage')) return;   // letterhead/target/automasi hanya bisa diubah pemegang izin settings.manage
   try {
     const payload = {
-      user_id: currentUser.id,
+      user_id: workspaceId,
       monthly_target: Number(state.settings.monthlyTarget)||0,
       auto_task_proposal: !!state.settings.autoTaskProposal,
       auto_loss_reason: !!state.settings.autoLossReason,
@@ -178,14 +570,13 @@ async function persistUserSettings(){
       auto_quote_followup: !!state.settings.autoQuoteFollowup,
       auto_invoice_reminder: !!state.settings.autoInvoiceReminder,
       company: state.settings.company || {},
-      profile: state.profile || {},
     };
     const { error } = await sbClient.from('user_settings').upsert(payload, { onConflict:'user_id' });
     if (error) throw error;
-  } catch(e){ console.error('settings/profile persist failed', e); }
+  } catch(e){ console.error('settings persist failed', e); toast('Gagal menyimpan pengaturan', 'err'); }
 }
 async function loadUserSettings(){
-  const { data, error } = await sbClient.from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
+  const { data, error } = await sbClient.from('user_settings').select('*').eq('user_id', workspaceId).maybeSingle();
   if (error){ console.error('load user_settings failed', error); return null; }
   if (!data) return null;
   state.settings = Object.assign({}, state.settings, {
@@ -197,7 +588,6 @@ async function loadUserSettings(){
     autoInvoiceReminder: data.auto_invoice_reminder===undefined ? true : !!data.auto_invoice_reminder,
     company: (data.company && Object.keys(data.company).length) ? data.company : state.settings.company,
   });
-  if (data.profile && Object.keys(data.profile).length) state.profile = data.profile;
   return data;
 }
 
@@ -243,14 +633,20 @@ function trackChannelStatus(status){
   else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){ realtimeStatus.error = true; }
   updateRealtimeBadge();
 }
+let membersRefreshTimer = null;
+function onMembersChanged(){
+  clearTimeout(membersRefreshTimer);
+  membersRefreshTimer = setTimeout(refreshAccess, 250);
+}
 function setupRealtime(){
   teardownRealtime();
-  realtimeStatus.total = LIST_PARTS.length + 1; // + user_settings
+  realtimeStatus.total = LIST_PARTS.length + 2; // + user_settings + workspace_members
   updateRealtimeBadge();
+  const sfx = `${workspaceId}:${currentUser.id}`;
   LIST_PARTS.forEach(part=>{
     const ch = sbClient
-      .channel(`rt:${part}:${currentUser.id}`)
-      .on('postgres_changes', { event:'*', schema:'public', table:part, filter:`user_id=eq.${currentUser.id}` }, (payload)=>{
+      .channel(`rt:${part}:${sfx}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:part, filter:`user_id=eq.${workspaceId}` }, (payload)=>{
         applyRemoteRowChange(part, payload.eventType, payload.new, payload.old);
         renderAll();
       })
@@ -258,8 +654,8 @@ function setupRealtime(){
     realtimeChannels.push(ch);
   });
   const settingsCh = sbClient
-    .channel(`rt:user_settings:${currentUser.id}`)
-    .on('postgres_changes', { event:'*', schema:'public', table:'user_settings', filter:`user_id=eq.${currentUser.id}` }, (payload)=>{
+    .channel(`rt:user_settings:${sfx}`)
+    .on('postgres_changes', { event:'*', schema:'public', table:'user_settings', filter:`user_id=eq.${workspaceId}` }, (payload)=>{
       if (payload.new){
         state.settings = Object.assign({}, state.settings, {
           monthlyTarget: Number(payload.new.monthly_target)||0,
@@ -270,12 +666,19 @@ function setupRealtime(){
           autoInvoiceReminder: payload.new.auto_invoice_reminder===undefined ? state.settings.autoInvoiceReminder : !!payload.new.auto_invoice_reminder,
           company: payload.new.company || state.settings.company,
         });
-        if (payload.new.profile && Object.keys(payload.new.profile).length) state.profile = payload.new.profile;
         renderAll();
       }
     })
     .subscribe(trackChannelStatus);
   realtimeChannels.push(settingsCh);
+  // Perubahan anggota / hak akses / undangan -> sinkron seketika ke semua sesi terbuka.
+  // (Penghapusan baris tidak selalu terkirim karena filter non-PK, jadi ada juga pengecekan berkala di startAccessWatch.)
+  const membersCh = sbClient
+    .channel(`rt:members:${sfx}`)
+    .on('postgres_changes', { event:'*', schema:'public', table:'workspace_members', filter:`workspace_id=eq.${workspaceId}` }, onMembersChanged)
+    .on('postgres_changes', { event:'*', schema:'public', table:'workspace_invites', filter:`workspace_id=eq.${workspaceId}` }, onMembersChanged)
+    .subscribe(trackChannelStatus);
+  realtimeChannels.push(membersCh);
 }
 
 function uid(){
@@ -336,7 +739,7 @@ function daysAgoISO(n){ const d = new Date(); d.setDate(d.getDate()-n); return d
 function daysFromNowISO(n){ const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString(); }
 
 function logActivity(text, refs){
-  state.activities.unshift({ id: uid(), text, at: new Date().toISOString(), ...(refs||{}) });
+  state.activities.unshift({ id: uid(), text, at: new Date().toISOString(), actorId: currentUser ? currentUser.id : null, actorName: state.profile.name || '', ...(refs||{}) });
   state.activities = state.activities.slice(0, 60);
   persist('activities');
 }
@@ -369,23 +772,40 @@ function leadScore(contact){
 function scoreColor(score){ return score>=70 ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : score>=40 ? 'text-purple-400 border-purple-500/30 bg-purple-500/10' : 'text-slate-400 border-slate-500/30 bg-slate-500/10'; }
 
 /* ---------- helpers: team / owners ---------- */
+/* Owner deal/kontak: sekarang = anggota workspace (akun login). Nilai lama 'me' = pemilik workspace;
+   id anggota tanpa akun (tabel team lama) tetap dikenali. */
+function ownerMember(){ return state.members.find(m=>m.is_owner) || null; }
+function resolveOwnerId(id){
+  if (id === 'me'){ const o = ownerMember(); return o ? o.user_id : (currentUser ? currentUser.id : 'me'); }
+  return id || '';
+}
+function myOwnerId(){ return currentUser ? currentUser.id : 'me'; }
+function ownerCandidates(includeId){
+  if (isOwnScope()) return [{ id:myOwnerId(), name:state.profile.name || 'Saya' }];   // user 'own' hanya bisa memegang data untuk dirinya sendiri
+  const list = state.members.filter(m=>m.is_active || m.user_id===includeId).map(m=>({ id:m.user_id, name:(m.full_name||m.email||'User') + (m.is_active?'':' (nonaktif)') }));
+  return list.concat(state.team.map(t=>({ id:t.id, name:t.name })));
+}
 function teamOptionsHTML(selectedId, includeAll){
-  const owners = [{id:'me', name: state.profile.name}, ...state.team];
+  const sel = isOwnScope() ? myOwnerId() : resolveOwnerId(selectedId);
+  if (isOwnScope()) return `<option value="${myOwnerId()}" selected>${esc(state.profile.name||'Saya')}</option>`;
   let html = includeAll ? `<option value="">Semua Owner</option>` : `<option value="">— Tanpa owner —</option>`;
-  html += owners.map(o=>`<option value="${o.id}" ${selectedId===o.id?'selected':''}>${esc(o.name)}</option>`).join('');
+  html += ownerCandidates(sel).map(o=>`<option value="${o.id}" ${sel===o.id?'selected':''}>${esc(o.name)}</option>`).join('');
   return html;
 }
 function ownerName(id){
   if (!id) return '—';
-  if (id==='me') return state.profile.name;
-  const m = state.team.find(t=>t.id===id);
-  return m ? m.name : '—';
+  const r = resolveOwnerId(id);
+  const m = state.members.find(x=>x.user_id===r);
+  if (m) return m.full_name || m.email || '—';
+  const t = state.team.find(x=>x.id===r);
+  return t ? t.name : '—';
 }
+function sameOwner(dataOwnerId, ownerId){ return !!ownerId && resolveOwnerId(dataOwnerId) === resolveOwnerId(ownerId); }
 function populateOwnerFilters(){
   const c = document.getElementById('contacts-owner-filter');
   const d = document.getElementById('deals-owner-filter');
-  if (c) c.innerHTML = teamOptionsHTML(c.value||'', true);
-  if (d) d.innerHTML = teamOptionsHTML(d.value||'', true);
+  if (c){ c.innerHTML = teamOptionsHTML(c.value||'', true); c.classList.toggle('perm-hidden', isOwnScope()); if (isOwnScope()) c.value=''; }
+  if (d){ d.innerHTML = teamOptionsHTML(d.value||'', true); d.classList.toggle('perm-hidden', isOwnScope()); if (isOwnScope()) d.value=''; }
 }
 
 /* ---------- seed demo data ---------- */
@@ -555,7 +975,11 @@ async function tryMigrateLegacyData(){
       }).filter(x => x.id); // buang baris yang id-nya gagal terpetakan
     });
 
-    if (map['crm:profile']) state.profile = map['crm:profile'];
+    if (map['crm:profile']){
+      state.profile = map['crm:profile'];
+      sbClient.rpc('update_my_profile', { _full_name: state.profile.name||'', _job_title: state.profile.role||'', _avatar: state.profile.avatar||'' })
+        .then(r=>{ if (!r.error && r.data) myMember = r.data; });
+    }
     if (map['crm:settings']) state.settings = Object.assign({}, state.settings, map['crm:settings']);
 
     toast('Data lama dari versi sebelumnya berhasil dimigrasikan', 'info');
@@ -564,10 +988,11 @@ async function tryMigrateLegacyData(){
 }
 async function loadAll(){
   const settingsRow = await loadUserSettings();
-  const isBrandNewUser = settingsRow === null;
+  const isBrandNewUser = settingsRow === null && !!(myMember && myMember.is_owner);   // hanya pemilik workspace yang boleh menyemai data demo
 
   const loaded = {};
   await Promise.all(LIST_PARTS.map(async part=>{ loaded[part] = await dbListAll(part); }));
+  await loadMembers();
 
   const hasAnyData = LIST_PARTS.some(part => loaded[part].length > 0);
 
@@ -605,6 +1030,10 @@ async function clearAllData(){
 document.querySelectorAll('.nav-btn').forEach(btn=> btn.addEventListener('click', ()=> switchView(btn.dataset.view)));
 const VIEW_TITLES = { dashboard:'Dashboard', contacts:'Contacts', companies:'Companies', deals:'Deals Pipeline', tasks:'Tasks & Kalender', reports:'Reports', products:'Products & Price Book', quotes:'Penawaran & Invoice', team:'Team', settings:'Settings' };
 function switchView(view){
+  if (!viewAllowed(view)){
+    toast('Anda tidak memiliki akses ke menu ini', 'err');
+    const f = firstAllowedView(); if (f === view) return; view = f;
+  }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
@@ -613,7 +1042,7 @@ function switchView(view){
   if (view==='reports') renderReports();
   if (view==='products') renderProducts();
   if (view==='tasks') setTasksTab('list');
-  if (view==='quotes') setDocsTab('quotes');
+  if (view==='quotes') setDocsTab(can('quotes','view') ? 'quotes' : 'invoices');
   if (view==='team') renderTeam();
 }
 
@@ -635,16 +1064,18 @@ function toggleTheme(){
 }
 
 /* ---------- MODALS ---------- */
-function openModal(html){
+function openModal(html, opts){
+  if (typeof ppClose==='function') ppClose();
+  const maxW = (opts && opts.maxWidth) || 'max-w-md';
   document.getElementById('modal-root').innerHTML = `
     <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 modal-overlay">
-      <div class="glass-card ai-floating-card rounded-3xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
+      <div class="glass-card ai-floating-card rounded-3xl w-full ${maxW} p-6 relative max-h-[90vh] overflow-y-auto">
         <button type="button" onclick="closeModal()" aria-label="Tutup" class="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition">✕</button>
         ${html}
       </div>
     </div>`;
 }
-function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
+function closeModal(){ if (typeof ppClose==='function') ppClose(); document.getElementById('modal-root').innerHTML = ''; }
 
 /* ---------- DRAWER (detail panel) ---------- */
 function openDrawer(html){
@@ -695,7 +1126,7 @@ function openContactModal(id){
           </select>
         </div>
         <div><label class="text-xs text-textMuted block mb-1">Owner</label>
-          <select name="ownerId" class="field-input rounded-xl px-3 py-2 w-full">${teamOptionsHTML(c?c.ownerId:'me')}</select>
+          <select name="ownerId" class="field-input rounded-xl px-3 py-2 w-full">${teamOptionsHTML(c?c.ownerId:myOwnerId())}</select>
         </div>
       </div>
       <div><label class="text-xs text-textMuted block mb-1">Tag (pisahkan dengan koma)</label><input name="tags" class="field-input rounded-xl px-3 py-2 w-full" value="${c?esc((c.tags||[]).join(', ')):''}" placeholder="VIP, Enterprise"></div>
@@ -715,7 +1146,7 @@ async function saveContact(e){
   const f = new FormData(e.target);
   const id = f.get('id');
   const tags = (f.get('tags')||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const data = { name:f.get('name').trim(), companyId:f.get('companyId')||null, email:f.get('email').trim(), phone:f.get('phone').trim(), status:f.get('status'), ownerId:f.get('ownerId')||'me', tags };
+  const data = { name:f.get('name').trim(), companyId:f.get('companyId')||null, email:f.get('email').trim(), phone:f.get('phone').trim(), status:f.get('status'), ownerId:f.get('ownerId')||myOwnerId(), tags };
   if (!data.name) return;
   if (id){
     Object.assign(getContact(id), data);
@@ -880,46 +1311,465 @@ function openCompanyDetail(id){
   `);
 }
 
-/* ---- Deal: modal + detail ---- */
-let dealDraftItems = [];
-function renderDealDraftItemsHTML(){
-  const total = dealDraftItems.reduce((s,i)=>s+i.qty*i.price,0);
-  return `
-    <div id="deal-items-list" class="space-y-1.5 mb-2">
-      ${dealDraftItems.map((it,idx)=>`<div class="flex items-center justify-between gap-2 bg-panelBg/60 border border-white/5 rounded-lg px-2.5 py-1.5 text-[11px]">
-        <span class="text-slate-300">${esc(it.name)} × ${it.qty}</span>
-        <div class="flex items-center gap-2"><span class="font-mono text-cyan-400">${money(it.qty*it.price)}</span>
-        <button type="button" onclick="removeDealDraftItem(${idx})" class="text-red-400">✕</button></div>
-      </div>`).join('') || '<p class="text-[11px] text-textMuted">Belum ada item produk ditambahkan.</p>'}
+/* ============================================================
+   PRODUCT PICKER — pencarian cepat Price Book
+   Dipakai di: Tambah/Edit Deal, Quotation, Invoice (satu komponen, perilaku seragam).
+   - Cari multi-kata (semua kata harus cocok) di nama, model, SKU, kategori, deskripsi
+   - Toleran terhadap tanda baca & spasi ("FA-100" = "fa 100" = "FA100") dan aksen
+   - Hasil diurutkan berdasarkan relevansi, kata yang cocok di-highlight
+   - Filter kategori (chip + jumlah hasil), daftar "terakhir dipakai", muat bertahap
+   - Keyboard: ↑ ↓ PgUp PgDn, Enter pilih, Esc tutup, Tab lanjut
+   - Popover position:fixed (tidak terpotong modal), otomatis buka ke atas bila ruang bawah sempit
+   ============================================================ */
+const PP = { query:{}, cat:{}, active:null, hl:0, items:[], limit:60, index:[], sortedAll:[], stock:{}, hasMore:false, pointerInPop:false, suppressOpen:false };
+const PP_PAGE = 60;
+const PP_RECENT_KEY = 'myportal_recent_products';
+const PP_FIELD_CACHE = new Map();
+const PP_COLLATOR = new Intl.Collator('id', { numeric:true, sensitivity:'base' });   // 1 instance dipakai ulang (localeCompare per-panggilan sangat lambat)
+
+function ppSimplify(s){
+  return (s==null ? '' : String(s)).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+}
+function ppTokens(q){ return Array.from(new Set(ppSimplify(q).split(' ').filter(Boolean))); }
+function ppFields(p){
+  const fp = [p.name,p.model,p.sku,p.category,p.description].join('\u0001');
+  const c = PP_FIELD_CACHE.get(p.id);
+  if (c && c.fp===fp) return c;
+  const name=ppSimplify(p.name), model=ppSimplify(p.model), sku=ppSimplify(p.sku), cat=ppSimplify(p.category), desc=ppSimplify(p.description);
+  const sq = s=>s.replace(/ /g,'');
+  const f = { fp, name, model, sku, cat, desc, cName:sq(name), cModel:sq(model), cSku:sq(sku), catLabel:(p.category||'').trim()||'Tanpa Kategori' };
+  PP_FIELD_CACHE.set(p.id, f);
+  return f;
+}
+function ppTokenScore(f, t){
+  const wordAt = s => (' '+s).includes(' '+t);
+  if (f.sku===t || f.model===t) return 100;
+  if ((f.sku && f.sku.startsWith(t)) || (f.model && f.model.startsWith(t))) return 85;
+  if (f.name.startsWith(t)) return 75;
+  if (wordAt(f.name)) return 60;
+  if (wordAt(f.model) || wordAt(f.sku)) return 55;
+  if (f.name.includes(t)) return 40;
+  if (f.model.includes(t) || f.sku.includes(t)) return 35;
+  if (t.length>=3 && /\d/.test(t) && (f.cName.includes(t) || f.cModel.includes(t) || f.cSku.includes(t))) return 30; // "fa100" ↔ "FA-100"
+  if (f.cat.includes(t)) return 20;
+  if (f.desc.includes(t)) return 10;
+  return -1;
+}
+function ppScore(f, tokens){
+  let total = 0;
+  for (const t of tokens){ const s = ppTokenScore(f,t); if (s<0) return -1; total += s; }
+  return total;
+}
+/* Dipakai juga oleh halaman Price Book & pencarian global supaya perilaku pencarian konsisten. */
+function productMatchesQuery(p, q){
+  const tokens = ppTokens(q);
+  return !tokens.length || ppScore(ppFields(p), tokens) >= 0;
+}
+function ppHL(text, tokens){
+  const t = (text==null ? '' : String(text));
+  if (!tokens.length) return esc(t);
+  const low = t.toLowerCase(), mask = new Array(t.length).fill(false);
+  tokens.forEach(tok=>{ let i=0; while((i = low.indexOf(tok,i)) !== -1){ for (let k=i;k<i+tok.length;k++) mask[k]=true; i += tok.length; } });
+  let out='', open=false;
+  for (let k=0;k<t.length;k++){
+    if (mask[k] && !open){ out+='<mark class="pp-mark">'; open=true; }
+    if (!mask[k] && open){ out+='</mark>'; open=false; }
+    out += esc(t[k]);
+  }
+  return open ? out+'</mark>' : out;
+}
+function ppRecentIds(){ try { const a = JSON.parse(localStorage.getItem(PP_RECENT_KEY)||'[]'); return Array.isArray(a)?a:[]; } catch(e){ return []; } }
+function ppPushRecent(id){ try { const a = ppRecentIds().filter(x=>x!==id); a.unshift(id); localStorage.setItem(PP_RECENT_KEY, JSON.stringify(a.slice(0,8))); } catch(e){} }
+
+function ppBuildIndex(){
+  // Stok dihitung sekali untuk semua produk (bukan per produk) agar cepat walau riwayat stok besar.
+  const stock = {};
+  state.stock_movements.forEach(m=>{ stock[m.productId] = (stock[m.productId]||0) + movementSignedQty(m); });
+  PP.stock = stock;
+  PP.index = state.products.map(p=>({ p, f:ppFields(p) }));
+  PP.sortedAll = PP.index.slice().sort((a,b)=>{
+    const ao = a.f.catLabel==='Tanpa Kategori', bo = b.f.catLabel==='Tanpa Kategori';
+    if (ao!==bo) return ao ? 1 : -1;
+    return PP_COLLATOR.compare(a.f.catLabel, b.f.catLabel) || PP_COLLATOR.compare(a.p.name||'', b.p.name||'');
+  });
+}
+function ppStockInfo(p){
+  const s = PP.stock[p.id] || 0, min = Number(p.minStock)||0;
+  if (s<=0) return { cls:'out', label:'Stok habis' };
+  if (min>0 && s<=min) return { cls:'low', label:`Stok ${s.toLocaleString('id-ID')} (rendah)` };
+  return { cls:'ok', label:`Stok ${s.toLocaleString('id-ID')}` };
+}
+
+/* ---------- markup input ---------- */
+function productPickerHTML(key, opts){
+  opts = opts || {};
+  const n = state.products.length;
+  const ph = n ? (opts.placeholder || `Cari produk — nama, model, SKU, kategori (${n.toLocaleString('id-ID')} item)`) : 'Price Book masih kosong';
+  return `<div class="pp-wrap ${opts.cls||'flex-1 min-w-[200px]'}">
+    <div class="relative">
+      <svg class="pp-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/></svg>
+      <input id="pp-input-${key}" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pp-list" autocomplete="off" spellcheck="false" ${n?'':'disabled'}
+        placeholder="${esc(ph)}" class="field-input rounded-xl pl-8 pr-7 py-2 w-full text-xs"
+        oninput="ppOnInput('${key}')" onfocus="ppOnFocus('${key}')" onblur="ppOnBlur('${key}')" onclick="ppOpen('${key}')" onkeydown="ppKey(event,'${key}')">
+      <button type="button" id="pp-clear-${key}" class="pp-clear" aria-label="Hapus" onmousedown="event.preventDefault()" onclick="ppClear('${key}')">✕</button>
     </div>
-    ${dealDraftItems.length ? `<p class="text-[11px] text-textMuted mb-2">Total item: <span class="font-mono text-emerald-400 font-bold">${money(total)}</span></p>` : ''}
-  `;
+  </div>`;
 }
-function refreshDealItemsUI(){
-  document.getElementById('deal-items-wrap').innerHTML = renderDealDraftItemsHTML();
+function ppSync(key){
+  const input = document.getElementById('pp-input-'+key), btn = document.getElementById('pp-clear-'+key);
+  if (btn && input) btn.style.display = input.value ? 'flex' : 'none';
 }
-function addDealDraftItem(){
-  const sel = document.getElementById('deal-item-product');
-  const qtyInput = document.getElementById('deal-item-qty');
-  const p = state.products.find(x=>x.id===sel.value);
-  if (!p) return;
-  const qty = Math.max(1, Number(qtyInput.value)||1);
-  dealDraftItems.push({ productId:p.id, name:p.name, price:p.price, qty });
-  refreshDealItemsUI();
-  const total = dealDraftItems.reduce((s,i)=>s+i.qty*i.price,0);
-  document.querySelector('#deal-form [name="value"]').value = total;
+function ppClear(key, silent){
+  PP.query[key] = '';
+  const input = document.getElementById('pp-input-'+key);
+  if (input) input.value = '';
+  ppSync(key);
+  ppFocus(key, !silent);                                       // tombol ✕ → buka daftar; silent → hanya fokus
 }
-function removeDealDraftItem(idx){
-  dealDraftItems.splice(idx,1);
-  refreshDealItemsUI();
-  const total = dealDraftItems.reduce((s,i)=>s+i.qty*i.price,0);
-  if (dealDraftItems.length) document.querySelector('#deal-form [name="value"]').value = total;
+function ppFocus(key, openList){
+  const input = document.getElementById('pp-input-'+key); if (!input) return;
+  if (!openList) PP.suppressOpen = true;
+  input.focus();
+  PP.suppressOpen = false;
+}
+
+/* ---------- popover ---------- */
+function ppEnsurePop(){
+  let pop = document.getElementById('pp-pop');
+  if (pop) return pop;
+  pop = document.createElement('div');
+  pop.id = 'pp-pop'; pop.className = 'pp-pop';
+  pop.innerHTML = '<div id="pp-chips" class="pp-chips"></div><div id="pp-list" class="pp-list" role="listbox"></div><div id="pp-foot" class="pp-foot"></div>';
+  document.body.appendChild(pop);
+  pop.addEventListener('mousedown', e=>{ e.preventDefault(); });          // jaga fokus tetap di kolom cari
+  pop.addEventListener('pointerdown', ()=>{ PP.pointerInPop = true; });
+  document.addEventListener('pointerup', ()=>{ setTimeout(()=>{ PP.pointerInPop = false; }, 0); });
+  pop.addEventListener('click', e=>{
+    const chip = e.target.closest('[data-pp-cat]');
+    if (chip){ PP.cat[PP.active] = chip.getAttribute('data-pp-cat'); PP.hl = 0; PP.limit = PP_PAGE; ppRender(); document.getElementById('pp-list').scrollTop = 0; return; }
+    const row = e.target.closest('[data-pp-i]');
+    if (row) ppPickIndex(Number(row.getAttribute('data-pp-i')));
+  });
+  pop.addEventListener('mousemove', e=>{
+    const row = e.target.closest('[data-pp-i]'); if (!row) return;
+    const i = Number(row.getAttribute('data-pp-i'));
+    if (i !== PP.hl){ PP.hl = i; ppMarkActive(false); }
+  });
+  pop.querySelector('#pp-list').addEventListener('scroll', e=>{
+    const l = e.target;
+    if (PP.hasMore && l.scrollTop + l.clientHeight >= l.scrollHeight - 60){ PP.limit += PP_PAGE; ppRender(true); }
+  });
+  window.addEventListener('resize', ppPosition);
+  document.addEventListener('scroll', e=>{ if (PP.active && !(e.target && e.target.closest && e.target.closest('#pp-pop'))) ppPosition(); }, true);
+  return pop;
+}
+function ppPosition(){
+  const key = PP.active; if (!key) return;
+  const input = document.getElementById('pp-input-'+key), pop = document.getElementById('pp-pop');
+  if (!input || !pop || !document.body.contains(input)){ ppClose(); return; }
+  const r = input.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+  const width = Math.min(Math.max(r.width, 380), vw-16);
+  const left = Math.min(Math.max(8, r.left), vw - width - 8);
+  const below = vh - r.bottom - 10, above = r.top - 10;
+  const down = below >= 280 || below >= above;
+  const maxH = Math.max(170, Math.min(440, (down ? below : above) - 4));
+  pop.style.left = left+'px'; pop.style.width = width+'px'; pop.style.maxHeight = maxH+'px';
+  if (down){ pop.style.top = (r.bottom+4)+'px'; pop.style.bottom = 'auto'; }
+  else { pop.style.bottom = (vh - r.top + 4)+'px'; pop.style.top = 'auto'; }
+}
+function ppOpen(key){
+  const input = document.getElementById('pp-input-'+key);
+  if (!input || input.disabled) return;
+  if (PP.active === key) return;
+  if (PP.active) ppClose();
+  ppBuildIndex();
+  PP.active = key; PP.hl = 0; PP.limit = PP_PAGE;
+  PP.query[key] = input.value;
+  const pop = ppEnsurePop(); pop.style.display = 'flex';
+  input.setAttribute('aria-expanded','true');
+  ppRender(); ppPosition();
+  document.getElementById('pp-list').scrollTop = 0;
+}
+function ppClose(){
+  const pop = document.getElementById('pp-pop');
+  if (pop) pop.style.display = 'none';
+  if (PP.active){ const i = document.getElementById('pp-input-'+PP.active); if (i) i.setAttribute('aria-expanded','false'); }
+  PP.active = null;
+}
+function ppOnFocus(key){
+  if (PP.suppressOpen){ PP.suppressOpen = false; return; }
+  ppOpen(key);
+}
+function ppOnBlur(key){
+  setTimeout(()=>{
+    if (PP.active !== key || PP.pointerInPop) return;
+    const input = document.getElementById('pp-input-'+key);
+    if (!input || document.activeElement !== input) ppClose();
+  }, 120);
+}
+function ppOnInput(key){
+  const input = document.getElementById('pp-input-'+key); if (!input) return;
+  ppSync(key);
+  if (PP.active !== key){ ppOpen(key); return; }
+  PP.query[key] = input.value; PP.hl = 0; PP.limit = PP_PAGE;
+  ppRender(); document.getElementById('pp-list').scrollTop = 0;
+}
+
+/* ---------- render hasil ---------- */
+function ppRender(keepScroll){
+  const key = PP.active; if (!key) return;
+  const listEl = document.getElementById('pp-list'), chipsEl = document.getElementById('pp-chips'), footEl = document.getElementById('pp-foot');
+  const prevTop = listEl.scrollTop;
+  const q = PP.query[key] || '', tokens = ppTokens(q), cat = PP.cat[key] || '';
+
+  // 1) kecocokan (tanpa filter kategori) → dipakai juga untuk jumlah per-kategori di chip
+  let matched;
+  if (tokens.length){
+    matched = [];
+    PP.index.forEach(it=>{ const s = ppScore(it.f, tokens); if (s>=0) matched.push({ it, s }); });
+    matched.sort((a,b)=> b.s-a.s || PP_COLLATOR.compare(a.it.p.name||'', b.it.p.name||''));
+    matched = matched.map(x=>x.it);
+  } else matched = PP.sortedAll;
+
+  const counts = new Map();
+  matched.forEach(it=>counts.set(it.f.catLabel, (counts.get(it.f.catLabel)||0)+1));
+  const catList = Array.from(counts.entries()).sort((a,b)=> b[1]-a[1] || PP_COLLATOR.compare(a[0], b[0]));
+  if (cat && !counts.has(cat)) catList.push([cat,0]);
+
+  // 2) chip kategori
+  chipsEl.style.display = (catList.length>1 || cat) ? 'flex' : 'none';
+  chipsEl.innerHTML = `<span class="pp-chip ${cat?'':'on'}" data-pp-cat="">Semua<i>${matched.length.toLocaleString('id-ID')}</i></span>` +
+    catList.map(([c,n])=>`<span class="pp-chip ${c===cat?'on':''}" data-pp-cat="${esc(c)}" title="${esc(c)}">${esc(c)}<i>${n.toLocaleString('id-ID')}</i></span>`).join('');
+
+  // 3) daftar (filter kategori + batas render)
+  const list = cat ? matched.filter(it=>it.f.catLabel===cat) : matched;
+  const shown = list.slice(0, PP.limit);
+  PP.hasMore = list.length > shown.length;
+  PP.items = [];
+  let html = '';
+  const row = (it, showCat)=>{
+    const i = PP.items.length; PP.items.push(it);
+    const p = it.p, st = ppStockInfo(p);
+    const sub = [];
+    if (showCat) sub.push(ppHL(it.f.catLabel, tokens));
+    if (p.model) sub.push(ppHL(p.model, tokens));
+    if (p.sku) sub.push('SKU ' + ppHL(p.sku, tokens));
+    return `<div class="pp-row ${i===PP.hl?'on':''}" role="option" data-pp-i="${i}">
+      <div style="min-width:0"><div class="pp-name">${ppHL(p.name,tokens)}</div>${sub.length?`<div class="pp-sub">${sub.join(' · ')}</div>`:''}</div>
+      <div class="pp-side"><div class="pp-rp">${money(p.price)}</div><div class="pp-stk ${st.cls}">${st.label}${p.unit?' · '+esc(p.unit):''}</div></div>
+    </div>`;
+  };
+  if (!list.length){
+    html = `<div class="pp-empty">Tidak ada produk yang cocok${q.trim()?` dengan “${esc(q.trim())}”`:''}${cat?` di kategori <b>${esc(cat)}</b>`:''}.<br>` +
+      (cat ? `<a data-pp-cat="">Cari di semua kategori</a> · ` : '') + `coba kata kunci yang lebih singkat.</div>`;
+  } else if (!tokens.length){
+    if (!cat){
+      const recent = ppRecentIds().map(id=>PP.index.find(it=>it.p.id===id)).filter(Boolean);
+      if (recent.length) html += `<div class="pp-grp">Terakhir dipakai</div>` + recent.map(it=>row(it,true)).join('');
+    }
+    let last = null;
+    shown.forEach(it=>{
+      if (it.f.catLabel !== last){ last = it.f.catLabel; html += `<div class="pp-grp">${esc(last)}</div>`; }
+      html += row(it,false);
+    });
+  } else {
+    html = shown.map(it=>row(it, !cat)).join('');
+  }
+  listEl.innerHTML = html;
+  if (keepScroll) listEl.scrollTop = prevTop;
+  if (PP.hl >= PP.items.length) PP.hl = Math.max(0, PP.items.length-1);
+
+  footEl.innerHTML = `<span>${list.length.toLocaleString('id-ID')} produk${PP.hasMore?` · menampilkan ${shown.length.toLocaleString('id-ID')}, gulir untuk lebih banyak`:''}</span>` +
+    `<span class="pp-keys"><kbd>↑</kbd><kbd>↓</kbd> pilih · <kbd>Enter</kbd> tambah · <kbd>Esc</kbd> tutup</span>`;
+}
+function ppMarkActive(scroll){
+  const list = document.getElementById('pp-list'); if (!list) return;
+  list.querySelectorAll('.pp-row.on').forEach(el=>el.classList.remove('on'));
+  const el = list.querySelector(`[data-pp-i="${PP.hl}"]`);
+  if (el){ el.classList.add('on'); if (scroll) el.scrollIntoView({ block:'nearest' }); }
+}
+function ppMove(d){
+  if (!PP.items.length) return;
+  let n = PP.hl + d;
+  if (n >= PP.items.length && PP.hasMore){ PP.limit += PP_PAGE; PP.hl = PP.items.length-1; ppRender(true); n = Math.min(PP.hl + d, PP.items.length-1); }
+  PP.hl = Math.max(0, Math.min(PP.items.length-1, n));
+  ppMarkActive(true);
+}
+function ppKey(ev, key){
+  const open = PP.active === key;
+  switch (ev.key){
+    case 'ArrowDown': ev.preventDefault(); open ? ppMove(1) : ppOpen(key); break;
+    case 'ArrowUp':   ev.preventDefault(); if (open) ppMove(-1); break;
+    case 'PageDown':  if (open){ ev.preventDefault(); ppMove(6); } break;
+    case 'PageUp':    if (open){ ev.preventDefault(); ppMove(-6); } break;
+    case 'Enter':
+      ev.preventDefault();                               // jangan submit form Deal/Quotation/Invoice
+      if (open){ if (PP.items[PP.hl]) ppPickIndex(PP.hl); }
+      else ppOpen(key);
+      break;
+    case 'Escape': if (open){ ev.preventDefault(); ev.stopPropagation(); ppClose(); } break; // Esc pertama hanya menutup daftar, bukan modal
+    case 'Tab': if (open) ppClose(); break;
+  }
+}
+function ppPickIndex(i){
+  const it = PP.items[i], key = PP.active; if (!it || !key) return;
+  ppPushRecent(it.p.id);
+  ppClose();
+  const h = PP_HANDLERS[key.split(':')[0]];
+  if (h) h(it.p, key);
+}
+
+/* Aksi setelah produk dipilih — SERAGAM di Deal, Quotation, dan Invoice:
+   produk langsung ditambahkan sebagai baris item; Qty, satuan & harga diubah di tabel. */
+const PP_HANDLERS = {
+  deal:    (p,key)=>{ addDealItemFromProduct(Number(key.split(':')[1]), p.id); },
+  quote:   (p,key)=>{ addQuoteItemFromProduct(Number(key.split(':')[1]), p.id); },
+  invoice: (p,key)=>{ addInvoiceItemFromProduct(Number(key.split(':')[1]), p.id); },
+};
+
+/* ============================================================
+   TABEL ITEM BERSAMA — dipakai Deal, Quotation, dan Invoice agar tampilan & perilakunya identik:
+   kolom Model | Deskripsi | Qty | Satuan | Harga | Subtotal, lalu baris [Pencarian Price Book] [+ Item Manual].
+   ============================================================ */
+function lineItemsTableHTML(c){
+  const pre = c.pre || '';
+  const th = (t,w)=>`<th class="py-1 pr-1 font-semibold" style="min-width:${w}px">${t}</th>`;
+  const num = (it,iIdx,f)=>`<input type="number" min="0" step="any" inputmode="decimal" value="${it[f]}" oninput="${c.num}(${pre}${iIdx},'${f}',this.value)" class="li-num field-input w-full rounded px-1.5 py-1 text-[11px]">`;
+  const txt = (it,iIdx,f)=>`<input value="${esc(it[f])}" oninput="${c.fn}(${pre}${iIdx},'${f}',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]">`;
+  const rows = (c.items||[]).map((it,iIdx)=>`<tr class="border-b border-white/5">
+            <td class="py-1 pr-1">${txt(it,iIdx,'model')}</td>
+            <td class="py-1 pr-1">${txt(it,iIdx,'description')}</td>
+            <td class="py-1 pr-1">${num(it,iIdx,'qty')}</td>
+            <td class="py-1 pr-1">${txt(it,iIdx,'unit')}</td>
+            <td class="py-1 pr-1">${num(it,iIdx,'price')}</td>
+            <td class="py-1 pr-1 font-mono text-cyan-400 whitespace-nowrap" id="${c.subId(iIdx)}">${money((Number(it.qty)||0)*(Number(it.price)||0))}</td>
+            <td class="py-1"><button type="button" onclick="${c.remove}(${pre}${iIdx})" class="text-red-400" aria-label="Hapus item">✕</button></td>
+          </tr>`).join('') || `<tr><td colspan="7" class="text-textMuted py-2">${c.empty || 'Belum ada item.'}</td></tr>`;
+  return `<div class="overflow-x-auto">
+      <table class="li-table w-full text-[11px] mb-2 border-collapse">
+        <thead><tr class="text-textMuted text-left border-b border-white/10">
+          ${th('Model',110)}${th('Deskripsi',170)}${th('Qty',76)}${th('Satuan',76)}${th('Harga',112)}${th('Subtotal',112)}<th class="w-6"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>`;
+}
+function lineItemsAddBarHTML(key, manualFn){
+  return `<div class="flex flex-wrap gap-2 mb-2 items-start">
+        ${productPickerHTML(key, { placeholder:'Cari & tambah item dari Price Book — nama, model, SKU, kategori…', cls:'flex-1 min-w-[220px]' })}
+        <button type="button" onclick="${manualFn}" class="text-[10px] px-2.5 h-[34px] rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5 whitespace-nowrap">+ Item Manual</button>
+      </div>`;
+}
+
+/* Blok "Section" bersama (Deal, Quotation, Invoice): nama section, diskon %, tabel item, pencarian Price Book,
+   + Item Manual, Sub Total / Diskon / Total per section. Satu-satunya sumber markup agar ketiganya identik. */
+function lineSectionsHTML(c){
+  return c.sections.map((sec, sIdx)=>{
+    const sub = sectionSubtotal(sec), disc = sectionDiscountAmount(sec), tot = sectionTotal(sec);
+    return `
+    <div class="border border-white/10 rounded-xl p-3 mb-3 bg-panelBg/40">
+      <div class="flex gap-2 items-center mb-2">
+        <input value="${esc(sec.name)}" oninput="${c.fn.secField}(${sIdx},'name',this.value)" placeholder="Nama Section, contoh: A. EQUIPMENT FIRE ALARM" class="field-input flex-1 min-w-0 rounded-lg px-2 py-1.5 text-xs font-bold">
+        <input type="number" min="0" max="100" value="${sec.discountPct}" oninput="${c.fn.secDisc}(${sIdx},this.value)" class="field-input w-16 shrink-0 rounded-lg px-2 py-1.5 text-xs" title="Diskon %">
+        <span class="text-[10px] text-textMuted shrink-0">% disc</span>
+        <button type="button" onclick="${c.fn.secRemove}(${sIdx})" class="text-[10px] text-red-400 hover:underline whitespace-nowrap shrink-0">Hapus Section</button>
+      </div>
+      ${lineItemsTableHTML({ items:sec.items, pre:`${sIdx},`, fn:c.fn.itemField, num:c.fn.itemNum, remove:c.fn.itemRemove, subId:i=>`${c.itemPre}-sub-${sIdx}-${i}`, empty:'Belum ada item di section ini.' })}
+      ${lineItemsAddBarHTML(c.key+':'+sIdx, `${c.fn.itemBlank}(${sIdx})`)}
+      <div class="text-[11px] text-right space-y-0.5">
+        <p class="text-textMuted">Sub Total: <span class="font-mono text-slate-300" id="${c.secPre}-sub-${sIdx}">${money(sub)}</span></p>
+        <p class="text-textMuted">Diskon (<span id="${c.secPre}-discpct-${sIdx}">${sec.discountPct}</span>%): <span class="font-mono text-red-400" id="${c.secPre}-disc-${sIdx}">${money(disc)}</span></p>
+        <p class="font-bold text-white">Total ${sIdx+1}: <span class="font-mono text-emerald-400" id="${c.secPre}-total-${sIdx}">${money(tot)}</span></p>
+      </div>
+    </div>`;
+  }).join('');
+}
+function recomputeLineSections(sections, itemPre, secPre){
+  sections.forEach((sec, sIdx)=>{
+    (sec.items||[]).forEach((it,iIdx)=>{
+      const el = document.getElementById(`${itemPre}-sub-${sIdx}-${iIdx}`);
+      if (el) el.textContent = money((Number(it.qty)||0)*(Number(it.price)||0));
+    });
+    const set = (id, v)=>{ const el = document.getElementById(`${secPre}-${id}-${sIdx}`); if (el) el.textContent = v; };
+    set('sub', money(sectionSubtotal(sec))); set('discpct', sec.discountPct); set('disc', money(sectionDiscountAmount(sec))); set('total', money(sectionTotal(sec)));
+  });
+  return sections.reduce((s,sec)=>s+sectionTotal(sec),0);
+}
+
+/* ---- Deal: modal + detail ---- */
+/* Item deal berformat sama dengan item Penawaran (model/description/qty/unit/price) dan dikelompokkan per section
+   persis seperti Quotation. Kolom DB `deals.items` (jsonb) tetap array datar: tiap item membawa section, sectionIdx, sectionDiscount.
+   Data lama {productId,name,price,qty} tetap terbaca (name → model, deskripsi/satuan diambil dari Price Book). */
+let dealDraft = { sections:[] };
+function normalizeDealItem(it){
+  const p = (it.model === undefined && it.productId) ? state.products.find(x=>x.id===it.productId) : null;
+  const model = it.model !== undefined ? it.model : (it.name || (p && p.name) || '');
+  return { productId: it.productId || null, name: model, model,
+           description: it.description !== undefined ? it.description : (p ? [p.model, p.description].filter(Boolean).join(' — ') : ''),
+           unit: it.unit || (p && p.unit) || 'Unit', qty: it.qty != null ? Number(it.qty) : 1, price: Number(it.price) || 0,
+           section: it.section || '', sectionIdx: it.sectionIdx != null ? Number(it.sectionIdx) : 0, sectionDiscount: Number(it.sectionDiscount) || 0 };
+}
+function dealItemsToSections(items){
+  const groups = new Map();
+  (items||[]).map(normalizeDealItem).forEach(it=>{
+    if (!groups.has(it.sectionIdx)) groups.set(it.sectionIdx, { name: it.section || 'A. EQUIPMENT', discountPct: Math.max(0, Math.min(100, it.sectionDiscount)), items: [] });
+    groups.get(it.sectionIdx).items.push({ productId:it.productId, name:it.name, model:it.model, description:it.description, qty:it.qty, unit:it.unit, price:it.price });
+  });
+  const secs = Array.from(groups.entries()).sort((a,b)=>a[0]-b[0]).map(e=>e[1]);
+  return secs.length ? secs : [blankQuoteSection('A. EQUIPMENT')];
+}
+function dealSectionsToItems(sections){
+  const out = [];
+  sections.forEach((sec, sIdx)=>(sec.items||[]).forEach(it=>{
+    if (!((it.model||'').trim() || (it.description||'').trim() || Number(it.price))) return;   // buang baris kosong
+    out.push({ productId:it.productId||null, name:(it.model||it.description||'').trim(), model:it.model||'', description:it.description||'', unit:it.unit||'Unit',
+               qty:Number(it.qty)||0, price:Number(it.price)||0, section:sec.name||'', sectionIdx:sIdx, sectionDiscount:Number(sec.discountPct)||0 });
+  }));
+  return out;
+}
+function dealDraftTotal(){ return dealDraft.sections.reduce((s,sec)=>s+sectionTotal(sec),0); }
+function renderDealSectionsHTML(){
+  return lineSectionsHTML({ sections:dealDraft.sections, key:'deal', itemPre:'di', secPre:'ds',
+    fn:{ secField:'updateDealSectionField', secDisc:'updateDealSectionDiscount', secRemove:'removeDealSection', itemField:'updateDealItemField', itemNum:'updateDealItemNumber', itemRemove:'removeDealItem', itemBlank:'addDealItemBlank' } });
+}
+function recomputeDealTotals(){
+  const grand = recomputeLineSections(dealDraft.sections, 'di', 'ds');
+  const el = document.getElementById('deal-grand-total'); if (el) el.textContent = money(grand);
+  const val = document.querySelector('#deal-form [name="value"]');
+  if (val && dealDraft.sections.some(sec=>(sec.items||[]).length)) val.value = grand;   // Nilai (Rp) otomatis = Grand Total
+}
+function refreshDealSectionsUI(){
+  document.getElementById('deal-sections-wrap').innerHTML = renderDealSectionsHTML();
+  recomputeDealTotals();
+}
+function updateDealSectionField(sIdx, field, val){ dealDraft.sections[sIdx][field] = val; }
+function updateDealSectionDiscount(sIdx, val){ dealDraft.sections[sIdx].discountPct = Math.max(0, Math.min(100, Number(val)||0)); recomputeDealTotals(); }
+function updateDealItemField(sIdx, iIdx, field, val){ const it = dealDraft.sections[sIdx].items[iIdx]; if (!it) return; it[field] = val; if (field==='model') it.name = val; }
+function updateDealItemNumber(sIdx, iIdx, field, val){ const it = dealDraft.sections[sIdx].items[iIdx]; if (!it) return; it[field] = Number(val)||0; recomputeDealTotals(); }
+function addDealItemFromProduct(sIdx, productId){
+  const p = state.products.find(x=>x.id===productId);
+  if (!p){ toast('Pilih produk dari daftar dahulu','err'); return; }
+  dealDraft.sections[sIdx].items.push({ productId:p.id, name:p.name||'', ...quoteItemFromProduct(p) });
+  refreshDealSectionsUI();
+  ppFocus('deal:'+sIdx);                                       // lanjut cari produk berikutnya
+  toast(`Ditambahkan: ${p.name}`);
+}
+function addDealItemBlank(sIdx){ dealDraft.sections[sIdx].items.push({ productId:null, name:'', ...blankQuoteItem() }); refreshDealSectionsUI(); }
+function removeDealItem(sIdx, iIdx){ dealDraft.sections[sIdx].items.splice(iIdx,1); refreshDealSectionsUI(); }
+function addDealSection(){
+  const letter = String.fromCharCode(65 + dealDraft.sections.length);
+  dealDraft.sections.push(blankQuoteSection(`${letter}. SECTION BARU`));
+  refreshDealSectionsUI();
+}
+function removeDealSection(sIdx){
+  if (dealDraft.sections.length<=1){ toast('Deal minimal harus punya 1 section','err'); return; }
+  dealDraft.sections.splice(sIdx,1); refreshDealSectionsUI();
 }
 function openDealModal(id, prefillContactId){
   const d = id ? state.deals.find(x=>x.id===id) : null;
-  dealDraftItems = d && d.items ? JSON.parse(JSON.stringify(d.items)) : [];
+  dealDraft = { sections: dealItemsToSections(d ? d.items : []) };
+  PP.query.deal = '';
   const contactOptions = state.contacts.map(c=>`<option value="${c.id}" ${(d?d.contactId===c.id:prefillContactId===c.id)?'selected':''}>${esc(c.name)} — ${esc(contactCompanyName(c))}</option>`).join('');
-  const productOptions = state.products.map(p=>`<option value="${p.id}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
   openModal(`
     <h3 class="text-sm font-bold text-white mb-4">${d?'Edit Deal':'Tambah Deal'}</h3>
     <form id="deal-form" class="space-y-3 text-sm">
@@ -937,17 +1787,16 @@ function openDealModal(id, prefillContactId){
           <select name="stage" class="field-input rounded-xl px-3 py-2 w-full">${STAGES.map(s=>`<option value="${s}" ${d&&d.stage===s?'selected':''}>${s}</option>`).join('')}</select>
         </div>
         <div><label class="text-xs text-textMuted block mb-1">Owner</label>
-          <select name="ownerId" class="field-input rounded-xl px-3 py-2 w-full">${teamOptionsHTML(d?d.ownerId:'me')}</select>
+          <select name="ownerId" class="field-input rounded-xl px-3 py-2 w-full">${teamOptionsHTML(d?d.ownerId:myOwnerId())}</select>
         </div>
       </div>
-      <div class="pt-1 border-t border-white/10">
-        <label class="text-xs text-textMuted block mb-1 mt-2">Item Produk (opsional, dari Price Book)</label>
-        <div class="flex gap-2 mb-2">
-          <select id="deal-item-product" class="field-input rounded-xl px-2 py-2 w-full text-xs">${productOptions || '<option value="">Belum ada produk</option>'}</select>
-          <input id="deal-item-qty" type="number" min="1" value="1" class="field-input rounded-xl px-2 py-2 w-16 text-xs">
-          <button type="button" onclick="addDealDraftItem()" class="text-xs font-semibold px-3 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">+</button>
+      <div class="pt-1 border-t border-white/10 mt-2">
+        <div class="flex items-center justify-between mt-2 mb-2">
+          <p class="text-xs text-textMuted font-semibold">Item Produk (per Section, opsional dari Price Book)</p>
+          <button type="button" onclick="addDealSection()" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ Tambah Section</button>
         </div>
-        <div id="deal-items-wrap">${renderDealDraftItemsHTML()}</div>
+        <div id="deal-sections-wrap">${renderDealSectionsHTML()}</div>
+        <p class="text-right text-sm font-bold text-white pt-1">Grand Total: <span class="font-mono text-emerald-400" id="deal-grand-total">${money(dealDraftTotal())}</span></p>
       </div>
       <div class="flex justify-between items-center pt-2">
         ${d?`<button type="button" onclick="deleteDeal('${d.id}')" class="text-xs text-red-400 hover:underline">Hapus deal</button>`:'<span></span>'}
@@ -957,14 +1806,14 @@ function openDealModal(id, prefillContactId){
         </div>
       </div>
     </form>
-  `);
+  `, { maxWidth:'max-w-3xl' });
   document.getElementById('deal-form').addEventListener('submit', saveDeal);
 }
 async function saveDeal(e){
   e.preventDefault();
   const f = new FormData(e.target);
   const id = f.get('id');
-  const data = { title:f.get('title').trim(), contactId:f.get('contactId')||null, value:Number(f.get('value'))||0, probability:Math.max(0,Math.min(100,Number(f.get('probability'))||0)), stage:f.get('stage'), ownerId:f.get('ownerId')||'me', items: JSON.parse(JSON.stringify(dealDraftItems)) };
+  const data = { title:f.get('title').trim(), contactId:f.get('contactId')||null, value:Number(f.get('value'))||0, probability:Math.max(0,Math.min(100,Number(f.get('probability'))||0)), stage:f.get('stage'), ownerId:f.get('ownerId')||myOwnerId(), items: dealSectionsToItems(dealDraft.sections) };
   if (!data.title) return;
   if (id){
     const existing = state.deals.find(x=>x.id===id);
@@ -1026,6 +1875,18 @@ function openDealDetail(id){
       <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3"><p class="text-textMuted text-[10px] mb-1">Owner</p><p class="text-slate-300">👤 ${esc(ownerName(d.ownerId))}</p></div>
       <div class="bg-panelBg/60 border border-white/5 rounded-xl p-3"><p class="text-textMuted text-[10px] mb-1">Item Produk</p><p class="text-slate-300">${(d.items||[]).length} item</p></div>
     </div>
+    ${(d.items||[]).length ? `<h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">Item Produk</h4>
+    <div class="space-y-3 mb-4">
+      ${dealItemsToSections(d.items).map((sec,sIdx)=>`<div>
+        <p class="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-1">${esc(sec.name)}</p>
+        <div class="space-y-1.5">
+          ${sec.items.map(it=>`<div class="bg-panelBg/60 border border-white/5 rounded-lg px-2.5 py-2 text-[11px] flex justify-between gap-3">
+            <div class="min-w-0"><p class="text-slate-200 font-semibold break-words">${esc(it.model)||'—'}</p>${it.description?`<p class="text-textMuted break-words">${esc(it.description)}</p>`:''}<p class="text-textMuted">${it.qty.toLocaleString('id-ID')} ${esc(it.unit)} × ${money(it.price)}</p></div>
+            <span class="font-mono text-cyan-400 whitespace-nowrap">${money(it.qty*it.price)}</span></div>`).join('')}
+        </div>
+        <p class="text-[11px] text-right text-textMuted mt-1">${sec.discountPct?`Diskon ${sec.discountPct}% · `:''}Total ${sIdx+1}: <span class="font-mono text-emerald-400 font-bold">${money(sectionTotal(sec))}</span></p>
+      </div>`).join('')}
+    </div>` : ''}
     ${d.stage==='Lost' && d.lossReason ? `<div class="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-300 mb-3">Alasan kalah: ${esc(d.lossReason)}</div>` : ''}
     <div class="flex flex-wrap gap-1.5 mb-5">
       ${STAGES.map(s=>`<button onclick="updateDealStage('${d.id}','${s}'); openDealDetail('${d.id}')" class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${s===d.stage?'text-textMain':'text-textMuted'}" style="border-color:${STAGE_COLOR[s]}55; ${s===d.stage?`background:${STAGE_COLOR[s]}33;`:''}">${s}</button>`).join('')}
@@ -1168,19 +2029,6 @@ function renderQuotesKpis(){
     kpiCard({ tone:'cyan', label:'Menunggu Respons', icon:KPI_ICONS.send, value:sent.length.toLocaleString('id-ID'), unit:'penawaran', sub:`Terkirim, senilai ${money(val(sent))}` }) +
     kpiCard({ tone:'green', label:'Diterima', icon:KPI_ICONS.ok, value:acc.length.toLocaleString('id-ID'), unit:'penawaran', sub: decided ? `${money(val(acc))}, ${Math.round(acc.length/decided*100)}% dari yang diputuskan` : 'Belum ada yang diputuskan' });
 }
-function renderTeamKpis(members){
-  const ids = new Set(members.map(m=>m.id));
-  const owned = state.deals.filter(d=>ids.has(d.ownerId));
-  const won = owned.filter(d=>d.stage==='Won');
-  const wonTotal = won.reduce((s,d)=>s+d.value,0);
-  const perf = members.map(m=>({ m, v: state.deals.filter(d=>d.ownerId===m.id&&d.stage==='Won').reduce((s,d)=>s+d.value,0) })).sort((a,b)=>b.v-a.v);
-  const top = perf[0] && perf[0].v>0 ? perf[0] : null;
-  document.getElementById('team-kpis').innerHTML =
-    kpiCard({ tone:'purple', label:'Anggota Tim', icon:KPI_ICONS.users, value:members.length.toLocaleString('id-ID'), sub:'Termasuk Anda' }) +
-    kpiCard({ tone:'cyan', label:'Deal Ditangani', icon:KPI_ICONS.bars, value:owned.length.toLocaleString('id-ID'), sub:`${owned.filter(d=>d.stage!=='Won'&&d.stage!=='Lost').length} masih aktif` }) +
-    kpiCard({ tone:'green', label:'Revenue Won Tim', icon:KPI_ICONS.coin, value:money(wonTotal), sub:`Dari ${won.length} deal yang dimenangkan` }) +
-    kpiCard({ tone:'pink', label:'Top Performer', icon:KPI_ICONS.trophy, value: top ? top.m.name : '—', sub: top ? `Revenue won ${money(top.v)}` : 'Belum ada deal yang dimenangkan' });
-}
 
 function renderTagFilterRow(){
   const allTags = [...new Set(state.contacts.flatMap(c=>c.tags||[]))];
@@ -1195,7 +2043,7 @@ function renderContacts(){
   const list = state.contacts.filter(c=>{
     const matchesQ = !q || c.name.toLowerCase().includes(q) || contactCompanyName(c).toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q);
     const matchesTag = !tagFilter || (c.tags||[]).includes(tagFilter);
-    const matchesOwner = !ownerFilter || c.ownerId===ownerFilter;
+    const matchesOwner = !ownerFilter || sameOwner(c.ownerId, ownerFilter);
     return matchesQ && matchesTag && matchesOwner;
   });
   renderTagFilterRow();
@@ -1254,7 +2102,7 @@ function renderDeals(){
   const ownerFilter = document.getElementById('deals-owner-filter').value;
   const board = document.getElementById('kanban-board');
   board.innerHTML = STAGES.map(stage=>{
-    const deals = state.deals.filter(d=>d.stage===stage && (!q || d.title.toLowerCase().includes(q)) && (!ownerFilter || d.ownerId===ownerFilter));
+    const deals = state.deals.filter(d=>d.stage===stage && (!q || d.title.toLowerCase().includes(q)) && (!ownerFilter || sameOwner(d.ownerId, ownerFilter)));
     const total = deals.reduce((s,d)=>s+d.value,0);
     return `
     <div class="kanban-col glass-card rounded-2xl p-3 flex flex-col min-h-[200px]" data-stage="${stage}"
@@ -1395,9 +2243,9 @@ function renderReports(){
       <span class="font-mono text-cyan-400 font-bold">${money(x.total)}</span>
     </div>`).join('') || '<p class="text-textMuted">Belum ada data cukup untuk peringkat perusahaan.</p>';
 
-  const owners = [{id:'me', name: state.profile.name}, ...state.team];
+  const owners = ownerCandidates();
   const leaderboard = owners.map(o=>{
-    const ownedWon = state.deals.filter(d=>d.stage==='Won' && d.ownerId===o.id);
+    const ownedWon = state.deals.filter(d=>d.stage==='Won' && sameOwner(d.ownerId, o.id));
     return { name:o.name, total: ownedWon.reduce((s,d)=>s+d.value,0), count: ownedWon.length };
   }).sort((a,b)=>b.total-a.total);
   document.getElementById('leaderboard-list').innerHTML = leaderboard.map((x,i)=>`
@@ -1451,7 +2299,7 @@ function renderDashboardStats(){
     <div class="flex items-center gap-2.5"><span class="w-2 h-2 rounded-full ${dotColor[t.priority]}"></span><p class="text-slate-400">${esc(t.title)}</p></div>`).join('') : '<p class="text-textMuted">Tidak ada tugas mendesak 🎉</p>';
 
   document.getElementById('dash-recent-activity').innerHTML = state.activities.slice(0,5).map(a=>`
-    <div class="flex items-start gap-3"><span class="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 flex-shrink-0"></span><div><p class="text-slate-300">${esc(a.text)}</p><p class="text-[10px] text-slate-500">${timeAgo(a.at)}</p></div></div>`).join('') || '<p class="text-textMuted">Belum ada aktivitas</p>';
+    <div class="flex items-start gap-3"><span class="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 flex-shrink-0"></span><div><p class="text-slate-300">${esc(a.text)}</p><p class="text-[10px] text-slate-500">${timeAgo(a.at)}${a.actorName?' • '+esc(a.actorName):''}</p></div></div>`).join('') || '<p class="text-textMuted">Belum ada aktivitas</p>';
 
   const openDeals = state.deals.filter(d=>d.stage!=='Won'&&d.stage!=='Lost').sort((a,b)=>b.probability-a.probability);
   const top = openDeals[0];
@@ -1614,7 +2462,7 @@ document.getElementById('global-search').addEventListener('input', (e)=>{
   const companies = state.companies.filter(c=>c.name.toLowerCase().includes(q)).slice(0,4);
   const deals = state.deals.filter(d=>d.title.toLowerCase().includes(q)).slice(0,4);
   const tasks = state.tasks.filter(t=>t.title.toLowerCase().includes(q)).slice(0,4);
-  const products = state.products.filter(p=>p.name.toLowerCase().includes(q)).slice(0,4);
+  const products = state.products.filter(p=>productMatchesQuery(p, q)).slice(0,4);
   const quotes = state.quotes.filter(qt=>qt.number.toLowerCase().includes(q)).slice(0,4);
   const invoices = state.invoices.filter(iv=>iv.number.toLowerCase().includes(q) || (iv.toName||'').toLowerCase().includes(q)).slice(0,4);
   const results = document.getElementById('search-results');
@@ -1688,7 +2536,7 @@ function defaultWarehouse(){
 /* Pastikan selalu ada minimal 1 gudang, dan seluruh transaksi lama (tanpa gudang) dipindahkan
    permanen ke gudang default — sekali jalan, aman dipanggil berulang (idempotent). */
 async function ensureDefaultWarehouse(){
-  if (!currentUser) return;
+  if (!currentUser || !can('stock','view') || !can('stock','create')) return;   // user tanpa akses stok tidak boleh membuat gudang
   if (!state.warehouses.length){
     state.warehouses.push({ id:uid(), name:'Gudang Utama', code:'GU', address:'', isDefault:true, createdAt:new Date().toISOString() });
     await persist('warehouses');
@@ -1698,7 +2546,7 @@ async function ensureDefaultWarehouse(){
   state.stock_movements.forEach(m=>{
     if (!m.warehouseId || !state.warehouses.some(w=>w.id===m.warehouseId)){ m.warehouseId = def.id; migrated++; }
   });
-  if (migrated) await persist('stock_movements');
+  if (migrated && can('stock','edit')) await persist('stock_movements');
 }
 function warehouseName(id){ const w = state.warehouses.find(x=>x.id===id); return w ? w.name : '—'; }
 function movementWarehouseId(m, defId){
@@ -1782,7 +2630,7 @@ function renderProducts(){
   whSel.classList.toggle('hidden', !multi);
   const wf = multi ? whSel.value : '';
 
-  let list = state.products.filter(p=> !q || p.name.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.model||'').toLowerCase().includes(q) || (p.category||'').toLowerCase().includes(q));
+  let list = state.products.filter(p=> productMatchesQuery(p, q));
   if (lowOnly){
     const lowIds = new Set(lowStockProducts().map(p=>p.id));
     list = list.filter(p=>lowIds.has(p.id));
@@ -2273,6 +3121,7 @@ function setDocsTab(tab){
   document.getElementById('docs-tab-quotes').className = isQuotes ? activeCls : inactiveCls;
   document.getElementById('docs-tab-invoices').className = !isQuotes ? activeCls : inactiveCls;
   if (isQuotes) renderQuotes(); else renderInvoices();
+  applyPermissionUI();
 }
 
 function renderQuotes(){
@@ -2297,25 +3146,42 @@ function renderQuotes(){
 
 /* ---- Quote builder (draft state + dynamic sections/items) ---- */
 let quoteDraft = null;
+/* Nomor dokumen dihitung di database atas SELURUH workspace (user ber-cakupan 'own' hanya melihat sebagian quotation/invoice,
+   sehingga menghitung dari data lokal akan menghasilkan nomor kembar antar-marketing). */
+const docNo = { quote:null, invoice:null };
+async function refreshDocNumber(kind){
+  try { const { data, error } = await sbClient.rpc('next_doc_number', { _kind:kind }); if (!error && data) docNo[kind] = data; } catch(e){}
+  return docNo[kind];
+}
+async function syncDocNumberInput(kind){
+  const sel = '#modal-root input[name=number], #drawer-root input[name=number]';
+  const el0 = document.querySelector(sel); if (!el0) return;
+  const before = el0.value;
+  const n = await refreshDocNumber(kind);
+  const el = document.querySelector(sel);
+  if (n && el && el.value === before && !(el.form && el.form.elements.id && el.form.elements.id.value)) el.value = n;
+}
+async function ensureUniqueDocNumber(kind, data){
+  try {
+    const r = await sbClient.rpc('doc_number_exists', { _kind:kind, _number:data.number });
+    if (r.data === true){
+      docNo[kind] = null; const n = await refreshDocNumber(kind);
+      if (n){ data.number = n; toast(`Nomor sudah dipakai user lain — diganti otomatis menjadi ${n}`, 'info'); }
+    }
+  } catch(e){}
+}
 function nextQuoteNumber(){
   const n = new Date();
-  return `QT/${(state.quotes.length+1).toString().padStart(3,'0')}/${n.getFullYear()}`;
+  return docNo.quote || `QT/${(state.quotes.length+1).toString().padStart(3,'0')}/${n.getFullYear()}`;
 }
 function newQuoteDraftFromDeal(deal){
   const contact = deal ? getContact(deal.contactId) : null;
   const co = contact ? getCompany(contact.companyId) : null;
-  const sections = [];
-  /* Konsisten dengan menu Penawaran & Invoice: nama section default "A. EQUIPMENT" dan
-     tiap item dipetakan dari Price Book lewat quoteItemFromProduct() (Model / Deskripsi / Satuan). */
-  const sec = blankQuoteSection('A. EQUIPMENT');
-  if (deal && deal.items && deal.items.length){
-    sec.items = deal.items.map(it=>{
-      const p = it.productId ? state.products.find(x=>x.id===it.productId) : null;
-      // Harga & qty tetap dari deal (nilai kesepakatan); info produk dari Price Book.
-      return quoteItemFromProduct(p || { name: it.name, unit: 'Unit' }, { qty: it.qty, price: it.price });
-    });
-  }
-  sections.push(sec);
+  /* Section, diskon, dan item Deal dibawa apa adanya → template Penawaran identik dengan input di Deal.
+     Deal tanpa item mendapat satu section kosong "A. EQUIPMENT". */
+  const sections = (deal && deal.items && deal.items.length)
+    ? dealItemsToSections(deal.items).map(sec=>({ name:sec.name, discountPct:sec.discountPct, items: sec.items.map(it=>({ model:it.model, description:it.description, qty:it.qty, unit:it.unit, price:it.price })) }))
+    : [blankQuoteSection('A. EQUIPMENT')];
   return {
     number: nextQuoteNumber(),
     subject: deal ? deal.title : '',
@@ -2345,83 +3211,29 @@ function newQuoteDraftFromDeal(deal){
     ],
   };
 }
-function productPickerOptions(){
-  return state.products.map(p=>{
-    const stock = productStock(p.id);
-    const stockTag = stock<=0 ? ' (stok habis)' : ` (stok ${stock.toLocaleString('id-ID')})`;
-    return `<option value="${p.id}">${esc(p.category?('['+p.category+'] '):'')}${esc(p.name)} — ${money(p.price)}${stockTag}</option>`;
-  }).join('') || '<option value="">Belum ada produk di Price Book</option>';
-}
 function renderQuoteSectionsHTML(){
-  return quoteDraft.sections.map((sec, sIdx)=>{
-    const sub = sectionSubtotal(sec), disc = sectionDiscountAmount(sec), tot = sectionTotal(sec);
-    return `
-    <div class="border border-white/10 rounded-xl p-3 mb-3 bg-panelBg/40">
-      <div class="flex gap-2 items-center mb-2">
-        <input value="${esc(sec.name)}" oninput="updateSectionField(${sIdx},'name',this.value)" placeholder="Nama Section, contoh: A. EQUIPMENT FIRE ALARM" class="field-input flex-1 rounded-lg px-2 py-1.5 text-xs font-bold">
-        <input type="number" min="0" max="100" value="${sec.discountPct}" oninput="updateSectionDiscount(${sIdx},this.value)" class="field-input w-16 rounded-lg px-2 py-1.5 text-xs" title="Diskon %">
-        <span class="text-[10px] text-textMuted">% disc</span>
-        <button type="button" onclick="removeQuoteSection(${sIdx})" class="text-[10px] text-red-400 hover:underline whitespace-nowrap">Hapus Section</button>
-      </div>
-      <div class="overflow-x-auto">
-      <table class="w-full text-[11px] mb-2 border-collapse">
-        <thead><tr class="text-textMuted text-left border-b border-white/10">
-          <th class="py-1 pr-1 w-24">Model</th><th class="py-1 pr-1">Deskripsi</th><th class="py-1 pr-1 w-12">Qty</th><th class="py-1 pr-1 w-16">Satuan</th><th class="py-1 pr-1 w-28">Harga</th><th class="py-1 pr-1 w-28">Subtotal</th><th class="w-6"></th>
-        </tr></thead>
-        <tbody>
-          ${(sec.items||[]).map((it,iIdx)=>`<tr class="border-b border-white/5">
-            <td class="py-1 pr-1"><input value="${esc(it.model)}" oninput="updateItemField(${sIdx},${iIdx},'model',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input value="${esc(it.description)}" oninput="updateItemField(${sIdx},${iIdx},'description',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input type="number" min="0" value="${it.qty}" oninput="updateItemNumber(${sIdx},${iIdx},'qty',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input value="${esc(it.unit)}" oninput="updateItemField(${sIdx},${iIdx},'unit',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input type="number" min="0" value="${it.price}" oninput="updateItemNumber(${sIdx},${iIdx},'price',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1 font-mono text-cyan-400" id="qi-sub-${sIdx}-${iIdx}">${money((Number(it.qty)||0)*(Number(it.price)||0))}</td>
-            <td class="py-1"><button type="button" onclick="removeQuoteItem(${sIdx},${iIdx})" class="text-red-400">✕</button></td>
-          </tr>`).join('') || `<tr><td colspan="7" class="text-textMuted py-2">Belum ada item di section ini.</td></tr>`}
-        </tbody>
-      </table>
-      </div>
-      <div class="flex flex-wrap gap-2 mb-2">
-        <select id="qpick-${sIdx}" class="field-input text-[11px] rounded px-2 py-1.5 flex-1 min-w-[160px]">${productPickerOptions()}</select>
-        <button type="button" onclick="addQuoteItemFromProduct(${sIdx})" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ dari Price Book</button>
-        <button type="button" onclick="addQuoteItemBlank(${sIdx})" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ Item Manual</button>
-      </div>
-      <div class="text-[11px] text-right space-y-0.5">
-        <p class="text-textMuted">Sub Total: <span class="font-mono text-slate-300" id="qs-sub-${sIdx}">${money(sub)}</span></p>
-        <p class="text-textMuted">Diskon (<span id="qs-discpct-${sIdx}">${sec.discountPct}</span>%): <span class="font-mono text-red-400" id="qs-disc-${sIdx}">${money(disc)}</span></p>
-        <p class="font-bold text-white">Total ${sIdx+1}: <span class="font-mono text-emerald-400" id="qs-total-${sIdx}">${money(tot)}</span></p>
-      </div>
-    </div>`;
-  }).join('');
+  return lineSectionsHTML({ sections:quoteDraft.sections, key:'quote', itemPre:'qi', secPre:'qs',
+    fn:{ secField:'updateSectionField', secDisc:'updateSectionDiscount', secRemove:'removeQuoteSection', itemField:'updateItemField', itemNum:'updateItemNumber', itemRemove:'removeQuoteItem', itemBlank:'addQuoteItemBlank' } });
 }
 function refreshQuoteSectionsUI(){
   document.getElementById('quote-sections-wrap').innerHTML = renderQuoteSectionsHTML();
   recomputeQuoteTotals();
 }
 function recomputeQuoteTotals(){
-  quoteDraft.sections.forEach((sec, sIdx)=>{
-    (sec.items||[]).forEach((it,iIdx)=>{
-      const el = document.getElementById(`qi-sub-${sIdx}-${iIdx}`);
-      if (el) el.textContent = money((Number(it.qty)||0)*(Number(it.price)||0));
-    });
-    const subEl = document.getElementById(`qs-sub-${sIdx}`); if (subEl) subEl.textContent = money(sectionSubtotal(sec));
-    const discPctEl = document.getElementById(`qs-discpct-${sIdx}`); if (discPctEl) discPctEl.textContent = sec.discountPct;
-    const discEl = document.getElementById(`qs-disc-${sIdx}`); if (discEl) discEl.textContent = money(sectionDiscountAmount(sec));
-    const totEl = document.getElementById(`qs-total-${sIdx}`); if (totEl) totEl.textContent = money(sectionTotal(sec));
-  });
-  const grandEl = document.getElementById('quote-grand-total');
-  if (grandEl) grandEl.textContent = money(quoteDraft.sections.reduce((s,sec)=>s+sectionTotal(sec),0));
+  const grand = recomputeLineSections(quoteDraft.sections, 'qi', 'qs');
+  const grandEl = document.getElementById('quote-grand-total'); if (grandEl) grandEl.textContent = money(grand);
 }
 function updateSectionField(sIdx, field, val){ quoteDraft.sections[sIdx][field] = val; }
 function updateSectionDiscount(sIdx, val){ quoteDraft.sections[sIdx].discountPct = Math.max(0, Math.min(100, Number(val)||0)); recomputeQuoteTotals(); }
 function updateItemField(sIdx, iIdx, field, val){ quoteDraft.sections[sIdx].items[iIdx][field] = val; }
 function updateItemNumber(sIdx, iIdx, field, val){ quoteDraft.sections[sIdx].items[iIdx][field] = Number(val)||0; recomputeQuoteTotals(); }
-function addQuoteItemFromProduct(sIdx){
-  const sel = document.getElementById(`qpick-${sIdx}`);
-  const p = state.products.find(x=>x.id===sel.value);
+function addQuoteItemFromProduct(sIdx, productId){
+  const p = state.products.find(x=>x.id===productId);
   if (!p){ toast('Pilih produk dari daftar dahulu','err'); return; }
   quoteDraft.sections[sIdx].items.push(quoteItemFromProduct(p));
   refreshQuoteSectionsUI();
+  ppFocus('quote:'+sIdx);                                      // lanjut cari produk berikutnya
+  toast(`Ditambahkan: ${p.name}`);
 }
 function addQuoteItemBlank(sIdx){ quoteDraft.sections[sIdx].items.push(blankQuoteItem()); refreshQuoteSectionsUI(); }
 function removeQuoteItem(sIdx, iIdx){ quoteDraft.sections[sIdx].items.splice(iIdx,1); refreshQuoteSectionsUI(); }
@@ -2515,7 +3327,7 @@ function openQuoteModal(id, prefillDealId){
         </div>
       </div>
     </form>
-  `);
+  `, { maxWidth:'max-w-3xl' });
   document.getElementById('quote-form').addEventListener('submit', saveQuote);
 }
 async function saveQuote(e){
@@ -2535,13 +3347,14 @@ async function saveQuote(e){
     notesList, terms,
   };
   if (!data.number){ toast('Nomor quotation wajib diisi','err'); return; }
+  if (!id) await ensureUniqueDocNumber('quote', data);
   if (id){ const ex = state.quotes.find(x=>x.id===id); Object.assign(ex, data); toast('Quotation diperbarui'); }
   else {
     state.quotes.unshift({ id:uid(), ...data, status:'Draft', createdAt:new Date().toISOString() });
     logActivity(`Quotation "${data.number}" dibuat${data.projectName?(' untuk project "'+data.projectName+'"'):''}`, {dealId:data.dealId, contactId:data.contactId});
     toast('Quotation dibuat');
   }
-  await persist('quotes'); closeModal(); closeDrawer(); renderQuotes();
+  await persist('quotes'); if (!id){ docNo.quote = null; refreshDocNumber('quote'); } closeModal(); closeDrawer(); renderQuotes();
 }
 async function deleteQuote(id){
   if(!confirm('Hapus quotation ini?')) return;
@@ -2845,7 +3658,7 @@ function printQuote(id, signerId){
 
 /* ---------- INVOICE ---------- */
 function nextInvoiceNumber(){
-  return `INV/${(state.invoices.length+1).toString().padStart(3,'0')}/${new Date().getFullYear()}`;
+  return docNo.invoice || `INV/${(state.invoices.length+1).toString().padStart(3,'0')}/${new Date().getFullYear()}`;
 }
 function invoiceGrandTotal(inv){ return (inv.sections||[]).reduce((s,sec)=> s + sectionTotal(sec), 0); }
 function invoiceDisplayStatus(inv){
@@ -2923,76 +3736,29 @@ function newInvoiceDraftFromQuote(q){
   };
 }
 function renderInvoiceSectionsHTML(){
-  return invoiceDraft.sections.map((sec, sIdx)=>{
-    const sub = sectionSubtotal(sec), disc = sectionDiscountAmount(sec), tot = sectionTotal(sec);
-    return `
-    <div class="border border-white/10 rounded-xl p-3 mb-3 bg-panelBg/40">
-      <div class="flex gap-2 items-center mb-2">
-        <input value="${esc(sec.name)}" oninput="updateInvoiceSectionField(${sIdx},'name',this.value)" placeholder="Nama Section" class="field-input flex-1 rounded-lg px-2 py-1.5 text-xs font-bold">
-        <input type="number" min="0" max="100" value="${sec.discountPct}" oninput="updateInvoiceSectionDiscount(${sIdx},this.value)" class="field-input w-16 rounded-lg px-2 py-1.5 text-xs" title="Diskon %">
-        <span class="text-[10px] text-textMuted">% disc</span>
-        <button type="button" onclick="removeInvoiceSection(${sIdx})" class="text-[10px] text-red-400 hover:underline whitespace-nowrap">Hapus Section</button>
-      </div>
-      <div class="overflow-x-auto">
-      <table class="w-full text-[11px] mb-2 border-collapse">
-        <thead><tr class="text-textMuted text-left border-b border-white/10">
-          <th class="py-1 pr-1 w-24">Model</th><th class="py-1 pr-1">Deskripsi</th><th class="py-1 pr-1 w-12">Qty</th><th class="py-1 pr-1 w-16">Satuan</th><th class="py-1 pr-1 w-28">Harga</th><th class="py-1 pr-1 w-28">Subtotal</th><th class="w-6"></th>
-        </tr></thead>
-        <tbody>
-          ${(sec.items||[]).map((it,iIdx)=>`<tr class="border-b border-white/5">
-            <td class="py-1 pr-1"><input value="${esc(it.model)}" oninput="updateInvoiceItemField(${sIdx},${iIdx},'model',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input value="${esc(it.description)}" oninput="updateInvoiceItemField(${sIdx},${iIdx},'description',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input type="number" min="0" value="${it.qty}" oninput="updateInvoiceItemNumber(${sIdx},${iIdx},'qty',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input value="${esc(it.unit)}" oninput="updateInvoiceItemField(${sIdx},${iIdx},'unit',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1"><input type="number" min="0" value="${it.price}" oninput="updateInvoiceItemNumber(${sIdx},${iIdx},'price',this.value)" class="field-input w-full rounded px-1.5 py-1 text-[11px]"></td>
-            <td class="py-1 pr-1 font-mono text-cyan-400" id="ivi-sub-${sIdx}-${iIdx}">${money((Number(it.qty)||0)*(Number(it.price)||0))}</td>
-            <td class="py-1"><button type="button" onclick="removeInvoiceItem(${sIdx},${iIdx})" class="text-red-400">✕</button></td>
-          </tr>`).join('') || `<tr><td colspan="7" class="text-textMuted py-2">Belum ada item di section ini.</td></tr>`}
-        </tbody>
-      </table>
-      </div>
-      <div class="flex flex-wrap gap-2 mb-2">
-        <select id="ivpick-${sIdx}" class="field-input text-[11px] rounded px-2 py-1.5 flex-1 min-w-[160px]">${productPickerOptions()}</select>
-        <button type="button" onclick="addInvoiceItemFromProduct(${sIdx})" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ dari Price Book</button>
-        <button type="button" onclick="addInvoiceItemBlank(${sIdx})" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">+ Item Manual</button>
-      </div>
-      <div class="text-[11px] text-right space-y-0.5">
-        <p class="text-textMuted">Sub Total: <span class="font-mono text-slate-300" id="ivs-sub-${sIdx}">${money(sub)}</span></p>
-        <p class="text-textMuted">Diskon (<span id="ivs-discpct-${sIdx}">${sec.discountPct}</span>%): <span class="font-mono text-red-400" id="ivs-disc-${sIdx}">${money(disc)}</span></p>
-        <p class="font-bold text-white">Total ${sIdx+1}: <span class="font-mono text-emerald-400" id="ivs-total-${sIdx}">${money(tot)}</span></p>
-      </div>
-    </div>`;
-  }).join('');
+  return lineSectionsHTML({ sections:invoiceDraft.sections, key:'invoice', itemPre:'ivi', secPre:'ivs',
+    fn:{ secField:'updateInvoiceSectionField', secDisc:'updateInvoiceSectionDiscount', secRemove:'removeInvoiceSection', itemField:'updateInvoiceItemField', itemNum:'updateInvoiceItemNumber', itemRemove:'removeInvoiceItem', itemBlank:'addInvoiceItemBlank' } });
 }
 function refreshInvoiceSectionsUI(){
   document.getElementById('invoice-sections-wrap').innerHTML = renderInvoiceSectionsHTML();
   recomputeInvoiceTotals();
 }
 function recomputeInvoiceTotals(){
-  invoiceDraft.sections.forEach((sec, sIdx)=>{
-    (sec.items||[]).forEach((it,iIdx)=>{
-      const el = document.getElementById(`ivi-sub-${sIdx}-${iIdx}`);
-      if (el) el.textContent = money((Number(it.qty)||0)*(Number(it.price)||0));
-    });
-    const subEl = document.getElementById(`ivs-sub-${sIdx}`); if (subEl) subEl.textContent = money(sectionSubtotal(sec));
-    const discPctEl = document.getElementById(`ivs-discpct-${sIdx}`); if (discPctEl) discPctEl.textContent = sec.discountPct;
-    const discEl = document.getElementById(`ivs-disc-${sIdx}`); if (discEl) discEl.textContent = money(sectionDiscountAmount(sec));
-    const totEl = document.getElementById(`ivs-total-${sIdx}`); if (totEl) totEl.textContent = money(sectionTotal(sec));
-  });
-  const grandEl = document.getElementById('invoice-grand-total');
-  if (grandEl) grandEl.textContent = money(invoiceDraft.sections.reduce((s,sec)=>s+sectionTotal(sec),0));
+  const grand = recomputeLineSections(invoiceDraft.sections, 'ivi', 'ivs');
+  const grandEl = document.getElementById('invoice-grand-total'); if (grandEl) grandEl.textContent = money(grand);
 }
 function updateInvoiceSectionField(sIdx, field, val){ invoiceDraft.sections[sIdx][field] = val; }
 function updateInvoiceSectionDiscount(sIdx, val){ invoiceDraft.sections[sIdx].discountPct = Math.max(0, Math.min(100, Number(val)||0)); recomputeInvoiceTotals(); }
 function updateInvoiceItemField(sIdx, iIdx, field, val){ invoiceDraft.sections[sIdx].items[iIdx][field] = val; }
 function updateInvoiceItemNumber(sIdx, iIdx, field, val){ invoiceDraft.sections[sIdx].items[iIdx][field] = Number(val)||0; recomputeInvoiceTotals(); }
-function addInvoiceItemFromProduct(sIdx){
-  const sel = document.getElementById(`ivpick-${sIdx}`);
-  const p = state.products.find(x=>x.id===sel.value);
+function addInvoiceItemFromProduct(sIdx, productId){
+  const p = state.products.find(x=>x.id===productId);
   if (!p){ toast('Pilih produk dari daftar dahulu','err'); return; }
   const description = [p.model, p.description].filter(Boolean).join(' — ');
   invoiceDraft.sections[sIdx].items.push({ model:p.name||'', description, qty:1, unit:p.unit||'Unit', price:p.price });
   refreshInvoiceSectionsUI();
+  ppFocus('invoice:'+sIdx);
+  toast(`Ditambahkan: ${p.name}`);
 }
 function addInvoiceItemBlank(sIdx){ invoiceDraft.sections[sIdx].items.push(blankInvoiceItem()); refreshInvoiceSectionsUI(); }
 function removeInvoiceItem(sIdx, iIdx){ invoiceDraft.sections[sIdx].items.splice(iIdx,1); refreshInvoiceSectionsUI(); }
@@ -3078,7 +3844,7 @@ function openInvoiceModal(id, prefillQuoteId){
         </div>
       </div>
     </form>
-  `);
+  `, { maxWidth:'max-w-3xl' });
   document.getElementById('invoice-form').addEventListener('submit', saveInvoice);
 }
 async function saveInvoice(e){
@@ -3097,6 +3863,7 @@ async function saveInvoice(e){
     signerId: f.get('signerId')||'',
   };
   if (!data.number){ toast('Nomor invoice wajib diisi','err'); return; }
+  if (!id) await ensureUniqueDocNumber('invoice', data);
   if (id){ const ex = state.invoices.find(x=>x.id===id); Object.assign(ex, data); toast('Invoice diperbarui'); }
   else {
     state.invoices.unshift({ id:uid(), ...data, status:'Draft', createdAt:new Date().toISOString() });
@@ -3112,7 +3879,7 @@ async function saveInvoice(e){
       renderTasks(); renderNotifications();
     }
   }
-  await persist('invoices'); closeModal(); closeDrawer(); renderInvoices();
+  await persist('invoices'); if (!id){ docNo.invoice = null; refreshDocNumber('invoice'); } closeModal(); closeDrawer(); renderInvoices();
 }
 async function deleteInvoice(id){
   if(!confirm('Hapus invoice ini?')) return;
@@ -3339,34 +4106,436 @@ function exportInvoicesCSV(){
 
 
 /* ---------- TEAM ---------- */
+/* ---------- TEAM: performa + manajemen user + hak akses ---------- */
+let teamTab = null;   // 'users' | 'perf' | 'roles'
+function teamMembersForPerf(){
+  if (isOwnScope()){
+    const me = state.members.find(m=>currentUser && m.user_id===currentUser.id);
+    return me ? [{ id:me.user_id, name:me.full_name||me.email, role:roleLabel(me.role) + (me.job_title?' • '+me.job_title:''), avatar:me.avatar, roleKey:me.role, isMe:true }] : [];
+  }
+  const accs = state.members.filter(m=>m.is_active).map(m=>({ id:m.user_id, name:m.full_name||m.email, role:roleLabel(m.role) + (m.job_title?' • '+m.job_title:''), avatar:m.avatar, roleKey:m.role, isMe:currentUser && m.user_id===currentUser.id }));
+  const legacy = state.team.map(t=>({ id:t.id, name:t.name, role:t.role||'Tanpa akun login', avatar:t.avatar, legacy:true }));
+  return accs.concat(legacy);
+}
+function setTeamTab(tab){
+  if (!isAdmin() && tab !== 'perf') tab = 'perf';
+  teamTab = tab;
+  ['users','perf','roles'].forEach(t=>{
+    const pane = document.getElementById('team-pane-'+t); if (pane) pane.classList.toggle('hidden', t!==tab);
+    const btn = document.getElementById('team-tab-'+t);
+    if (btn) btn.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg transition ' + (t===tab ? 'bg-gradient-to-r from-purple-600 to-cyan-500 text-white' : 'text-slate-400 hover:text-slate-200');
+  });
+  renderTeam();
+}
+function renderTeamKpis(members){
+  const owned = state.deals.filter(d=>members.some(m=>sameOwner(d.ownerId, m.id)));
+  const won = owned.filter(d=>d.stage==='Won');
+  const wonTotal = won.reduce((s,d)=>s+d.value,0);
+  const perf = members.map(m=>({ m, v: state.deals.filter(d=>sameOwner(d.ownerId,m.id)&&d.stage==='Won').reduce((s,d)=>s+d.value,0) })).sort((a,b)=>b.v-a.v);
+  const top = perf[0] && perf[0].v>0 ? perf[0] : null;
+  document.getElementById('team-kpis').innerHTML =
+    kpiCard({ tone:'purple', label:'Anggota Tim', icon:KPI_ICONS.users, value:members.length.toLocaleString('id-ID'), sub:'User aktif + anggota tanpa akun' }) +
+    kpiCard({ tone:'cyan', label:'Deal Ditangani', icon:KPI_ICONS.bars, value:owned.length.toLocaleString('id-ID'), sub:`${owned.filter(d=>d.stage!=='Won'&&d.stage!=='Lost').length} masih aktif` }) +
+    kpiCard({ tone:'green', label:'Revenue Won Tim', icon:KPI_ICONS.coin, value:money(wonTotal), sub:`Dari ${won.length} deal yang dimenangkan` }) +
+    kpiCard({ tone:'pink', label:'Top Performer', icon:KPI_ICONS.trophy, value: top ? top.m.name : '—', sub: top ? `Revenue won ${money(top.v)}` : 'Belum ada deal yang dimenangkan' });
+}
+function roleBadge(role){
+  const r = ROLES[role] || { label:role, color:'#64748b' };
+  return `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border" style="color:${r.color};border-color:${r.color}55;background:${r.color}1a">${esc(r.label)}</span>`;
+}
 function renderTeam(){
-  document.getElementById('team-empty').classList.toggle('hidden', state.team.length>0);
-  const members = [{ id:'me', name: state.profile.name, role: state.profile.role, avatar: state.profile.avatar, isMe:true }, ...state.team];
+  if (!teamTab) teamTab = isAdmin() ? 'users' : 'perf';
+  if (!isAdmin() && teamTab !== 'perf') teamTab = 'perf';
+  const tabsEl = document.getElementById('team-tabs'); if (tabsEl) tabsEl.classList.toggle('hidden', !isAdmin());
+  ['users','perf','roles'].forEach(t=>{ const pane = document.getElementById('team-pane-'+t); if (pane) pane.classList.toggle('hidden', t!==teamTab); });
+  ['users','perf','roles'].forEach(t=>{ const b = document.getElementById('team-tab-'+t); if (b) b.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg transition ' + (t===teamTab ? 'bg-gradient-to-r from-purple-600 to-cyan-500 text-white' : 'text-slate-400 hover:text-slate-200'); });
+  if (teamTab === 'perf') renderTeamPerf();
+  else if (teamTab === 'users') renderUserManagement();
+  else renderRoleMatrix();
+}
+function renderTeamPerf(){
+  const members = teamMembersForPerf();
+  document.getElementById('team-empty').classList.toggle('hidden', members.length>0);
   renderTeamKpis(members);
   document.getElementById('team-grid').innerHTML = members.map(m=>{
-    const ownedDeals = state.deals.filter(d=>d.ownerId===m.id);
+    const ownedDeals = state.deals.filter(d=>sameOwner(d.ownerId,m.id));
     const won = ownedDeals.filter(d=>d.stage==='Won');
     const wonValue = won.reduce((s,d)=>s+d.value,0);
+    const color = (ROLES[m.roleKey]||{}).color;
     return `<div class="glass-card glass-card-hover rounded-2xl p-4">
       <div class="flex items-center gap-3 mb-3">
-        <img src="${m.avatar||'https://randomuser.me/api/portraits/lego/1.jpg'}" class="w-10 h-10 rounded-full ring-2 ring-purple-500/40">
-        <div><p class="font-bold text-white text-sm">${esc(m.name)} ${m.isMe?'<span class=\"text-[9px] text-purple-400\">(Anda)</span>':''}</p><p class="text-xs text-textMuted">${esc(m.role)||'—'}</p></div>
+        <img src="${esc(m.avatar) || initialsAvatar(m.name, color)}" class="w-10 h-10 rounded-full ring-2 ring-purple-500/40 object-cover">
+        <div class="min-w-0"><p class="font-bold text-white text-sm truncate">${esc(m.name)} ${m.isMe?'<span class="text-[9px] text-purple-400">(Anda)</span>':''}</p><p class="text-xs text-textMuted truncate">${esc(m.role)||'—'}</p></div>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] mb-3">
         <div class="bg-panelBg/60 border border-white/5 rounded-lg p-2"><p class="text-textMuted text-[9px]">Deal Aktif</p><p class="font-bold text-slate-200">${ownedDeals.length}</p></div>
         <div class="bg-panelBg/60 border border-white/5 rounded-lg p-2"><p class="text-textMuted text-[9px]">Revenue Won</p><p class="font-bold text-emerald-400 font-mono">${money(wonValue)}</p></div>
       </div>
-      ${m.isMe ? '' : `<div class="flex gap-2">
+      ${m.legacy ? `<div class="flex gap-2">
         <button onclick="openTeamModal('${m.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit</button>
         <button onclick="deleteTeamMember('${m.id}')" class="text-[10px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>
-      </div>`}
+      </div>` : ''}
     </div>`;
   }).join('');
 }
+
+/* ---- Manajemen User ---- */
+function memberStatus(m){ return m.is_active ? '<span class="text-[10px] text-emerald-400 font-semibold">● Aktif</span>' : '<span class="text-[10px] text-slate-400 font-semibold">● Nonaktif</span>'; }
+function renderUserManagement(){
+  const root = document.getElementById('user-mgmt-root'); if (!root) return;
+  const ms = state.members, inv = state.invites || [];
+  const active = ms.filter(m=>m.is_active).length;
+  const byRole = ROLE_ORDER.map(r=>`${roleLabel(r)}: ${ms.filter(m=>m.role===r && m.is_active).length}`).join(' • ');
+  document.getElementById('team-kpis').innerHTML =
+    kpiCard({ tone:'purple', label:'User Aktif', icon:KPI_ICONS.users, value:active.toLocaleString('id-ID'), sub:`Dari ${ms.length} akun terdaftar` }) +
+    kpiCard({ tone:'cyan', label:'Berdasarkan Role', icon:KPI_ICONS.bars, value:ROLE_ORDER.filter(r=>ms.some(m=>m.role===r&&m.is_active)).length+'/4', unit:'role terpakai', sub:byRole }) +
+    kpiCard({ tone:'amber', label:'Undangan Menunggu', icon:KPI_ICONS.clock, value:inv.length.toLocaleString('id-ID'), sub: inv.length ? 'Menunggu login pertama / konfirmasi email' : 'Tidak ada undangan tertunda' }) +
+    kpiCard({ tone:'slate', label:'Nonaktif', icon:KPI_ICONS.ok, value:(ms.length-active).toLocaleString('id-ID'), sub:'Tidak bisa login, data tetap aman' });
+  const row = m=>{
+    const me = currentUser && m.user_id===currentUser.id;
+    const n = countPerms(m.permissions, m.role);
+    const color = (ROLES[m.role]||{}).color;
+    return `<div class="glass-card rounded-2xl p-4 flex flex-wrap items-center gap-3 ${m.is_active?'':'opacity-60'}">
+      <img src="${esc(m.avatar) || initialsAvatar(m.full_name||m.email, color)}" class="w-10 h-10 rounded-full ring-2 ring-purple-500/40 object-cover flex-shrink-0">
+      <div class="min-w-0 flex-1" style="min-width:180px">
+        <p class="text-sm font-bold text-white truncate">${esc(m.full_name||'—')} ${me?'<span class="text-[9px] text-purple-400">(Anda)</span>':''} ${m.is_owner?'<span class="text-[9px] text-amber-400">👑 Pemilik</span>':''}</p>
+        <p class="text-[11px] text-textMuted truncate">${esc(m.email)}${m.job_title?' • '+esc(m.job_title):''}</p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        ${roleBadge(m.role)}
+        ${m.role!=='administrator'&&m.data_scope==='own' ? '<span class="text-[10px] px-2 py-0.5 rounded-full border border-cyan-500/30 text-cyan-300 bg-cyan-500/10" title="Hanya melihat data miliknya sendiri">Data: milik sendiri</span>' : ''}
+        <span class="text-[10px] text-textMuted" title="Jumlah izin yang aktif">${m.role==='administrator'?'Akses penuh':`${n.on}/${n.total} izin`}</span>
+        ${memberStatus(m)}
+      </div>
+      <div class="flex gap-1.5 flex-wrap">
+        <button onclick="openUserModal('${m.user_id}')" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Edit & Hak Akses</button>
+        ${state.members.length>1 ? `<button onclick="openOwnerTransfer('${m.user_id}')" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10" title="Pindahkan semua kontak, deal & dokumen user ini ke user lain">Alihkan Data</button>`:''}
+        ${!m.is_owner||me ? `<button onclick="openResetPassword('${m.user_id}')" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-panelBorder text-slate-300 hover:bg-white/5">Reset Password</button>`:''}
+        ${!m.is_owner && !me ? `<button onclick="toggleUserActive('${m.user_id}')" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10">${m.is_active?'Nonaktifkan':'Aktifkan'}</button>
+        <button onclick="deleteUser('${m.user_id}')" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Hapus</button>`:''}
+      </div>
+    </div>`;
+  };
+  const invRow = i=>`<div class="glass-card rounded-2xl p-4 flex flex-wrap items-center gap-3 border border-dashed border-amber-500/30">
+      <div class="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">✉</div>
+      <div class="min-w-0 flex-1" style="min-width:180px"><p class="text-sm font-bold text-white truncate">${esc(i.full_name||i.email)}</p><p class="text-[11px] text-textMuted truncate">${esc(i.email)} • berlaku sampai ${new Date(i.expires_at).toLocaleDateString('id-ID')}</p></div>
+      <div class="flex items-center gap-3">${roleBadge(i.role)}<span class="text-[10px] text-amber-400 font-semibold">● Menunggu login pertama</span></div>
+      <button onclick="cancelInvite('${i.id}')" class="text-[10px] px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Batalkan</button>
+    </div>`;
+  const reqs = state.requests || [];
+  const reqRow = r=>`<div class="glass-card rounded-2xl p-4 flex flex-wrap items-center gap-3 border border-amber-500/40 bg-amber-500/5">
+      <div class="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">🙋</div>
+      <div class="min-w-0 flex-1" style="min-width:180px"><p class="text-sm font-bold text-white truncate">${esc(r.full_name||r.email)}</p>
+        <p class="text-[11px] text-textMuted truncate">${esc(r.email)} • mendaftar ${new Date(r.created_at).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'})}</p>
+        ${r.message ? `<p class="text-[11px] text-slate-300 mt-1 line-clamp-2">“${esc(r.message)}”</p>` : ''}</div>
+      <span class="text-[10px] text-amber-400 font-semibold">● Menunggu persetujuan</span>
+      <button onclick="openAccessReview('${r.user_id}')" class="text-[10px] font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Tinjau</button>
+    </div>`;
+  const reqBlock = reqs.length ? `<div class="mb-4"><p class="text-xs font-bold text-amber-300 mb-2">Permintaan Akses (${reqs.length}) <span class="font-normal text-textMuted">— hanya Anda sebagai Administrator utama yang bisa memutuskan</span></p><div class="space-y-3">${reqs.map(reqRow).join('')}</div></div>` : '';
+  root.innerHTML = reqBlock + (ms.map(row).join('') + inv.map(invRow).join('') || '<p class="text-xs text-textMuted">Belum ada user.</p>');
+}
+function renderRoleMatrix(){
+  const root = document.getElementById('role-matrix-root'); if (!root) return;
+  const presets = {}; ROLE_ORDER.forEach(r=> presets[r] = presetPermissions(r));
+  const head = ROLE_ORDER.map(r=>`<th class="px-3 py-2 text-center">${roleBadge(r)}</th>`).join('');
+  const body = PERM_CATALOG.map(m=>`<tr class="border-t border-white/5">
+      <td class="px-3 py-2"><p class="text-xs font-semibold text-slate-200">${esc(m.label)}</p><p class="text-[10px] text-textMuted">${esc(m.hint)}</p></td>
+      ${ROLE_ORDER.map(r=>`<td class="px-3 py-2 text-center text-[10px] text-slate-300">${m.actions.map(a=>{ const on = presets[r][m.key][a]; return `<span class="inline-block px-1.5 py-0.5 m-0.5 rounded ${on?'bg-emerald-500/15 text-emerald-300':'bg-slate-500/10 text-slate-500 line-through'}">${ACTION_LABEL[a]}</span>`; }).join('')}</td>`).join('')}
+    </tr>`).join('');
+  root.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">${ROLE_ORDER.map(r=>`<div class="glass-card rounded-2xl p-4">${roleBadge(r)}<p class="text-[11px] text-textMuted mt-2 leading-relaxed">${esc(ROLES[r].desc)}</p></div>`).join('')}</div>
+    <div class="glass-card rounded-2xl overflow-x-auto"><table class="w-full text-left"><thead><tr><th class="px-3 py-2 text-[10px] uppercase text-textMuted">Modul</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <p class="text-[11px] text-textMuted mt-3"><b class="text-slate-300">Cakupan data</b> diatur terpisah dari izin modul: Marketing default <i>hanya data milik sendiri</i> (tidak melihat data marketing lain), role lain default <i>semua data tim</i>. Administrator selalu melihat semuanya.</p>
+    <p class="text-[11px] text-textMuted mt-2">Tabel di atas adalah <b class="text-slate-300">preset awal</b> tiap role. Saat membuat/mengedit user, setiap izin masih bisa diatur satu per satu sesuai tugas orangnya.</p>`;
+}
+
+/* ---- Matriks izin di dalam form user ---- */
+function permMatrixHTML(perms, disabled){
+  return `<div class="border border-panelBorder/60 rounded-xl overflow-hidden"><table class="w-full text-left" id="perm-matrix">
+    <thead><tr class="bg-panelBg/80"><th class="px-3 py-2 text-[10px] uppercase text-textMuted">Modul</th>${['view','create','edit','delete','manage'].map(a=>`<th class="px-2 py-2 text-[10px] uppercase text-textMuted text-center">${ACTION_LABEL[a]}</th>`).join('')}</tr></thead><tbody>
+    ${PERM_CATALOG.map(m=>`<tr class="border-t border-white/5"><td class="px-3 py-1.5"><p class="text-[11px] font-semibold text-slate-200">${esc(m.label)}</p><p class="text-[9px] text-textMuted">${esc(m.hint)}</p></td>
+      ${['view','create','edit','delete','manage'].map(a=> m.actions.includes(a)
+        ? `<td class="px-2 py-1.5 text-center"><input type="checkbox" class="task-check w-4 h-4" data-mod="${m.key}" data-act="${a}" ${(perms&&perms[m.key]&&perms[m.key][a])?'checked':''} ${disabled?'disabled':''} onchange="onPermToggle(this)"></td>`
+        : '<td class="px-2 py-1.5 text-center text-slate-600">–</td>').join('')}
+    </tr>`).join('')}</tbody></table></div>`;
+}
+function onPermToggle(cb){
+  // Konsistensi: mencentang Buat/Ubah/Hapus otomatis mencentang Lihat; mematikan Lihat mematikan sisanya.
+  const mod = cb.dataset.mod, act = cb.dataset.act;
+  const get = a => document.querySelector(`#perm-matrix input[data-mod="${mod}"][data-act="${a}"]`);
+  if (['create','edit','delete'].includes(act) && cb.checked){ const v = get('view'); if (v) v.checked = true; }
+  if (act === 'view' && !cb.checked){ ['create','edit','delete'].forEach(a=>{ const x = get(a); if (x) x.checked = false; }); }
+}
+function readPermMatrix(){
+  const perms = {};
+  document.querySelectorAll('#perm-matrix input[type=checkbox]').forEach(cb=>{
+    (perms[cb.dataset.mod] = perms[cb.dataset.mod] || {})[cb.dataset.act] = cb.checked;
+  });
+  return perms;
+}
+function onUserRoleChange(sel){
+  const role = sel.value;
+  document.getElementById('perm-matrix-wrap').innerHTML = permMatrixHTML(presetPermissions(role), role==='administrator');
+  document.getElementById('role-desc').textContent = ROLES[role].desc;
+  document.getElementById('perm-admin-note').classList.toggle('hidden', role!=='administrator');
+  const sc = document.querySelector('#user-form select[name=data_scope]');
+  if (sc){ sc.value = ROLE_DEFAULT_SCOPE[role] || 'all'; sc.disabled = role==='administrator'; }
+}
+function resetPermsToRole(){
+  onUserRoleChange(document.querySelector('#user-form select[name=role]'));
+  toast('Izin dikembalikan ke preset role', 'info');
+}
+function generatePassword(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const arr = new Uint32Array(12); crypto.getRandomValues(arr);
+  return Array.from(arr, n=>chars[n % chars.length]).join('') + '#7';
+}
+function fillGeneratedPassword(){
+  const el = document.querySelector('#user-form input[name=password]');
+  el.value = generatePassword(); el.type = 'text';
+}
+function openUserModal(id){
+  const m = id ? state.members.find(x=>x.user_id===id) : null;
+  const role = m ? m.role : 'marketing';
+  const perms = m ? (m.role==='administrator' ? presetPermissions('administrator') : (m.permissions||{})) : presetPermissions(role);
+  const isOwnerRow = !!(m && m.is_owner);
+  const scope = m ? (m.role==='administrator' ? 'all' : (m.data_scope||'all')) : ROLE_DEFAULT_SCOPE[role];
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">${m?'Edit User & Hak Akses':'Buat User Baru'}</h3>
+    <p class="text-[11px] text-textMuted mb-4">${m?'Ubah data, role, dan izin akses user ini. Perubahan berlaku seketika, bahkan jika user sedang login.':'Buat akun login untuk anggota tim, lalu atur apa saja yang boleh ia lakukan.'}</p>
+    <form id="user-form" class="space-y-3 text-sm">
+      <input type="hidden" name="id" value="${m?m.user_id:''}">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="text-xs text-textMuted block mb-1">Nama Lengkap</label><input name="full_name" required class="field-input rounded-xl px-3 py-2 w-full" value="${m?esc(m.full_name):''}"></div>
+        <div><label class="text-xs text-textMuted block mb-1">Jabatan (opsional)</label><input name="job_title" class="field-input rounded-xl px-3 py-2 w-full" placeholder="mis. Sales Executive" value="${m?esc(m.job_title):''}"></div>
+      </div>
+      <div><label class="text-xs text-textMuted block mb-1">Email (untuk login)</label><input type="email" name="email" required ${m?'readonly':''} class="field-input rounded-xl px-3 py-2 w-full ${m?'opacity-70':''}" value="${m?esc(m.email):''}" autocomplete="off"></div>
+      ${m ? '' : `<div><label class="text-xs text-textMuted block mb-1">Password Awal <span class="text-slate-500">(min. 10 karakter — sarankan user menggantinya setelah login)</span></label>
+        <div class="flex gap-2"><input name="password" type="password" required minlength="10" autocomplete="new-password" class="field-input rounded-xl px-3 py-2 flex-1 font-mono">
+        <button type="button" onclick="fillGeneratedPassword()" class="text-[11px] px-3 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5 flex-shrink-0">Buat acak</button></div></div>`}
+      <div><label class="text-xs text-textMuted block mb-1">Role</label>
+        <select name="role" ${isOwnerRow?'disabled':''} class="field-input rounded-xl px-3 py-2 w-full" onchange="onUserRoleChange(this)">
+          ${ROLE_ORDER.map(r=>`<option value="${r}" ${r===role?'selected':''}>${ROLES[r].label}</option>`).join('')}
+        </select>
+        <p id="role-desc" class="text-[10px] text-textMuted mt-1">${esc(ROLES[role].desc)}</p>
+      </div>
+      <div id="scope-wrap">
+        <label class="text-xs text-textMuted block mb-1">Cakupan Data</label>
+        <select name="data_scope" ${(isOwnerRow||role==='administrator')?'disabled':''} class="field-input rounded-xl px-3 py-2 w-full">
+          <option value="all" ${scope==='all'?'selected':''}>${SCOPE_LABEL.all}</option>
+          <option value="own" ${scope==='own'?'selected':''}>${SCOPE_LABEL.own}</option>
+        </select>
+        <p class="text-[10px] text-textMuted mt-1">"Hanya data milik sendiri": user tidak bisa melihat kontak, deal, quotation, invoice, tugas, catatan & aktivitas milik user lain. Data yang ia buat otomatis menjadi miliknya.</p>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1.5"><label class="text-xs text-textMuted">Hak Akses per Modul</label>
+          <button type="button" onclick="resetPermsToRole()" class="text-[10px] text-purple-400 hover:underline">Kembalikan ke preset role</button></div>
+        <p id="perm-admin-note" class="${role==='administrator'?'':'hidden'} text-[11px] text-purple-300 bg-purple-500/10 border border-purple-500/20 rounded-xl p-2 mb-2">Administrator selalu memiliki akses penuh ke semua modul, termasuk manajemen user.</p>
+        <div id="perm-matrix-wrap" class="max-h-[38vh] overflow-y-auto">${permMatrixHTML(perms, role==='administrator')}</div>
+      </div>
+      ${isOwnerRow ? '<p class="text-[10px] text-amber-300">👑 Pemilik workspace: role tidak dapat diubah dan akun tidak dapat dinonaktifkan.</p>' : ''}
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeModal()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+        <button type="submit" id="user-save-btn" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">${m?'Simpan Perubahan':'Buat User'}</button>
+      </div>
+    </form>`, { maxWidth:'max-w-2xl' });
+  document.getElementById('user-form').addEventListener('submit', saveUser);
+}
+/* ---- Permintaan akses: tinjau, setujui (pilih role), atau tolak. Hanya pemilik. ---- */
+function openAccessReview(id){
+  if (!myMember || !myMember.is_owner){ toast('Hanya Administrator utama yang bisa memutuskan permintaan akses', 'err'); return; }
+  const r = (state.requests||[]).find(x=>x.user_id===id); if (!r) return;
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">Tinjau permintaan akses</h3>
+    <p class="text-[11px] text-textMuted mb-4">${esc(r.full_name||'—')} • ${esc(r.email)}</p>
+    ${r.message ? `<p class="text-xs text-slate-300 bg-panelBg/80 border border-panelBorder/60 rounded-xl p-3 mb-4">“${esc(r.message)}”</p>` : ''}
+    <form id="review-form" class="space-y-3">
+      <input type="hidden" name="id" value="${esc(id)}">
+      <div><label class="text-xs text-textMuted block mb-1">Role yang diberikan jika disetujui</label>
+        <select name="role" class="field-input rounded-xl px-3 py-2 text-sm w-full" onchange="document.getElementById('review-admin-warn').classList.toggle('hidden', this.value!=='administrator'); document.getElementById('review-scope-row').classList.toggle('hidden', this.value==='administrator')">
+          ${ROLE_ORDER.map(k=>`<option value="${k}" ${k==='marketing'?'selected':''}>${esc(roleLabel(k))}</option>`).join('')}
+        </select></div>
+      <p id="review-admin-warn" class="hidden text-[11px] text-red-300 border border-red-500/30 bg-red-500/10 rounded-xl px-3 py-2 leading-relaxed">Administrator punya akses penuh: semua data, manajemen user, reset password, dan penghapusan data. Berikan hanya kepada orang yang Anda kenal dan percayai.</p>
+      <div id="review-scope-row"><label class="text-xs text-textMuted block mb-1">Cakupan data</label>
+        <select name="data_scope" class="field-input rounded-xl px-3 py-2 text-sm w-full"><option value="all">${SCOPE_LABEL.all}</option><option value="own">${SCOPE_LABEL.own}</option></select></div>
+      <div><label class="text-xs text-textMuted block mb-1">Catatan untuk pemohon <span class="text-slate-500">(opsional, terlihat jika ditolak)</span></label>
+        <input name="note" maxlength="300" class="field-input rounded-xl px-3 py-2 text-sm w-full"></div>
+      <p class="text-[10px] text-textMuted">Izin rinci mengikuti preset role dan bisa diubah kapan saja lewat Edit &amp; Hak Akses.</p>
+      <div class="flex justify-between gap-2 pt-2">
+        <button type="button" id="review-reject" class="text-xs font-semibold px-4 py-2 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10">Tolak</button>
+        <button type="submit" id="review-approve" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Setujui</button>
+      </div>
+    </form>`);
+  const form = document.getElementById('review-form');
+  form.addEventListener('submit', e=>{ e.preventDefault(); decideAccessRequest(true); });
+  document.getElementById('review-reject').addEventListener('click', ()=> decideAccessRequest(false));
+}
+async function decideAccessRequest(approve){
+  if (!myMember || !myMember.is_owner) return;
+  const form = document.getElementById('review-form'), f = new FormData(form);
+  const id = f.get('id'), role = f.get('role'), r = (state.requests||[]).find(x=>x.user_id===id); if (!r) return;
+  const name = r.full_name || r.email;
+  if (approve && role === 'administrator' && !confirm('Jadikan ' + name + ' sebagai ADMINISTRATOR dengan akses penuh?')) return;
+  if (!approve && !confirm('Tolak permintaan akses ' + name + '?')) return;
+  const btns = form.querySelectorAll('button'); btns.forEach(b=>b.disabled = true);
+  const { error } = await sbClient.rpc('team_review_access_request', {
+    _user:id, _approve:approve, _role:role, _permissions:presetPermissions(role),
+    _data_scope: role==='administrator' ? 'all' : f.get('data_scope'), _note:(f.get('note')||'').trim() });
+  if (error){ btns.forEach(b=>b.disabled = false); toast('Gagal: ' + error.message, 'err'); return; }
+  await loadMembers(); closeModal(); renderAll();
+  toast(approve ? name + ' disetujui sebagai ' + roleLabel(role) : 'Permintaan ' + name + ' ditolak', approve ? 'ok' : 'info');
+}
+function newSignupClient(){
+  return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:'crm-create-user' } });
+}
+async function saveUser(e){
+  e.preventDefault();
+  if (!requirePerm('admin')) return;
+  const form = e.target, f = new FormData(form), btn = document.getElementById('user-save-btn');
+  const id = f.get('id');
+  const role = form.elements.role.disabled ? (state.members.find(x=>x.user_id===id)||{}).role : f.get('role');
+  const permissions = role==='administrator' ? presetPermissions('administrator') : readPermMatrix();
+  const data_scope = role==='administrator' ? 'all' : (form.elements.data_scope.disabled ? 'all' : form.elements.data_scope.value);
+  const full_name = (f.get('full_name')||'').trim(), job_title = (f.get('job_title')||'').trim();
+  if (!full_name){ toast('Nama wajib diisi','err'); return; }
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Menyimpan...';
+  try {
+    if (id){
+      const { error } = await sbClient.from('workspace_members').update({ full_name, job_title, role, permissions, data_scope }).eq('user_id', id);
+      if (error) throw error;
+      await loadMembers(); closeModal(); renderAll(); toast('User & hak akses diperbarui');
+      return;
+    }
+    const email = (f.get('email')||'').trim().toLowerCase(), password = f.get('password')||'';
+    { const iss = pwIssues(password, email); if (iss.length){ toast('Password awal belum memenuhi syarat: ' + iss.join(', '),'err'); return; } }
+    // 1) undangan (memberi tahu database bahwa email ini boleh masuk workspace ini dengan role & izin tsb)
+    const inv = await sbClient.rpc('team_create_invite', { _email:email, _full_name:full_name, _job_title:job_title, _role:role, _permissions:permissions, _data_scope:data_scope });
+    if (inv.error) throw inv.error;
+    // 2) buat akun login lewat klien terpisah agar sesi Administrator tidak tertimpa
+    const c = newSignupClient();
+    const su = await c.auth.signUp({ email, password, options:{ data:{ full_name } } });
+    if (su.error){ await sbClient.from('workspace_invites').delete().eq('id', inv.data.id); throw su.error; }
+    const already = su.data.user && Array.isArray(su.data.user.identities) && su.data.user.identities.length === 0;
+    let joined = false;
+    if (su.data.session){
+      const r = await c.rpc('ensure_membership');
+      joined = !r.error;
+      try { await c.auth.signOut(); } catch(_){}
+    }
+    await loadMembers(); renderAll();
+    showCredentials({ email, password, name:full_name, role, joined, already, data_scope });
+  } catch(err){
+    toast('Gagal: ' + (err.message || err), 'err');
+  } finally { if (btn){ btn.disabled = false; btn.textContent = label; } }
+}
+function showCredentials(c){
+  const note = c.already
+    ? 'Email ini sudah memiliki akun login. Undangan tetap aktif: saat pemilik email login dengan password lamanya, ia otomatis bergabung ke workspace ini (password di atas TIDAK dipakai).'
+    : c.joined
+      ? 'Akun sudah aktif — user bisa langsung login.'
+      : 'Akun dibuat, tetapi Supabase meminta konfirmasi email. User harus klik tautan konfirmasi di emailnya, lalu login. (Tips: matikan "Confirm email" di Supabase → Authentication → Providers → Email agar langsung aktif.)';
+  const text = `Login CRM\nEmail: ${c.email}\nPassword: ${c.password}\nRole: ${roleLabel(c.role)}\nURL: ${location.origin}${location.pathname}`;
+  window.__credText = text;
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">✅ User berhasil dibuat</h3>
+    <p class="text-[11px] text-textMuted mb-3">${esc(c.name)} • ${roleLabel(c.role)} • ${SCOPE_LABEL[c.data_scope||'all']}</p>
+    <pre class="bg-panelBg/80 border border-panelBorder/60 rounded-xl p-3 text-[11px] text-slate-200 whitespace-pre-wrap select-all">${esc(text)}</pre>
+    <p class="text-[11px] ${c.joined&&!c.already?'text-emerald-300':'text-amber-300'} mt-3 leading-relaxed">${esc(note)}</p>
+    <p class="text-[10px] text-textMuted mt-2">Password hanya ditampilkan sekali ini. Sampaikan ke user lewat jalur aman dan sarankan menggantinya di Settings → Ganti Password.</p>
+    <div class="flex justify-end gap-2 pt-4">
+      <button type="button" onclick="navigator.clipboard.writeText(window.__credText).then(()=>toast('Kredensial disalin'))" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Salin</button>
+      <button type="button" onclick="closeModal()" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Selesai</button>
+    </div>`);
+}
+async function toggleUserActive(id){
+  if (!requirePerm('admin')) return;
+  const m = state.members.find(x=>x.user_id===id); if (!m) return;
+  const to = !m.is_active;
+  if (!confirm(to ? `Aktifkan kembali ${m.full_name}?` : `Nonaktifkan ${m.full_name}? Ia langsung tidak bisa mengakses data, tetapi akunnya tidak dihapus.`)) return;
+  const { error } = await sbClient.from('workspace_members').update({ is_active: to }).eq('user_id', id);
+  if (error){ toast('Gagal: ' + error.message, 'err'); return; }
+  await loadMembers(); renderAll(); toast(to ? 'User diaktifkan' : 'User dinonaktifkan', to ? 'ok' : 'info');
+}
+function openResetPassword(id){
+  if (!requirePerm('admin')) return;
+  const m = state.members.find(x=>x.user_id===id); if (!m) return;
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">Reset Password</h3>
+    <p class="text-[11px] text-textMuted mb-3">${esc(m.full_name)} • ${esc(m.email)}</p>
+    <form id="reset-form" class="space-y-3 text-sm">
+      <input type="hidden" name="id" value="${m.user_id}">
+      <div class="flex gap-2"><input name="password" type="text" required minlength="10" autocomplete="off" class="field-input rounded-xl px-3 py-2 flex-1 font-mono" placeholder="Password baru (min. 10 karakter)">
+      <button type="button" onclick="document.querySelector('#reset-form input[name=password]').value=generatePassword()" class="text-[11px] px-3 rounded-xl border border-panelBorder text-slate-300 hover:bg-white/5">Buat acak</button></div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" onclick="closeModal()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+        <button type="submit" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Reset Password</button>
+      </div>
+    </form>`);
+  document.getElementById('reset-form').addEventListener('submit', saveResetPassword);
+}
+async function saveResetPassword(e){
+  e.preventDefault();
+  if (!requirePerm('admin')) return;
+  const f = new FormData(e.target), pw = f.get('password')||'';
+  const { error } = await sbClient.rpc('team_reset_password', { _target:f.get('id'), _new_password:pw });
+  if (error){ toast('Gagal: ' + error.message, 'err'); return; }
+  closeModal();
+  window.__credText = `Password baru: ${pw}`;
+  openModal(`<h3 class="text-sm font-bold text-white mb-2">✅ Password direset</h3>
+    <pre class="bg-panelBg/80 border border-panelBorder/60 rounded-xl p-3 text-[11px] text-slate-200 select-all">${esc(pw)}</pre>
+    <p class="text-[10px] text-textMuted mt-2">Sampaikan ke user lewat jalur aman. Sesi lama user tetap berjalan sampai ia keluar.</p>
+    <div class="flex justify-end pt-3"><button onclick="closeModal()" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Selesai</button></div>`);
+}
+function openOwnerTransfer(id){
+  if (!requirePerm('admin')) return;
+  const from = state.members.find(x=>x.user_id===id); if (!from) return;
+  const others = state.members.filter(x=>x.user_id!==id && x.is_active);
+  if (!others.length){ toast('Tidak ada user aktif lain sebagai tujuan','err'); return; }
+  const nC = state.contacts.filter(c=>sameOwner(c.ownerId,id)).length, nD = state.deals.filter(d=>sameOwner(d.ownerId,id)).length;
+  openModal(`
+    <h3 class="text-sm font-bold text-white mb-1">Alihkan Data</h3>
+    <p class="text-[11px] text-textMuted mb-3">Pindahkan seluruh data milik <b class="text-slate-200">${esc(from.full_name)}</b> (${nC} kontak, ${nD} deal, beserta perusahaan, tugas, quotation & invoice buatannya) ke user lain. Berguna saat sales pindah tugas atau keluar.</p>
+    <form id="transfer-form" class="space-y-3 text-sm">
+      <input type="hidden" name="from" value="${id}">
+      <div><label class="text-xs text-textMuted block mb-1">Alihkan ke</label>
+        <select name="to" class="field-input rounded-xl px-3 py-2 w-full">${others.map(o=>`<option value="${o.user_id}">${esc(o.full_name||o.email)} — ${roleLabel(o.role)}</option>`).join('')}</select></div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" onclick="closeModal()" class="text-xs px-4 py-2 rounded-xl border border-panelBorder text-slate-300">Batal</button>
+        <button type="submit" class="text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white">Alihkan Data</button>
+      </div>
+    </form>`);
+  document.getElementById('transfer-form').addEventListener('submit', saveOwnerTransfer);
+}
+async function saveOwnerTransfer(e){
+  e.preventDefault();
+  if (!requirePerm('admin')) return;
+  const f = new FormData(e.target);
+  const { data, error } = await sbClient.rpc('team_transfer_data', { _from:f.get('from'), _to:f.get('to') });
+  if (error){ toast('Gagal: ' + error.message, 'err'); return; }
+  await reloadAllData(); closeModal(); renderAll();
+  toast(`Data dialihkan: ${data.contacts||0} kontak, ${data.deals||0} deal`);
+}
+async function deleteUser(id){
+  if (!requirePerm('admin')) return;
+  const m = state.members.find(x=>x.user_id===id); if (!m) return;
+  if (!confirm(`Hapus user ${m.full_name} (${m.email}) secara permanen?\n\nAksesnya dicabut seketika. Semua data miliknya (kontak, deal, dokumen) otomatis dialihkan ke Anda agar tidak hilang; gunakan "Alihkan Data" lebih dulu bila ingin memberikannya ke user lain.`)) return;
+  const tr = await sbClient.rpc('team_transfer_data', { _from:id, _to:currentUser.id });
+  if (tr.error){ toast('Gagal mengalihkan data: ' + tr.error.message, 'err'); return; }
+  const { error } = await sbClient.rpc('team_delete_member', { _target:id });
+  if (error){ toast('Gagal: ' + error.message, 'err'); return; }
+  await reloadAllData(); await loadMembers(); renderAll(); toast('User dihapus', 'err');
+}
+async function cancelInvite(id){
+  if (!requirePerm('admin')) return;
+  if (!confirm('Batalkan undangan ini?')) return;
+  const { error } = await sbClient.from('workspace_invites').delete().eq('id', id);
+  if (error){ toast('Gagal: ' + error.message, 'err'); return; }
+  await loadMembers(); renderAll(); toast('Undangan dibatalkan', 'info');
+}
+
 function openTeamModal(id){
   const m = id ? state.team.find(x=>x.id===id) : null;
   openModal(`
-    <h3 class="text-sm font-bold text-white mb-4">${m?'Edit Anggota Tim':'Tambah Anggota Tim'}</h3>
+    <h3 class="text-sm font-bold text-white mb-4">${m?'Edit Anggota Tanpa Akun':'Tambah Anggota Tanpa Akun'}</h3>
     <form id="team-form" class="space-y-3 text-sm">
       <input type="hidden" name="id" value="${m?m.id:''}">
       <div><label class="text-xs text-textMuted block mb-1">Nama</label><input name="name" required class="field-input rounded-xl px-3 py-2 w-full" value="${m?esc(m.name):''}"></div>
@@ -3420,12 +4589,24 @@ function setProfileAvatarPreview(dataUrl){
     removeBtn.classList.add('hidden');
   }
 }
+function downscaleImage(dataUrl, maxSide, cb){
+  const img = new Image();
+  img.onload = ()=>{
+    const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.width*k)); c.height = Math.max(1, Math.round(img.height*k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    cb(c.toDataURL('image/jpeg', 0.85));
+  };
+  img.onerror = ()=> toast('Gagal membaca gambar', 'err');
+  img.src = dataUrl;
+}
 document.getElementById('profile-avatar-input').addEventListener('change', (e)=>{
   const file = e.target.files && e.target.files[0];
   if (!file) return;
-  if (file.size > 2*1024*1024){ toast('Ukuran foto maksimal 2MB', 'err'); e.target.value=''; return; }
+  if (file.size > 5*1024*1024){ toast('Ukuran foto maksimal 5MB', 'err'); e.target.value=''; return; }
   const reader = new FileReader();
-  reader.onload = ()=> setProfileAvatarPreview(reader.result);
+  reader.onload = ()=> downscaleImage(reader.result, 256, setProfileAvatarPreview);
   reader.onerror = ()=> toast('Gagal membaca file foto', 'err');
   reader.readAsDataURL(file);
 });
@@ -3433,20 +4614,115 @@ document.getElementById('profile-avatar-remove').addEventListener('click', ()=>{
   setProfileAvatarPreview('');
   document.getElementById('profile-avatar-input').value = '';
 });
+function initialsAvatar(name, color){
+  const t = (name||'?').trim().split(/\s+/).slice(0,2).map(s=>s[0]).join('').toUpperCase() || '?';
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' rx='32' fill='${color||'#7c3aed'}'/><text x='50%' y='50%' dy='.35em' text-anchor='middle' font-family='Arial,sans-serif' font-size='26' font-weight='700' fill='white'>${esc(t)}</text></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+function roleLabel(role){ return (ROLES[role] && ROLES[role].label) || role || '—'; }
 function renderProfile(){
-  document.getElementById('profile-avatar').src = state.profile.avatar || 'https://randomuser.me/api/portraits/men/32.jpg';
+  const roleKey = myMember ? myMember.role : '';
+  const roleColor = (ROLES[roleKey] && ROLES[roleKey].color) || '#7c3aed';
+  document.getElementById('profile-avatar').src = state.profile.avatar || initialsAvatar(state.profile.name, roleColor);
   document.getElementById('profile-name').textContent = state.profile.name;
   document.getElementById('profile-menu-name').textContent = state.profile.name;
-  document.getElementById('profile-menu-role').textContent = state.profile.role || '';
+  document.getElementById('profile-menu-role').textContent = roleLabel(roleKey) + (state.profile.role ? ' • ' + state.profile.role : '');
+  const badge = document.getElementById('account-role');
+  if (badge){ badge.textContent = roleLabel(roleKey); badge.style.color = roleColor; badge.style.borderColor = roleColor + '55'; badge.style.background = roleColor + '1a'; }
   const form = document.getElementById('profile-form');
-  form.name.value = state.profile.name; form.role.value = state.profile.role;
+  if (form.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return; // jangan timpa saat user sedang mengetik
+  form.elements.name.value = state.profile.name; form.elements.role.value = state.profile.role || '';
   setProfileAvatarPreview(state.profile.avatar || '');
 }
 document.getElementById('profile-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const f = new FormData(e.target);
-  state.profile = { name: f.get('name').trim(), role: f.get('role').trim(), avatar: (f.get('avatar')||'').trim() };
-  await persist('profile'); renderProfile(); toast('Profil disimpan');
+  const name = (f.get('name')||'').trim();
+  if (!name){ toast('Nama wajib diisi', 'err'); return; }
+  const { data, error } = await sbClient.rpc('update_my_profile', { _full_name:name, _job_title:(f.get('role')||'').trim(), _avatar:(f.get('avatar')||'').trim() });
+  if (error){ toast('Gagal menyimpan profil: ' + error.message, 'err'); return; }
+  myMember = data; applyMyProfile(); await loadMembers(); renderAll(); toast('Profil disimpan');
+});
+document.getElementById('password-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const form = e.target, f = new FormData(form), btn = form.querySelector('button[type=submit]');
+  const cur = f.get('current') || '', pw = f.get('password') || '', pw2 = f.get('password2') || '';
+  const issues = pwIssues(pw, currentUser && currentUser.email);
+  if (issues.length){ toast('Password baru belum memenuhi syarat: ' + issues.join(', '), 'err'); return; }
+  if (pw !== pw2){ toast('Konfirmasi password tidak sama', 'err'); return; }
+  if (pw === cur){ toast('Password baru harus berbeda dari yang lama', 'err'); return; }
+  btn.disabled = true;
+  try {
+    const chk = await sbClient.auth.signInWithPassword({ email: currentUser.email, password: cur });   // verifikasi ulang identitas
+    if (chk.error){ toast('Password saat ini salah', 'err'); return; }
+    const { error } = await sbClient.auth.updateUser({ password: pw });
+    if (error){ toast('Gagal mengganti password: ' + authFriendlyError(error, 'update'), 'err'); return; }
+    try { await sbClient.auth.signOut({ scope:'others' }); } catch(_){}
+    form.reset(); toast('Password diganti. Perangkat lain telah dikeluarkan.');
+  } finally { btn.disabled = false; }
+});
+
+/* ---------- Logo & nama aplikasi (Settings → Logo & Nama Aplikasi) ---------- */
+let brandPending = undefined;   // undefined = logo tidak diubah; '' = kembali ke bawaan; 'data:...' = logo baru
+function brandCurrent(){ return { logo: authCfg.brand_logo || '', name: authCfg.brand_name || '' }; }
+function initBrandSettings(){
+  const nm = document.getElementById('brand-name'); if (!nm) return;
+  brandPending = undefined; nm.value = brandCurrent().name;
+  document.getElementById('brand-preview').src = brandCurrent().logo || BRAND_DEFAULT.logo;
+}
+function brandToSquarePng(file, cb){
+  const fr = new FileReader();
+  fr.onerror = ()=> cb(null);
+  fr.onload = ()=>{
+    const im = new Image();
+    im.onerror = ()=> cb(null);
+    im.onload = ()=>{
+      for (const side of [256, 192, 128]){   // perkecil bertahap sampai <= ±250 KB
+        const c = document.createElement('canvas'); c.width = c.height = side;
+        const k = Math.min(side/im.width, side/im.height), w = Math.round(im.width*k), h = Math.round(im.height*k);
+        c.getContext('2d').drawImage(im, Math.round((side-w)/2), Math.round((side-h)/2), w, h);
+        const out = c.toDataURL('image/png');
+        if (out.length <= 250000) return cb(out);
+      }
+      cb(null);
+    };
+    im.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+function brandErrorText(e){
+  const m = (e && e.message) || '';
+  if ((e && e.code === 'PGRST202') || /could not find the function|schema cache/i.test(m))
+    return 'fitur ini belum aktif di database. Jalankan ulang supabase/schema.sql di Supabase → SQL Editor, lalu muat ulang halaman.';
+  if (/requires a where clause/i.test(m)) return 'SQL di database masih versi lama. Jalankan ulang supabase/schema.sql terbaru.';
+  if (/failed to fetch|network/i.test(m)) return 'tidak dapat terhubung ke server.';
+  return m || 'kesalahan tidak diketahui (lihat console browser).';
+}
+document.getElementById('brand-file').addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0]; if (!file) return;
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)){ toast('Format harus PNG, JPEG, atau WebP', 'err'); e.target.value = ''; return; }
+  if (file.size > 5*1024*1024){ toast('Ukuran file maksimal 5 MB', 'err'); e.target.value = ''; return; }
+  brandToSquarePng(file, (png)=>{
+    if (!png){ toast('Gambar tidak bisa diproses. Coba file lain.', 'err'); e.target.value = ''; return; }
+    brandPending = png; document.getElementById('brand-preview').src = png;
+  });
+});
+document.getElementById('brand-reset').addEventListener('click', ()=>{
+  brandPending = ''; document.getElementById('brand-file').value = ''; document.getElementById('brand-name').value = '';
+  document.getElementById('brand-preview').src = BRAND_DEFAULT.logo;
+  toast('Pratinjau dikembalikan ke bawaan. Tekan Simpan untuk menerapkan.', 'info');
+});
+document.getElementById('brand-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if (!isAdmin()){ toast('Hanya Administrator yang bisa mengubah logo aplikasi', 'err'); return; }
+  const btn = document.getElementById('brand-save'); btn.disabled = true;
+  try {
+    const logo = brandPending !== undefined ? brandPending : brandCurrent().logo;
+    const { data, error } = await sbClient.rpc('set_brand', { _logo: logo, _name: document.getElementById('brand-name').value.trim() });
+    if (error){ console.error('set_brand gagal', error); toast('Gagal menyimpan: ' + brandErrorText(error), 'err'); return; }
+    authCfg = data; applyBrand(data.brand_logo, data.brand_name); initBrandSettings();
+    toast('Logo & nama aplikasi disimpan');
+  } finally { btn.disabled = false; }
 });
 
 /* ---------- render all ---------- */
@@ -3472,6 +4748,7 @@ function renderTargetForm(){
 }
 document.getElementById('target-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
+  if (!requirePerm('settings.manage')) return;
   state.settings.monthlyTarget = Number(new FormData(e.target).get('monthlyTarget'))||0;
   await persist('settings'); renderDashboardStats(); toast('Target bulanan disimpan');
 });
@@ -3632,6 +4909,7 @@ function renderSignerTable(force){
 })();
 document.getElementById('company-profile-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
+  if (!requirePerm('settings.manage')) return;
   const f = new FormData(e.target);
   const fields = ['name','headOfficeLabel','headOfficeAddress','headOfficePhone','headOfficeEmail','headOfficeWebsite','branchOfficeLabel','branchOfficeAddress','branchOfficePhone','branchOfficeEmail','branchOfficeWebsite','bankInfo','footerAddress','footerPhone','footerWebsite','logo'];
   const company = Object.assign({}, state.settings.company);   // pertahankan signers/defaultSignerId
@@ -3694,12 +4972,10 @@ function findContactIdByName(name){
   return c ? c.id : null;
 }
 function findOwnerIdByName(name){
-  if (!name) return 'me';
-  const n = String(name).trim().toLowerCase();
-  if (!n) return 'me';
-  if (n===(state.profile.name||'').toLowerCase()) return 'me';
-  const m = state.team.find(x=>x.name.toLowerCase()===n);
-  return m ? m.id : 'me';
+  const n = String(name||'').trim().toLowerCase();
+  if (!n) return myOwnerId();
+  const c = ownerCandidates().find(x=>String(x.name).replace(/ \(nonaktif\)$/,'').toLowerCase()===n);
+  return c ? c.id : myOwnerId();
 }
 
 /* =====================================================================
@@ -3733,7 +5009,7 @@ const IMPORT_CONFIG = {
           companyId = co.id;
         }
         const tags = (r['tag']||r['tags']||'').split(';').map(s=>s.trim()).filter(Boolean);
-        state.contacts.unshift({ id:uid(), name, companyId, email:r['email']||'', phone:r['telepon']||r['phone']||'', status:(r['status']||'lead').toLowerCase()==='customer'?'customer':'lead', tags, ownerId:'me', createdAt:new Date().toISOString() });
+        state.contacts.unshift({ id:uid(), name, companyId, email:r['email']||'', phone:r['telepon']||r['phone']||'', status:(r['status']||'lead').toLowerCase()==='customer'?'customer':'lead', tags, ownerId:myOwnerId(), createdAt:new Date().toISOString() });
         count++;
       });
       await Promise.all([persist('contacts'), persist('companies')]);
@@ -4012,7 +5288,6 @@ function downloadFullBackup(){
   const payload = { app:'MyPortal CRM', version:1, exportedAt:new Date().toISOString(), data:{} };
   LIST_PARTS.forEach(part=>{ payload.data[part] = state[part]; });
   payload.settings = state.settings;
-  payload.profile = state.profile;
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `backup-crm-${new Date().toISOString().slice(0,10)}.json`; a.click();
@@ -4047,7 +5322,6 @@ async function confirmRestore(){
   const { payload, inputEl } = pendingRestore;
   LIST_PARTS.forEach(part=>{ state[part] = Array.isArray(payload.data[part]) ? payload.data[part] : []; });
   if (payload.settings) state.settings = { ...state.settings, ...payload.settings };
-  if (payload.profile) state.profile = { ...state.profile, ...payload.profile };
   await Promise.all(LIST_PARTS.map(persist));
   await persistUserSettings();
   await ensureDefaultWarehouse();
@@ -4058,10 +5332,99 @@ async function confirmRestore(){
   toast('Data berhasil dipulihkan dari backup');
 }
 
+/* ---------- Adegan "chip" untuk layar login (jalur sirkuit di sudut panel). Murni dekoratif. ---------- */
+function cyScene(root){
+  if (!root || root.dataset.cyBuilt) return; root.dataset.cyBuilt = '1';
+  const wrap = root.querySelector('.cy-wrap');
+  if (wrap){
+    const A = 'M300 40H262L238 16H60', B = 'M300 66H226L206 46H128';
+    const shape = `<path class="cy-line" d="${A}"/><path class="cy-pulse" pathLength="100" d="${A}" style="--o:0s"/><circle class="cy-node" cx="60" cy="16" r="4"/>`
+                + `<path class="cy-line thin" d="${B}"/><path class="cy-pulse" pathLength="100" d="${B}" style="--o:1.3s"/><circle class="cy-node sm" cx="128" cy="46" r="3"/>`;
+    wrap.insertAdjacentHTML('afterbegin', ['tl','tr','bl','br'].map((k,i)=>`<svg class="cy-trace ${k}" viewBox="0 0 300 90" aria-hidden="true" focusable="false" style="--d:${(i*0.55).toFixed(2)}s">${shape}</svg>`).join(''));
+  }
+}
+
 /* ---------- AUTH (Supabase email/password) ---------- */
-function showAuthScreen(){
+/* Kebijakan password, pembatas percobaan (sisi klien), reset lewat email, timeout idle.
+   Catatan: pembatas di sisi klien hanya pelengkap UX. Perlindungan brute-force yang sebenarnya
+   ada di Supabase (Authentication → Rate Limits / Attack Protection / CAPTCHA). */
+const PW_MIN = 10;
+const PW_COMMON = ['password','password1','password123','qwerty123','12345678','123456789','1234567890','admin123','welcome1','letmein123','iloveyou1','passw0rd','kata sandi','katasandi','indonesia123','sinergi123'];
+function pwIssues(pw, email){
+  const out = [];
+  if (pw.length < PW_MIN) out.push('minimal ' + PW_MIN + ' karakter');
+  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) out.push('kombinasi huruf dan angka');
+  const low = pw.toLowerCase(), local = (email||'').split('@')[0].toLowerCase();
+  if (PW_COMMON.some(c=>low.includes(c.replace(/\s/g,'')))) out.push('bukan password yang umum dipakai');
+  if (local.length >= 4 && low.includes(local)) out.push('tidak memuat nama email Anda');
+  return out;
+}
+function pwScore(pw, email){
+  if (!pw) return 0;
+  let sc = 0;
+  if (pw.length >= PW_MIN) sc++;
+  if (pw.length >= 14) sc++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) sc++;
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) sc++;
+  return pwIssues(pw, email).length ? Math.min(sc, 1) : Math.max(sc, 2);
+}
+function renderStrength(inputEl, wrapEl, textEl, email){
+  const pw = inputEl.value, sc = pwScore(pw, email), bars = wrapEl.querySelectorAll('i');
+  const cls = ['bg-red-500','bg-amber-500','bg-lime-500','bg-emerald-500'], labels = ['Lemah','Kurang kuat','Cukup kuat','Kuat'];
+  bars.forEach((b,i)=>{ b.className = 'h-1 flex-1 rounded-full ' + (i < sc ? cls[sc-1] : 'bg-panelBorder'); });
+  const issues = pwIssues(pw, email);
+  textEl.textContent = !pw ? '' : issues.length ? 'Perlu: ' + issues.join(', ') + '.' : 'Kekuatan: ' + labels[Math.max(sc,1)-1] + '.';
+}
+
+/* Pembatas percobaan login: jeda eksponensial setelah 5 kegagalan berturut-turut */
+const LOCK_KEY = 'crm-login-guard';
+function guardRead(){ try { return JSON.parse(localStorage.getItem(LOCK_KEY)||'{}'); } catch(e){ return {}; } }
+function guardWrite(g){ try { localStorage.setItem(LOCK_KEY, JSON.stringify(g)); } catch(e){} }
+function guardRemaining(){ const g = guardRead(); return Math.max(0, Math.ceil(((g.until||0) - Date.now())/1000)); }
+function guardFail(){
+  const g = guardRead(); g.n = (g.n||0) + 1;
+  if (g.n >= 5) g.until = Date.now() + Math.min(900, 30 * Math.pow(2, g.n - 5)) * 1000;
+  guardWrite(g);
+}
+function guardReset(){ guardWrite({}); }
+
+function authFriendlyError(err, mode){
+  const m = ((err && err.message) || '').toLowerCase(), code = (err && (err.code || '')) + '';
+  if (err && (err.status === 429 || code === 'over_request_rate_limit' || code === 'over_email_send_rate_limit' || m.includes('rate limit')))
+    return 'Terlalu banyak percobaan. Tunggu beberapa menit, lalu coba lagi.';
+  if (code === 'email_not_confirmed' || m.includes('not confirmed')) return 'Email belum dikonfirmasi. Buka tautan konfirmasi di kotak masuk Anda.';
+  if (code === 'weak_password' || m.includes('password should')) return 'Password terlalu lemah. Gunakan minimal ' + PW_MIN + ' karakter dengan huruf dan angka.';
+  if (code === 'signup_disabled' || m.includes('signups not allowed')) return 'Pendaftaran mandiri dinonaktifkan. Minta Administrator membuatkan akun.';
+  if (m.includes('failed to fetch') || m.includes('network')) return 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+  if (mode === 'signin' || m.includes('invalid login')) return 'Email atau password salah.';
+  return 'Permintaan gagal. Silakan coba lagi.';
+}
+function authMsg(text, kind){
+  const el = document.getElementById('auth-error');
+  el.textContent = text || '';
+  el.className = 'cy-msg ' + (kind === 'ok' ? 'ok' : kind === 'info' ? 'info' : 'err') + (text ? '' : ' hidden');
+}
+/* ganti tema dari layar login (tema yang sama dengan tombol matahari/bulan di aplikasi) */
+function cyToggleTheme(){
+  const root = document.documentElement, next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  root.setAttribute('data-theme', next);
+  try { localStorage.setItem('crm-theme', next); } catch(e){}
+}
+
+let authCfg = { signup_mode:'approval', bootstrapped:true };   // diperbarui dari auth_public_config(); default aman = approval
+let recoveryMode = /(^|[#&?])type=recovery\b/.test(location.hash + location.search);
+async function loadAuthConfig(){
+  try { const { data, error } = await sbClient.rpc('auth_public_config'); if (!error && data){ authCfg = data; if (window.applyBrand) applyBrand(data.brand_logo, data.brand_name); } } catch(e){}
+}
+async function showAuthScreen(){
+  await loadAuthConfig();
+  cyScene(document.getElementById('auth-overlay'));
   document.getElementById('loading-overlay').classList.add('hidden');
   document.getElementById('auth-overlay').classList.remove('hidden');
+  let note = null; try { note = sessionStorage.getItem('crm-auth-note'); sessionStorage.removeItem('crm-auth-note'); } catch(e){}
+  if (recoveryMode) setAuthMode('recovery'); else setAuthMode('signin');
+  if (note) authMsg(note, 'info');
+  setTimeout(()=>{ const el = document.getElementById(recoveryMode ? 'auth-password' : 'auth-email'); if (el) el.focus(); }, 50);
 }
 async function hideAuthAndBoot(user){
   currentUser = user;
@@ -4069,69 +5432,207 @@ async function hideAuthAndBoot(user){
   if (authEl) authEl.remove();
   const loadingEl = document.getElementById('loading-overlay');
   if (loadingEl){ loadingEl.classList.remove('hidden'); loadingEl.style.opacity = '1'; }
+  const acc = await loadMembership();          // cari workspace + role user ini (atau gabung lewat undangan)
+  if (acc.blocked){ showBlockedScreen(acc.blocked, acc.title, { pending: acc.pending }); return; }
   document.getElementById('account-email').textContent = user.email || '';
   await init();
+  startIdleWatch();
 }
+const AUTH_COPY = {
+  signin:   { title:'Masuk ke workspace Anda', sub:'', btn:'Masuk', pwLabel:'Password', toggleText:'Belum punya akun?', toggleLink:'Daftar di sini' },
+  signup:   { title:'Buat akun baru', sub:'', btn:'Daftar akun', pwLabel:'Password', toggleText:'Sudah punya akun?', toggleLink:'Masuk di sini' },
+  forgot:   { title:'Atur ulang password', sub:'Masukkan email akun Anda. Jika terdaftar, tautan pengaturan ulang akan dikirim.', btn:'Kirim tautan', pwLabel:'Password', toggleText:'Ingat password Anda?', toggleLink:'Kembali ke halaman masuk' },
+  recovery: { title:'Buat password baru', sub:'Pilih password baru untuk akun Anda.', btn:'Simpan password baru', pwLabel:'Password baru', toggleText:'', toggleLink:'' },
+};
 function setAuthMode(mode){
-  document.getElementById('auth-mode').value = mode;
-  document.getElementById('auth-submit-btn').textContent = mode==='signup' ? 'Daftar Akun' : 'Masuk';
-  document.getElementById('auth-title').textContent = mode==='signup' ? 'Buat akun baru' : 'Masuk ke workspace Anda';
-  document.getElementById('auth-toggle-text').textContent = mode==='signup' ? 'Sudah punya akun?' : 'Belum punya akun?';
-  document.getElementById('auth-toggle-link').textContent = mode==='signup' ? 'Masuk di sini' : 'Daftar di sini';
-  document.getElementById('auth-error').classList.add('hidden');
+  const c = AUTH_COPY[mode], $ = id => document.getElementById(id);
+  $('auth-mode').value = mode;
+  $('auth-title').textContent = c.title; $('auth-sub').textContent = c.sub;
+  $('auth-submit-btn').textContent = c.btn; $('auth-pw-label').textContent = c.pwLabel;
+  $('auth-toggle-text').textContent = c.toggleText; $('auth-toggle-link').textContent = c.toggleLink;
+  const signupOff = (typeof ALLOW_PUBLIC_SIGNUP !== 'undefined' && !ALLOW_PUBLIC_SIGNUP) || (authCfg.bootstrapped && authCfg.signup_mode === 'closed');
+  $('auth-toggle-link').parentElement.classList.toggle('hidden', mode==='recovery' || (mode==='signin' && signupOff));
+  const needsApproval = authCfg.bootstrapped && authCfg.signup_mode === 'approval';
+  if (mode === 'signup'){
+    $('auth-sub').textContent = !authCfg.bootstrapped ? 'Akun pertama otomatis menjadi Administrator utama (pemilik) workspace ini.'
+      : needsApproval ? 'Akun baru harus disetujui Administrator utama sebelum bisa mengakses data apa pun.'
+      : 'Anda akan menjadi Administrator workspace baru.';
+    $('auth-submit-btn').textContent = needsApproval ? 'Daftar & minta akses' : 'Daftar akun';
+  }
+  $('auth-extra-row').classList.toggle('hidden', !(mode==='signup' && needsApproval));
+  $('auth-email-row').classList.toggle('hidden', mode==='recovery');
+  $('auth-pw-row').classList.toggle('hidden', mode==='forgot');
+  $('auth-forgot-link').classList.toggle('hidden', mode!=='signin');
+  const newPw = mode==='signup' || mode==='recovery';
+  $('auth-pw2-row').classList.toggle('hidden', !newPw);
+  $('auth-strength').classList.toggle('hidden', !newPw);
+  $('auth-password').autocomplete = newPw ? 'new-password' : 'current-password';
+  $('auth-password').value = ''; $('auth-password2').value = '';
+  setPwVisible(false); authMsg('');
 }
-function toggleAuthMode(){ setAuthMode(document.getElementById('auth-mode').value==='signin' ? 'signup' : 'signin'); }
-document.getElementById('auth-toggle-link').addEventListener('click', toggleAuthMode);
+function authBtnLabel(mode){ return (mode==='signup' && authCfg.bootstrapped && authCfg.signup_mode==='approval') ? 'Daftar & minta akses' : AUTH_COPY[mode].btn; }
+function setPwVisible(on){
+  const t = document.getElementById('auth-pw-toggle');
+  [document.getElementById('auth-password'), document.getElementById('auth-password2')].forEach(i=>{ i.type = on ? 'text' : 'password'; });
+  t.textContent = on ? 'Sembunyikan' : 'Lihat'; t.setAttribute('aria-pressed', on ? 'true' : 'false');
+  t.setAttribute('aria-label', on ? 'Sembunyikan password' : 'Tampilkan password');
+}
+document.getElementById('auth-pw-toggle').addEventListener('click', ()=> setPwVisible(document.getElementById('auth-password').type === 'password'));
+document.getElementById('auth-forgot-link').addEventListener('click', ()=> setAuthMode('forgot'));
+document.getElementById('auth-toggle-link').addEventListener('click', ()=>{
+  const m = document.getElementById('auth-mode').value;
+  setAuthMode(m==='signin' ? 'signup' : 'signin');
+});
+document.getElementById('auth-password').addEventListener('keyup', e=>{
+  if (e.getModifierState) document.getElementById('auth-caps').classList.toggle('hidden', !e.getModifierState('CapsLock'));
+});
+document.getElementById('auth-password').addEventListener('input', ()=>{
+  renderStrength(document.getElementById('auth-password'), document.getElementById('auth-strength'), document.getElementById('auth-strength-text'), document.getElementById('auth-email').value);
+});
+
+let authBusy = false, lockTimer = null;
+function tickLock(){
+  const btn = document.getElementById('auth-submit-btn'), mode = document.getElementById('auth-mode').value, left = guardRemaining();
+  clearInterval(lockTimer);
+  if (!left || mode !== 'signin') return;
+  btn.disabled = true;
+  const step = ()=>{
+    const r = guardRemaining();
+    if (r <= 0){ clearInterval(lockTimer); btn.disabled = false; btn.textContent = AUTH_COPY.signin.btn; authMsg(''); return; }
+    btn.textContent = 'Coba lagi dalam ' + r + ' dtk';
+  };
+  step(); lockTimer = setInterval(step, 1000);
+}
 document.getElementById('auth-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const f = new FormData(e.target);
-  const email = (f.get('email')||'').trim();
-  const password = f.get('password')||'';
-  const mode = document.getElementById('auth-mode').value;
+  if (authBusy) return;
+  const f = new FormData(e.target), mode = document.getElementById('auth-mode').value;
+  const email = (f.get('email')||'').trim().toLowerCase(), password = f.get('password')||'', password2 = f.get('password2')||'';
   const btn = document.getElementById('auth-submit-btn');
-  const errEl = document.getElementById('auth-error');
-  errEl.classList.add('hidden');
-  btn.disabled = true; btn.textContent = 'Memproses...';
+  authMsg('');
+  if (mode !== 'recovery' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Format email tidak valid.'); return; }
+  if (mode === 'signin' && guardRemaining() > 0){ tickLock(); return; }
+  if (mode === 'signin' && !password){ authMsg('Password wajib diisi.'); return; }
+  if (mode === 'signup' && authCfg.bootstrapped && authCfg.signup_mode==='approval' && !(f.get('full_name')||'').trim()){ authMsg('Nama lengkap wajib diisi agar Administrator bisa mengenali Anda.'); return; }
+  if (mode === 'signup' || mode === 'recovery'){
+    const issues = pwIssues(password, email);
+    if (issues.length){ authMsg('Password belum memenuhi syarat: ' + issues.join(', ') + '.'); return; }
+    if (password !== password2){ authMsg('Konfirmasi password tidak sama.'); return; }
+  }
+  authBusy = true; btn.disabled = true; btn.textContent = 'Memproses...';
+  const redirectTo = location.origin + location.pathname;
   try {
     if (mode === 'signup'){
-      const { data, error } = await sbClient.auth.signUp({ email, password });
+      const fullName = (f.get('full_name')||'').trim().slice(0,100), reqNote = (f.get('request_note')||'').trim().slice(0,300);
+      const { data, error } = await sbClient.auth.signUp({ email, password, options:{ emailRedirectTo: redirectTo, data:{ full_name: fullName, request_note: reqNote } } });
       if (error) throw error;
-      if (data.session && data.user){ await hideAuthAndBoot(data.user); }
-      else {
-        errEl.textContent = 'Akun dibuat. Cek email Anda untuk konfirmasi, lalu masuk.';
-        errEl.classList.remove('hidden','text-red-400'); errEl.classList.add('text-emerald-400');
-        setAuthMode('signin');
-      }
+      if (data.session && data.user){ await hideAuthAndBoot(data.user); return; }
+      setAuthMode('signin');   // pesan netral: tidak membocorkan apakah email sudah terdaftar
+      authMsg(authCfg.bootstrapped && authCfg.signup_mode==='approval' ? 'Jika email ini bisa didaftarkan, instruksi konfirmasi sudah dikirim. Setelah konfirmasi dan masuk, permintaan akses Anda akan menunggu persetujuan Administrator utama.' : 'Jika email ini bisa didaftarkan, instruksi konfirmasi sudah dikirim. Cek kotak masuk Anda, lalu masuk.', 'ok');
+    } else if (mode === 'forgot'){
+      const { error } = await sbClient.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error && (error.status === 429 || /rate limit/i.test(error.message||''))) throw error;
+      setAuthMode('signin');
+      authMsg('Jika email terdaftar, tautan pengaturan ulang password sudah dikirim. Periksa juga folder spam.', 'ok');
+    } else if (mode === 'recovery'){
+      const { error } = await sbClient.auth.updateUser({ password });
+      if (error) throw error;
+      recoveryMode = false;
+      try { history.replaceState(null, '', location.pathname); } catch(_){}
+      try { await sbClient.auth.signOut({ scope:'global' }); } catch(_){}
+      setAuthMode('signin');
+      authMsg('Password berhasil diubah. Silakan masuk dengan password baru.', 'ok');
     } else {
       const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      await hideAuthAndBoot(data.user);
+      guardReset();
+      await hideAuthAndBoot(data.user); return;
     }
   } catch(err){
-    errEl.textContent = err.message || 'Terjadi kesalahan, silakan coba lagi.';
-    errEl.classList.remove('hidden','text-emerald-400'); errEl.classList.add('text-red-400');
+    if (mode === 'signin' && (err.status === 400 || /invalid login/i.test(err.message||''))){ guardFail(); }
+    authMsg(authFriendlyError(err, mode));
   } finally {
-    btn.disabled = false; btn.textContent = mode==='signup' ? 'Daftar Akun' : 'Masuk';
+    authBusy = false;
+    if (document.getElementById('auth-submit-btn')){
+      btn.disabled = false; btn.textContent = authBtnLabel(document.getElementById('auth-mode').value);
+      if (document.getElementById('auth-mode').value === 'signin') tickLock();
+    }
   }
 });
+
+/* Timeout idle: keluar otomatis setelah 30 menit tanpa aktivitas (peringatan 1 menit sebelumnya) */
+const IDLE_MS = 30 * 60 * 1000, IDLE_WARN_MS = 60 * 1000;
+let idleTimer = null, warnTimer = null, idleOn = false;
+function idleReset(){
+  if (!idleOn) return;
+  clearTimeout(idleTimer); clearTimeout(warnTimer);
+  const w = document.getElementById('idle-warn'); if (w) w.remove();
+  try { localStorage.setItem('crm-last-active', String(Date.now())); } catch(e){}
+  warnTimer = setTimeout(()=>{
+    if (document.getElementById('idle-warn')) return;
+    const d = document.createElement('div'); d.id = 'idle-warn';
+    d.className = 'fixed bottom-5 left-1/2 -translate-x-1/2 z-[130] glass-card rounded-2xl px-4 py-3 text-xs text-amber-200 border border-amber-500/30';
+    d.setAttribute('role','alert'); d.textContent = 'Sesi akan berakhir dalam 1 menit karena tidak ada aktivitas. Gerakkan mouse atau ketik untuk tetap masuk.';
+    document.body.appendChild(d);
+  }, IDLE_MS - IDLE_WARN_MS);
+  idleTimer = setTimeout(()=> idleExpire(), IDLE_MS);
+}
+async function idleExpire(){
+  try { sessionStorage.setItem('crm-auth-note', 'Anda keluar otomatis karena tidak ada aktivitas selama 30 menit.'); } catch(e){}
+  intentionalSignOut = true; stopAccessWatch(); teardownRealtime();
+  try { await sbClient.auth.signOut(); } catch(e){}
+  location.reload();
+}
+function startIdleWatch(){
+  if (idleOn) return; idleOn = true;
+  ['pointerdown','keydown','scroll','touchstart'].forEach(ev=> window.addEventListener(ev, throttleIdle, { passive:true }));
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.visibilityState !== 'visible') return;
+    let last = 0; try { last = +localStorage.getItem('crm-last-active') || 0; } catch(e){}
+    if (last && Date.now() - last > IDLE_MS) idleExpire(); else idleReset();
+  });
+  idleReset();
+}
+let idleThrottle = 0;
+function throttleIdle(){ const n = Date.now(); if (n - idleThrottle > 5000){ idleThrottle = n; idleReset(); } }
+
 async function signOutUser(){
   if (!confirm('Keluar dari workspace ini?')) return;
+  intentionalSignOut = true;
+  stopAccessWatch();
   teardownRealtime();
-  await sbClient.auth.signOut();
+  try { await sbClient.auth.signOut(); } catch(e){}
   location.reload();
 }
 
 /* ---------- boot ---------- */
 async function init(){
   tickClock();
+  loadAuthConfig().then(initBrandSettings);   // logo & nama terbaru dari server
   await loadAll();
   await ensureDefaultWarehouse();
+  applyNavPermissions();
+  startPermObserver();
+  startAccessWatch();
+  refreshDocNumber('quote'); refreshDocNumber('invoice');
   renderAll();
+  ensureAllowedView();
+  applyPermissionUI();
   const overlay = document.getElementById('loading-overlay');
   if (overlay){ overlay.style.opacity = '0'; setTimeout(()=> overlay.remove(), 400); }
 }
+sbClient.auth.onAuthStateChange((event)=>{
+  if (event === 'SIGNED_OUT' && currentUser && !intentionalSignOut) location.reload(); // sesi berakhir/dicabut dari tempat lain
+  if (event === 'PASSWORD_RECOVERY' && !currentUser){ recoveryMode = true; showAuthScreen(); }
+});
+(function hookDocNumbers(){
+  const hook = (name, kind)=>{ const orig = window[name]; window[name] = function(...a){ const r = orig.apply(this, a); if (!a[0]) syncDocNumberInput(kind); return r; }; };
+  hook('openQuoteModal','quote'); hook('openInvoiceModal','invoice');
+})();
+installPermissionGuards();
 (async function bootstrapAuth(){
   const { data: { session } } = await sbClient.auth.getSession();
-  if (session && session.user){ await hideAuthAndBoot(session.user); }
+  if (recoveryMode){ showAuthScreen(); }   // tautan reset dari email: tampilkan form password baru, jangan langsung masuk
+  else if (session && session.user){ await hideAuthAndBoot(session.user); }
   else { showAuthScreen(); }
 })();
