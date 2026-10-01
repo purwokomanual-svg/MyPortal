@@ -13,3 +13,14 @@
    ========================================================= */
 const SUPABASE_URL = "https://lbwmmppaunqikpollvhg.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxid21tcHBhdW5xaWtwb2xsdmhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NTk3NzAsImV4cCI6MjA5ODAzNTc3MH0.O-tEKALTaAwAgVRnC3CKfDxAFuqq8-f43Mlmr7X6F3s";
+
+/* =========================================================
+   PENDAFTARAN MANDIRI
+   =========================================================
+   true  : layar login menampilkan tautan "Daftar di sini". Setiap pendaftar
+           mendapat workspace TERPISAH miliknya sendiri (data tetap terisolasi).
+   false : tautan daftar disembunyikan. Pakai ini setelah Administrator pertama
+           dibuat — semua user berikutnya dibuat lewat menu Team > Manajemen User.
+   Catatan: JANGAN mematikan "Allow new users to sign up" di dashboard Supabase,
+   karena pembuatan user baru dari menu Team memakainya. */
+const ALLOW_PUBLIC_SIGNUP = true;
